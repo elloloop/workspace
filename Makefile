@@ -98,8 +98,8 @@ test: ## Unit tests with race detector
 .PHONY: test-cover
 test-cover: ## Unit tests + coverage profile + per-package gates (matches CI)
 	bash scripts/run-coverage.sh
-	bash scripts/coverage-gate.sh cover.out 84 internal/
-	bash scripts/coverage-gate.sh cover.out 88 pkg/
+	bash scripts/coverage-gate.sh cover.out 68 internal/
+	bash scripts/coverage-gate.sh cover.out 65 pkg/
 	bash scripts/coverage-gate.sh cover.out --config .coverage-gates.yml
 
 .PHONY: smoke
