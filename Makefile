@@ -178,9 +178,17 @@ fuzz: ## Fuzz smoke — runs each fuzz target with seed corpus + 15s fuzzing
 CONNECT_OPENAPI_VERSION ?= v0.18.0
 
 .PHONY: proto
-proto: ## Regenerate Go stubs + OpenAPI from proto (buf generate)
+proto: ## Regenerate Go stubs + OpenAPI + proto reference from proto
 	$(BUF) generate
 	$(MAKE) openapi
+	$(MAKE) protodoc
+
+.PHONY: protodoc
+protodoc: ## Sync the proto source into the docs site (Proto Reference page)
+	mkdir -p docs-site/src/data docs-site/public/proto
+	cp proto/workspace/v1/workspace.proto docs-site/src/data/workspace-v1.proto
+	cp proto/workspace/v1/workspace.proto docs-site/public/proto/workspace-v1.proto
+	@echo "==> proto synced → docs-site (src/data + public/proto)"
 
 .PHONY: buf-lint
 buf-lint: ## Lint the proto sources

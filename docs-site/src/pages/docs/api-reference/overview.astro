@@ -27,6 +27,18 @@ const base = import.meta.env.BASE_URL.replace(/\/$/, "") + "/";
     always in sync with the running service.
   </div>
 
+  <p>
+    Two views, two audiences: the <a href={`${base}api`}>Live API Reference</a>
+    above is the <strong>HTTP/JSON</strong> surface (with a try-it console),
+    while the <a href={`${base}docs/api-reference/proto`}>Proto Reference</a>
+    shows the <strong>protobuf contract</strong> itself — services, messages,
+    field numbers, and <code>oneof</code>s — which is what you generate a
+    gRPC/Connect client from. The canonical, versioned schema and generated
+    SDKs are published to the
+    <a href="https://buf.build/elloloop/workspace">Buf Schema Registry</a>
+    (<code>buf.build/elloloop/workspace</code>).
+  </p>
+
   <h2>Transport</h2>
   <p>
     Every endpoint is a <a href="https://connectrpc.com/">Connect</a> RPC. The
