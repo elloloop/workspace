@@ -51,7 +51,7 @@ func Recover(logger *zap.Logger) func(http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			defer func() {
 				if v := recover(); v != nil {
-					logger.Error("panic_recovered", zap.Any("value", v), zap.String("path", r.URL.Path))
+					logger.Error("panic_recovered", zap.Any("value", v), zap.String("path", sanitizeLogValue(r.URL.Path)))
 					http.Error(w, "internal error", http.StatusInternalServerError)
 				}
 			}()
@@ -84,4 +84,21 @@ func Chain(h http.Handler, mws ...func(http.Handler) http.Handler) http.Handler 
 // IsInfraPath reports whether p is a non-RPC infrastructure route.
 func IsInfraPath(p string) bool {
 	return p == "/healthz" || p == "/readyz" || strings.HasPrefix(p, "/metrics")
+}
+
+// sanitizeLogValue makes a user-controlled string safe to write to a log
+// (CWE-117): it replaces control characters — newlines especially, which
+// could forge log entries — and bounds the length. Structured (JSON) logging
+// already escapes these, but sanitizing at the source is defense in depth.
+func sanitizeLogValue(s string) string {
+	const maxLen = 256
+	if len(s) > maxLen {
+		s = s[:maxLen]
+	}
+	return strings.Map(func(r rune) rune {
+		if r < 0x20 || r == 0x7f {
+			return '_'
+		}
+		return r
+	}, s)
 }
