@@ -2,8 +2,18 @@
 // Live API reference, rendered by Scalar from the OpenAPI spec that buf
 // auto-generates from proto/workspace/v1/workspace.proto (see `make openapi`).
 // This is a full-bleed standalone page so Scalar gets the whole viewport.
+//
+// Both <script> tags are `is:inline` so Astro emits them verbatim instead of
+// bundling the CDN loader into an ES module import — Scalar's standalone build
+// is a classic script that auto-initializes from the #api-reference element.
 const base = import.meta.env.BASE_URL.replace(/\/$/, "") + "/";
 const specUrl = `${base}openapi/workspace-v1.yaml`;
+const config = JSON.stringify({
+  theme: "purple",
+  darkMode: true,
+  hideDownloadButton: false,
+  metaData: { title: "Workspaces API Reference" },
+});
 ---
 
 <!doctype html>
@@ -27,15 +37,7 @@ const specUrl = `${base}openapi/workspace-v1.yaml`;
     </style>
   </head>
   <body>
-    <script
-      id="api-reference"
-      data-url={specUrl}
-      data-configuration={JSON.stringify({
-        theme: "purple",
-        darkMode: true,
-        hideDownloadButton: false,
-        metaData: { title: "Workspaces API Reference" },
-      })}></script>
-    <script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference"></script>
+    <script id="api-reference" data-url={specUrl} data-configuration={config} is:inline></script>
+    <script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference" is:inline></script>
   </body>
 </html>
