@@ -1,0 +1,49 @@
+name: Push proto to BSR
+
+# Publishes the workspace.v1 proto module to the Buf Schema Registry
+# (buf.build/elloloop/workspace) so it has canonical, versioned proto docs and
+# generated SDKs. No-ops until a BUF_TOKEN secret is configured, so the
+# workflow is safe to land before the BSR org exists.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'proto/**'
+      - 'buf.yaml'
+      - '.github/workflows/buf-push.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  push:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check for BUF_TOKEN
+        id: gate
+        env:
+          BUF_TOKEN: ${{ secrets.BUF_TOKEN }}
+        run: |
+          if [ -n "$BUF_TOKEN" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "BUF_TOKEN not set — skipping BSR push. Create an elloloop org on buf.build, add a BUF_TOKEN secret to enable."
+          fi
+
+      - name: Push to BSR
+        if: steps.gate.outputs.enabled == 'true'
+        uses: bufbuild/buf-action@v1
+        with:
+          token: ${{ secrets.BUF_TOKEN }}
+          push: true
+          lint: false
+          breaking: false
+          format: false
+          setup_only: false

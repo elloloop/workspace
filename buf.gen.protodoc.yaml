@@ -1,0 +1,10 @@
+# Generates a self-contained HTML proto reference (protoc-gen-doc) published to
+# the docs site at /workspace/proto. Run via `make protodoc`. The output is a
+# committed static artifact so the (Node-only) Pages build serves it without
+# needing buf.
+version: v2
+plugins:
+  - remote: buf.build/community/pseudomuto-doc:v1.5.1
+    out: docs-site/public/proto
+    opt:
+      - html,index.html

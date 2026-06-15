@@ -2,6 +2,10 @@ version: v2
 
 modules:
   - path: proto
+    # Buf Schema Registry module — the canonical, versioned proto docs + SDK
+    # source. Published by .github/workflows/buf-push.yml when a BUF_TOKEN
+    # secret is configured (see docs/api-reference/proto).
+    name: buf.build/elloloop/workspace
 
 lint:
   use:
