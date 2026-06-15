@@ -2,7 +2,7 @@
 import DocsLayout from "../../../layouts/DocsLayout.astro";
 import { Code } from "astro-expressive-code/components";
 
-const BASE = import.meta.env.BASE_URL;
+const BASE = import.meta.env.BASE_URL.replace(/\/$/, "") + "/";
 ---
 
 <DocsLayout title="Personal-Assistant App">
@@ -22,7 +22,7 @@ const BASE = import.meta.env.BASE_URL;
     There is no "create org" step. On the user's first
     <code>ListWorkspaces</code> call the service auto-provisions their single
     <code>PERSONAL</code> workspace (see
-    <a href={`${BASE}/docs/adr/0002-personal-and-team-workspaces`}>ADR-0002</a>).
+    <a href={`${BASE}docs/adr/0002-personal-and-team-workspaces`}>ADR-0002</a>).
     It is undeletable and admits exactly one member — the owner. You
     <em>cannot</em> add a friend to it, and the API rejects attempts to.
   </p>
@@ -153,9 +153,9 @@ resource:task-buy-milk#viewer@group:family#member`} lang="text" title="group mem
     anyone's private workspace. The same engine that backs a company
     collaboration tool backs a single-user task sharer; only the tuples differ.
     See the
-    <a href={`${BASE}/docs/concepts/authorization-model`}>Authorization Model</a>
+    <a href={`${BASE}docs/concepts/authorization-model`}>Authorization Model</a>
     for how the <code>this</code> leaf and userset subjects combine, and
-    <a href={`${BASE}/docs/guides/sharing`}>Sharing Resources</a> for the general
+    <a href={`${BASE}docs/guides/sharing`}>Sharing Resources</a> for the general
     pattern.
   </p>
 </DocsLayout>

@@ -2,7 +2,7 @@
 import DocsLayout from "../../../layouts/DocsLayout.astro";
 import { Code } from "astro-expressive-code/components";
 
-const BASE = import.meta.env.BASE_URL;
+const BASE = import.meta.env.BASE_URL.replace(/\/$/, "") + "/";
 ---
 
 <DocsLayout title="Learning Platform">
@@ -156,7 +156,7 @@ resource:course-go#viewer@group:cohort-2026#member`} lang="text" title="instruct
     grants, the <code>editor</code> subtree (instructors), the cohort group's
     <code>member</code> userset, and the <code>parent</code> workspace's
     <code>member</code> set. See
-    <a href={`${BASE}/docs/guides/check-and-expand`}>Check &amp; Expand</a>.
+    <a href={`${BASE}docs/guides/check-and-expand`}>Check &amp; Expand</a>.
   </p>
 
   <h2>One model, both audiences</h2>
@@ -165,9 +165,9 @@ resource:course-go#viewer@group:cohort-2026#member`} lang="text" title="instruct
     <code>Check(resource, &lt;course&gt;, viewer, &lt;user&gt;)</code> — the
     product never branches on B2C versus B2B. To isolate one large customer's
     data, give them their own <code>project_id</code> shard (see
-    <a href={`${BASE}/docs/concepts/projects`}>Projects &amp; Multi-Tenancy</a>);
+    <a href={`${BASE}docs/concepts/projects`}>Projects &amp; Multi-Tenancy</a>);
     otherwise one B2C product is one project with many personal workspaces. For
     personal-vs-team semantics, see
-    <a href={`${BASE}/docs/concepts/workspaces-and-groups`}>Workspaces &amp; Groups</a>.
+    <a href={`${BASE}docs/concepts/workspaces-and-groups`}>Workspaces &amp; Groups</a>.
   </p>
 </DocsLayout>

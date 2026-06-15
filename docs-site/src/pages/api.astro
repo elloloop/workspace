@@ -2,7 +2,7 @@
 // Live API reference, rendered by Scalar from the OpenAPI spec that buf
 // auto-generates from proto/workspace/v1/workspace.proto (see `make openapi`).
 // This is a full-bleed standalone page so Scalar gets the whole viewport.
-const base = import.meta.env.BASE_URL;
+const base = import.meta.env.BASE_URL.replace(/\/$/, "") + "/";
 const specUrl = `${base}openapi/workspace-v1.yaml`;
 ---
 

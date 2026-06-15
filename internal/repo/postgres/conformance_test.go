@@ -10,12 +10,16 @@ import (
 	"github.com/elloloop/workspace/internal/service"
 )
 
-// TestPostgresConformance runs the shared suite against a real Postgres.
-// It skips unless WORKSPACES_TEST_POSTGRES_DSN points at a database.
+// TestPostgresConformance runs the shared suite against a real Postgres. It
+// skips unless a DSN is set via WORKSPACES_TEST_POSTGRES_DSN (local) or
+// GATEWAY_TEST_POSTGRES_DSN (the name CI's coverage job provides).
 func TestPostgresConformance(t *testing.T) {
 	dsn := os.Getenv("WORKSPACES_TEST_POSTGRES_DSN")
 	if dsn == "" {
-		t.Skip("set WORKSPACES_TEST_POSTGRES_DSN to run the Postgres conformance suite")
+		dsn = os.Getenv("GATEWAY_TEST_POSTGRES_DSN")
+	}
+	if dsn == "" {
+		t.Skip("set WORKSPACES_TEST_POSTGRES_DSN or GATEWAY_TEST_POSTGRES_DSN to run the Postgres conformance suite")
 	}
 
 	ctx := context.Background()

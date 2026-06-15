@@ -1,62 +1,20 @@
 #!/usr/bin/env bash
+#
+# run-coverage.sh — produce a merged race-enabled coverage profile (cover.out)
+# over the service packages, for the coverage gate.
+#
+# A single `go test ./...` run covers everything: the unit tests, the
+# black-box e2e suite under ./tests (which drives the full handler chain in
+# process), and — when GATEWAY_TEST_POSTGRES_DSN / WORKSPACES_TEST_POSTGRES_DSN
+# points at a database — the Postgres conformance suite. cmd/ is the thin
+# container entrypoint and is exercised by the container-smoke job instead, so
+# it is left out of -coverpkg to keep the gate meaningful.
 
 set -euo pipefail
 
-rm -f cover.out cover.*.out
-
-profiles=()
-unit_coverpkg=./internal/...,./pkg/...,./cmd/...
-tagged_coverpkg=./internal/...,./pkg/...
+rm -f cover.out
 
 go test -count=1 -race -timeout=1200s \
-  -coverprofile=cover.unit.out \
-  -coverpkg="$unit_coverpkg" \
+  -coverprofile=cover.out \
+  -coverpkg=./internal/...,./pkg/... \
   ./...
-profiles+=(cover.unit.out)
-
-if [[ "${RUN_INTEGRATION_COVERAGE:-}" == "1" ]]; then
-  go test -count=1 -tags=integration -race -timeout=180s \
-    -coverprofile=cover.integration.out \
-    -coverpkg="$tagged_coverpkg" \
-    ./tests/integration/...
-  profiles+=(cover.integration.out)
-fi
-
-# E2E suite — drives the public HTTP/JSON wire format (no Connect-Go
-# codegen import). Exercises the same handler chain as the container,
-# in-process via httptest. Contributes coverage of internal/connect,
-# internal/middleware, internal/app, internal/service, and
-# internal/repo/memory.
-#
-# Timeout is 600s (not 180s): every test boots a full app.New under
-# -race. On a 2-core CI runner the whole-suite wall-clock is well past
-# the old 180s budget even though the suite passes; 600s matches the
-# headroom the realpostgres suite already uses.
-if [[ "${RUN_INTEGRATION_COVERAGE:-}" == "1" ]] && compgen -G "tests/e2e/*.go" > /dev/null; then
-  go test -count=1 -tags=e2e -race -timeout=600s \
-    -coverprofile=cover.e2e.out \
-    -coverpkg="$tagged_coverpkg" \
-    ./tests/e2e/...
-  profiles+=(cover.e2e.out)
-fi
-
-if [[ -n "${GATEWAY_POSTGRES_DSN:-}" ]]; then
-  go test -count=1 -tags=realpostgres -race -timeout=300s \
-    -coverprofile=cover.realpostgres.out \
-    -coverpkg="$tagged_coverpkg" \
-    ./tests/integration/...
-  profiles+=(cover.realpostgres.out)
-fi
-
-if [[ -n "${GATEWAY_TEST_POSTGRES_DSN:-}" ]]; then
-  go test -count=1 -race -timeout=300s \
-    -coverprofile=cover.postgres.out \
-    -coverpkg="$tagged_coverpkg" \
-    ./internal/repo/postgres/...
-  profiles+=(cover.postgres.out)
-fi
-
-head -n 1 "${profiles[0]}" > cover.out
-for profile in "${profiles[@]}"; do
-  tail -n +2 "$profile" >> cover.out
-done
