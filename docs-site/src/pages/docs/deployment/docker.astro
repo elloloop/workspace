@@ -1,0 +1,137 @@
+---
+import DocsLayout from "../../../layouts/DocsLayout.astro";
+import { Code } from "astro-expressive-code/components";
+
+const base = import.meta.env.BASE_URL;
+---
+
+<DocsLayout title="Deploy with Docker">
+  <h1>Deploy with Docker</h1>
+  <p>
+    This page gets workspaces running in a container — first as a local
+    Compose stack with Postgres, then as a standalone image in production. The
+    service ships as a single image,
+    <code>ghcr.io/elloloop/workspace</code>, built from <code>cmd/workspace</code>.
+  </p>
+
+  <h2>docker compose up</h2>
+  <p>
+    The repository ships a <code>docker-compose.yml</code> that brings up
+    Postgres and the workspaces service together. From a clone:
+  </p>
+  <Code
+    code={`docker compose up -d
+curl http://localhost:8080/healthz   # -> 200 OK
+docker compose logs -f workspaces
+docker compose down -v               # stop and wipe the postgres volume`}
+    lang="bash"
+    title="docker compose"
+  />
+  <p>
+    With <code>GATEWAY_POSTGRES_AUTO_MIGRATE=true</code> (the default) the
+    schema is applied on first connect, so the stack is ready as soon as
+    Postgres is healthy.
+  </p>
+
+  <h2>A Compose snippet</h2>
+  <p>
+    A minimal stack: Postgres plus the workspaces service, wired with a durable
+    store, a service-auth token, and a default project.
+  </p>
+  <Code
+    code={`services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: workspaces
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: workspaces
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U workspaces"]
+      interval: 5s
+      retries: 10
+
+  workspaces:
+    image: ghcr.io/elloloop/workspace
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8080:8080"   # Connect-RPC (HTTP/JSON, gRPC, gRPC-Web)
+      - "9090:9090"   # Prometheus metrics + health probes
+    environment:
+      GATEWAY_POSTGRES_DSN: postgres://workspace:password@db:5432/workspace?sslmode=disable
+      GATEWAY_SERVICE_AUTH_TOKENS: prod-token-a,prod-token-b
+      GATEWAY_DEFAULT_PROJECT_ID: my-product`}
+    lang="yaml"
+    title="docker-compose.yml"
+  />
+  <p>
+    See <a href={`${base}docs/installation/configuration`}>Configuration</a> for
+    every <code>GATEWAY_*</code> variable. The three that matter most for a
+    deployment are above:
+  </p>
+  <ul>
+    <li>
+      <code>GATEWAY_POSTGRES_DSN</code> — the durable store. Empty would select
+      the in-memory driver, which is not suitable for production or multiple
+      replicas.
+    </li>
+    <li>
+      <code>GATEWAY_SERVICE_AUTH_TOKENS</code> — the accepted service
+      credentials. Callers present one as
+      <code>Authorization: Bearer &lt;token&gt;</code>. Leaving it empty disables
+      auth and logs a warning.
+    </li>
+    <li>
+      <code>GATEWAY_DEFAULT_PROJECT_ID</code> — the project shard for requests
+      that omit <code>project_id</code>.
+    </li>
+  </ul>
+
+  <h2>Running migrations</h2>
+  <p>
+    Auto-migration is convenient but couples schema changes to process startup.
+    To run migrations as an explicit, gated step — for example a Compose
+    one-shot service or a Kubernetes init job — set
+    <code>GATEWAY_POSTGRES_AUTO_MIGRATE=false</code> and invoke the binary's
+    <code>migrate</code> subcommand. It applies pending Postgres migrations and
+    exits:
+  </p>
+  <Code
+    code={`docker run --rm \\
+  -e GATEWAY_POSTGRES_DSN='postgres://workspace:password@db:5432/workspace?sslmode=disable' \\
+  ghcr.io/elloloop/workspace workspace migrate`}
+    lang="bash"
+    title="workspace migrate"
+  />
+
+  <h2>Ports</h2>
+  <table>
+    <thead>
+      <tr><th>Port</th><th>Purpose</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><code>8080</code></td><td>Connect-RPC over HTTP/JSON, gRPC, and gRPC-Web (<code>GATEWAY_CONNECT_PORT</code>).</td></tr>
+      <tr><td><code>9090</code></td><td>Prometheus <code>/metrics</code> and the <code>/healthz</code> / <code>/readyz</code> probes (<code>GATEWAY_METRICS_PORT</code>).</td></tr>
+    </tbody>
+  </table>
+
+  <h2>Behind a mesh or mTLS</h2>
+  <p>
+    Workspaces is an internal service — never expose port 8080 to the public
+    internet. Run it on a private network behind your API gateway or product
+    backend. If a service mesh or mTLS already authenticates every caller at the
+    transport layer, you may leave <code>GATEWAY_SERVICE_AUTH_TOKENS</code> empty
+    to skip the redundant bearer check; the service logs a
+    <code>service_auth_disabled</code> warning so the choice is never silent.
+    With no mesh, set the tokens. See
+    <a href={`${base}docs/concepts/security`}>Security &amp; Service Auth</a>.
+  </p>
+
+  <h2>Where to next</h2>
+  <ul>
+    <li><a href={`${base}docs/installation/configuration`}>Configuration</a> — every <code>GATEWAY_*</code> variable.</li>
+    <li><a href={`${base}docs/operations/observability`}>Health &amp; Metrics</a> — probes, Prometheus, and what to alert on.</li>
+  </ul>
+</DocsLayout>

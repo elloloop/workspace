@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/elloloop/workspaces/pkg/authz"
+	"github.com/elloloop/workspace/pkg/authz"
 )
 
 // GroupMember is a user or a nested group.

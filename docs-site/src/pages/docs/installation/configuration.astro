@@ -1,0 +1,142 @@
+---
+import DocsLayout from "../../../layouts/DocsLayout.astro";
+import { Code } from "astro-expressive-code/components";
+
+const base = import.meta.env.BASE_URL;
+---
+
+<DocsLayout title="Configuration">
+  <h1>Configuration</h1>
+  <p>
+    This page lists every configuration knob the service reads. All
+    configuration is via environment variables with the <code>GATEWAY_</code>
+    prefix — the same convention as identity, so the two services deploy with
+    one consistent style. Defaults are tuned so the service runs with
+    <strong>zero configuration</strong> for local development; production
+    deployments override the Postgres DSN and the service-auth tokens.
+  </p>
+
+  <h2>Ports</h2>
+  <table>
+    <thead>
+      <tr><th>Variable</th><th>Purpose</th><th>Default</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><code>GATEWAY_CONNECT_PORT</code></td><td>Connect/HTTP listener — JSON, gRPC, and gRPC-Web RPCs.</td><td><code>8080</code></td></tr>
+      <tr><td><code>GATEWAY_METRICS_PORT</code></td><td>Prometheus <code>/metrics</code> and the health probes.</td><td><code>9090</code></td></tr>
+    </tbody>
+  </table>
+
+  <h2>Project</h2>
+  <table>
+    <thead>
+      <tr><th>Variable</th><th>Purpose</th><th>Default</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><code>GATEWAY_DEFAULT_PROJECT_ID</code></td><td>Project shard used for any request whose <code>project_id</code> is empty.</td><td><code>default</code></td></tr>
+    </tbody>
+  </table>
+  <p>
+    Every workspace, group, invitation, and relation tuple is scoped to a
+    project (the isolation shard). One B2C product is typically one project; a
+    B2B platform shards per customer. See
+    <a href={`${base}docs/concepts/projects`}>Projects &amp; Multi-Tenancy</a>.
+  </p>
+
+  <h2>Storage</h2>
+  <table>
+    <thead>
+      <tr><th>Variable</th><th>Purpose</th><th>Default</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><code>GATEWAY_POSTGRES_DSN</code></td><td>Postgres connection string. Selects the Postgres driver. <strong>Empty selects the in-memory store.</strong></td><td><em>(empty)</em></td></tr>
+      <tr><td><code>GATEWAY_POSTGRES_AUTO_MIGRATE</code></td><td>Apply pending migrations automatically on connect.</td><td><code>true</code></td></tr>
+    </tbody>
+  </table>
+
+  <h3>Choosing a store: memory vs. Postgres</h3>
+  <ul>
+    <li>
+      <strong>In-memory</strong> (DSN empty) — the default, and the conformance
+      reference both drivers are pinned against. Data lives in process memory
+      and is lost on restart. Use it for local development, tests, and
+      ephemeral demos.
+    </li>
+    <li>
+      <strong>Postgres</strong> (DSN set) — durable, the only choice for
+      production and for running more than one replica. Every table and index
+      leads with <code>project_id</code>. With
+      <code>GATEWAY_POSTGRES_AUTO_MIGRATE=true</code> (the default) the schema
+      is applied on connect; to gate migrations behind a deploy step, set it to
+      <code>false</code> and run <code>workspace migrate</code> explicitly (see
+      <a href={`${base}docs/deployment/docker`}>Deploy with Docker</a>).
+    </li>
+  </ul>
+
+  <h2>Service authentication</h2>
+  <table>
+    <thead>
+      <tr><th>Variable</th><th>Purpose</th><th>Default</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><code>GATEWAY_SERVICE_AUTH_TOKENS</code></td><td>Comma-separated list of accepted service credentials. A caller presents one as <code>Authorization: Bearer &lt;token&gt;</code>. <strong>Empty disables the requirement</strong> and logs a warning — every caller is then trusted.</td><td><em>(empty)</em></td></tr>
+    </tbody>
+  </table>
+  <p>
+    Workspaces is an internal service-to-service API: the caller is a trusted
+    product backend, and the end user is passed as data
+    (<code>acting_user_id</code> / <code>subject_user_id</code>) in the request
+    body. The bearer token authenticates the <em>calling service</em>, not an
+    end user. A missing or wrong credential returns HTTP <strong>401</strong>
+    (Connect code <code>Unauthenticated</code>).
+  </p>
+
+  <div
+    style="border-left:3px solid var(--primary, #8b5cf6);border-radius:0.25rem;padding:0.75rem 1rem;margin:1.5rem 0;background:var(--muted, rgba(139,92,246,0.06));"
+  >
+    <strong>Enable service auth in production.</strong> When
+    <code>GATEWAY_SERVICE_AUTH_TOKENS</code> is empty the service logs a
+    <code>service_auth_disabled</code> warning at startup and accepts every
+    caller — acceptable only behind a service mesh, mTLS, or an otherwise
+    private network. Anywhere else, set at least one token. The list accepts
+    several values so you can rotate credentials without downtime: add the new
+    token, roll callers over, then drop the old one. See
+    <a href={`${base}docs/concepts/security`}>Security &amp; Service Auth</a>.
+  </div>
+
+  <h2>CORS</h2>
+  <table>
+    <thead>
+      <tr><th>Variable</th><th>Purpose</th><th>Default</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><code>GATEWAY_ALLOWED_ORIGINS</code></td><td>Comma-separated list of CORS origins allowed to call the API from a browser. Empty allows none.</td><td><em>(empty)</em></td></tr>
+    </tbody>
+  </table>
+
+  <h2>Request body size</h2>
+  <table>
+    <thead>
+      <tr><th>Variable</th><th>Purpose</th><th>Default</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><code>GATEWAY_HTTP_MAX_BODY_BYTES</code></td><td>Maximum accepted request body, in bytes. Must be positive.</td><td><code>1048576</code> (1&nbsp;MiB)</td></tr>
+    </tbody>
+  </table>
+
+  <h2>A production example</h2>
+  <p>
+    The minimum production override: a durable store and at least one service
+    token.
+  </p>
+  <Code
+    code={`docker run -p 8080:8080 -p 9090:9090 \\
+  -e GATEWAY_POSTGRES_DSN='postgres://workspace:password@db:5432/workspace?sslmode=disable' \\
+  -e GATEWAY_SERVICE_AUTH_TOKENS='prod-token-a,prod-token-b' \\
+  -e GATEWAY_DEFAULT_PROJECT_ID=my-product \\
+  -e GATEWAY_ALLOWED_ORIGINS='https://app.my-product.com' \\
+  ghcr.io/elloloop/workspace`}
+    lang="bash"
+    title="docker run"
+  />
+</DocsLayout>

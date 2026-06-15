@@ -1,0 +1,89 @@
+---
+import DocsLayout from "../../../layouts/DocsLayout.astro";
+import { Code } from "astro-expressive-code/components";
+---
+
+<DocsLayout title="ADR-0001 · Relation Tuples">
+  <h1>ADR-0001 — Relation tuples as the authorization primitive</h1>
+
+  <h2>Status</h2>
+  <p>
+    Accepted (2026-06-15). Foundational ADR for this service. It is the premise
+    the other workspace ADRs (0002–0003) build on: workspaces, groups, and
+    resource sharing are all expressed as relation tuples over the engine this
+    ADR adopts.
+  </p>
+
+  <h2>Context</h2>
+  <p>
+    Identity
+    <a href="https://github.com/elloloop/identity/blob/main/docs/adr/0001-two-service-split-identity-vs-workspace.md">ADR-0001</a>
+    drew a hard line: identity owns authentication and tenancy; a separate
+    service owns workspaces and fine-grained authorization. This is that service,
+    and it has to answer one question well, for many different products:
+    <strong>"may this user do this thing to this object?"</strong>
+  </p>
+  <p>
+    This service is <strong>internal</strong>. It is called service-to-service
+    by trusted product backends, never directly by a browser or mobile client.
+    The caller authenticates as a <em>service</em> — a shared
+    <code>Authorization: Bearer &lt;service-token&gt;</code> credential (or mTLS
+    at the mesh) — and, exactly as Zanzibar does, the end user is passed as
+    <strong>data</strong>: <code>acting_user_id</code> on the management RPCs and
+    <code>subject_user_id</code> on <code>Check</code>. End-user authentication
+    happens at the product edge, before this service is called.
+  </p>
+  <p>The products that depend on it do not share an access model:</p>
+  <ol>
+    <li>A <strong>workplace collaboration tool</strong> (Slack + email + Linear + HR + incident.io) needs company-wide membership, per-issue ownership, on-call groups, and resources that inherit access from the team they live in.</li>
+    <li>A <strong>learning platform</strong> serves both B2C learners who buy a single course and companies who buy seats that grant a whole roster access.</li>
+    <li>A <strong>personal-assistant app</strong> lets end users share individual tasks with specific other people, with no enclosing organisation at all.</li>
+  </ol>
+  <p>
+    The obvious path is a per-product RBAC schema: a <code>workspace_members</code>
+    table, a <code>course_enrollments</code> table, an <code>issue_shares</code>
+    table, a <code>task_collaborators</code> table, each with its own role columns
+    and join logic. That path does not scale across products. Nested groups and
+    userset-style grants are especially painful to bolt onto flat membership
+    tables. Google's Zanzibar describes the alternative: a single, uniform store
+    of <strong>relation tuples</strong> plus per-namespace
+    <strong>userset-rewrite rules</strong>.
+  </p>
+
+  <h2>Decision</h2>
+  <p>Adopt <strong>Zanzibar-style relation tuples as the single authorization primitive</strong>.</p>
+  <ol>
+    <li><strong>One store, one shape.</strong> Every grant is a tuple <code>namespace:object_id#relation@subject</code>, where the subject is a concrete user <em>or</em> a userset. There are no per-product permission tables; there is one tuple store, scoped by <code>project_id</code>.</li>
+    <li><strong>Namespaces carry rewrite rules.</strong> A namespace maps each relation to a userset-rewrite expression — a union of <code>this</code>, <code>computed_userset</code>, and <code>tuple_to_userset</code>. Role hierarchies, inheritance, and group nesting are expressed in these rules rather than in code (<code>pkg/authz/model.go</code>).</li>
+    <li><strong>Four generic RPCs.</strong> <code>AuthzService</code> exposes <code>WriteRelationTuples</code>, <code>ReadRelationTuples</code> (raw read, no rewrites), <code>Check</code> (transitive decision), and <code>Expand</code> (effective userset tree).</li>
+    <li><strong>The engine is generic; the built-ins are defaults.</strong> The service ships <code>workspace</code>, <code>group</code>, and <code>resource</code> namespaces, but the engine is namespace-agnostic. Unknown relations default to the <code>this</code> leaf, so a product can store ad-hoc relations without registering a namespace.</li>
+  </ol>
+  <p>
+    A concrete write-then-check: grant Bob admin on a workspace, then ask the
+    engine. The service is reached over the Connect protocol at
+    <code>/workspace.v1.&lt;Service&gt;/&lt;Method&gt;</code>, authenticated with
+    the service credential.
+  </p>
+  <Code code={`# Grant bob admin on workspace acme — one tuple write.
+curl -X POST http://localhost:8080/workspace.v1.AuthzService/WriteRelationTuples \\
+  -H "Authorization: Bearer $WS_SERVICE_TOKEN" -H "Content-Type: application/json" \\
+  -d '{"updates":[{"op":"OP_INSERT","tuple":{"namespace":"workspace","object_id":"acme","relation":"admin","subject":{"user_id":"bob"}}}]}'
+
+# Check resolves the role hierarchy: admin ⊃ member, so bob is a member too.
+curl -X POST http://localhost:8080/workspace.v1.AuthzService/Check \\
+  -H "Authorization: Bearer $WS_SERVICE_TOKEN" -H "Content-Type: application/json" \\
+  -d '{"namespace":"workspace","object_id":"acme","relation":"member","subject_user_id":"bob"}'
+# => {"allowed": true}`} lang="bash" />
+
+  <h2>Consequences</h2>
+  <ul>
+    <li><strong>Positive.</strong> One model serves every product. A shared task, a Linear issue, a seat-based course, an email group, a company — all are tuples over the same engine, checked by the same <code>Check</code>.</li>
+    <li><strong>Positive.</strong> Inheritance and group-based grants are declarative. "Workspace admins can edit any resource in it" is one <code>tuple_to_userset</code> rule, not a join re-written in four products.</li>
+    <li><strong>Positive.</strong> <code>Check</code>/<code>Expand</code> give uniform decision and audit surfaces.</li>
+    <li><strong>Negative / learning curve.</strong> Relation tuples and userset rewrites are less immediately legible than a <code>role</code> column; <a href="/workspace/docs/concepts/authorization-model">the authorization model</a> exists to flatten that curve.</li>
+    <li><strong>Negative / evaluation cost.</strong> A <code>Check</code> may walk computed and tuple-to-userset edges transitively. The store is indexed on <code>(project_id, namespace, object_id, relation)</code> to bound it, and hot decisions can be cached on the effective userset.</li>
+    <li><strong>Follow-up.</strong> Zanzibar's consistency tokens (<code>zookies</code>) and a per-namespace schema-registration API are out of scope for the first cut; decisions are read-your-writes against the primary store.</li>
+  </ul>
+</DocsLayout>
+</content>
+</invoke>

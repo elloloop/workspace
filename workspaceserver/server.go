@@ -10,25 +10,26 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/elloloop/workspaces/internal/app"
-	"github.com/elloloop/workspaces/internal/repo/memory"
-	"github.com/elloloop/workspaces/internal/service"
-	"github.com/elloloop/workspaces/pkg/jwt"
+	"github.com/elloloop/workspace/internal/app"
+	"github.com/elloloop/workspace/internal/repo/memory"
+	"github.com/elloloop/workspace/internal/service"
 )
 
 // Config is the embedder-facing subset of service configuration.
 type Config struct {
 	DefaultProjectID string
 	AllowedOrigins   []string
+	// ServiceAuthTokens are the accepted service credentials. Empty disables
+	// the requirement (trusted network / mesh).
+	ServiceAuthTokens []string
 }
 
-// Options configures New. Verifier is required; Repo defaults to an
-// in-memory store; Logger defaults to a no-op.
+// Options configures New. Repo defaults to an in-memory store; Logger
+// defaults to a no-op.
 type Options struct {
-	Logger   *zap.Logger
-	Verifier jwt.Verifier
-	Repo     service.Repository
-	Config   Config
+	Logger *zap.Logger
+	Repo   service.Repository
+	Config Config
 }
 
 // Server is the assembled workspace service.
@@ -36,14 +37,11 @@ type Server struct {
 	handler http.Handler
 }
 
-// New builds the server. It returns an error if no token verifier is given.
+// New builds the server.
 func New(_ context.Context, opts Options) (*Server, error) {
 	logger := opts.Logger
 	if logger == nil {
 		logger = zap.NewNop()
-	}
-	if opts.Verifier == nil {
-		return nil, errMissingVerifier
 	}
 	repo := opts.Repo
 	if repo == nil {
@@ -54,11 +52,11 @@ func New(_ context.Context, opts Options) (*Server, error) {
 		projectID = "default"
 	}
 	handler := app.New(app.Deps{
-		Logger:           logger,
-		Repo:             repo,
-		Verifier:         opts.Verifier,
-		DefaultProjectID: projectID,
-		AllowedOrigins:   opts.Config.AllowedOrigins,
+		Logger:            logger,
+		Repo:              repo,
+		DefaultProjectID:  projectID,
+		AllowedOrigins:    opts.Config.AllowedOrigins,
+		ServiceAuthTokens: opts.Config.ServiceAuthTokens,
 	})
 	return &Server{handler: handler}, nil
 }

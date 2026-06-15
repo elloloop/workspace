@@ -1,0 +1,208 @@
+---
+import DocsLayout from "../../../layouts/DocsLayout.astro";
+import { Code } from "astro-expressive-code/components";
+---
+
+<DocsLayout title="Check & Expand">
+  <h1>Check &amp; Expand</h1>
+  <p>
+    This guide is about <strong>using</strong> the engine: the four
+    <code>AuthzService</code> RPCs you call at runtime, what each is for, and where
+    each belongs on (or off) the request hot path.
+  </p>
+  <p>
+    <strong>What you'll learn:</strong> when to call <code>Check</code> vs
+    <code>Expand</code> vs <code>ReadRelationTuples</code>, how to read the
+    <code>Expand</code> userset tree, and how to batch
+    <code>WriteRelationTuples</code> for create / share / revoke.
+  </p>
+
+  <h2>Check — the per-request decision</h2>
+  <p>
+    <code>Check</code> answers one boolean: does this concrete user hold this
+    relation on this object? Call it <strong>at the point where you gate an
+    action</strong> — the same place you'd write an <code>if (authorized)</code>.
+    It evaluates the namespace's rewrite rules transitively (role hierarchy, group
+    nesting, parent inheritance) and is cycle-safe.
+  </p>
+  <Code code={`curl -X POST http://localhost:8080/workspace.v1.AuthzService/Check \\
+  -H "Authorization: Bearer $WS_SERVICE_TOKEN" \\
+  -H "Content-Type: application/json" \\
+  -d '{"namespace":"workspace","object_id":"W","relation":"admin","subject_user_id":"bob"}'`} lang="bash" />
+  <Code code={`{ "allowed": true }`} lang="json" />
+  <div class="not-prose my-6 rounded-lg border border-border bg-muted/40 p-4 text-sm">
+    <strong>The subject is data, not the caller.</strong>
+    <code>subject_user_id</code> is the user being tested; it is independent of the
+    <code>Authorization: Bearer $WS_SERVICE_TOKEN</code> service credential, which
+    identifies the calling product backend. End-user authentication happens at the
+    product edge before this service is reached (see
+    <a href="/workspace/docs/concepts/security">Security &amp; Service Auth</a>).
+  </div>
+
+  <h3>Latency and usage</h3>
+  <ul>
+    <li>
+      <strong>Call it on the gate, once per action.</strong> One <code>Check</code>
+      per authorization decision — not per row. To filter a list, prefer
+      <code>Expand</code> (below) or a denormalized index over fanning out N
+      checks.
+    </li>
+    <li>
+      <strong>Cost grows with rewrite depth.</strong> A direct grant is one store
+      hit; deep group nesting and long parent chains add recursion. Keep
+      hierarchies shallow where you can.
+    </li>
+    <li>
+      <strong>Cache the decision, not the tuples.</strong> A <code>Check</code>
+      result is a function of the stored tuples; invalidate it when you
+      <code>WriteRelationTuples</code> for that object.
+    </li>
+  </ul>
+
+  <h2>Expand — who has access (debugging / UI)</h2>
+  <p>
+    <code>Expand</code> is the set-valued sibling of <code>Check</code>: instead of
+    testing one user, it returns the effective <strong>userset tree</strong> for a
+    relation. Use it to answer "who can view this?", to render a share dialog, and
+    to debug why a <code>Check</code> resolved the way it did. It takes no subject.
+  </p>
+  <Code code={`curl -X POST http://localhost:8080/workspace.v1.AuthzService/Expand \\
+  -H "Authorization: Bearer $WS_SERVICE_TOKEN" \\
+  -H "Content-Type: application/json" \\
+  -d '{"namespace":"resource","object_id":"doc","relation":"viewer"}'`} lang="bash" />
+
+  <h3>Reading the tree</h3>
+  <p>
+    The result is a tree of two node kinds, mirroring the rewrite that produced it:
+  </p>
+  <ul>
+    <li>
+      <strong><code>UNION</code></strong> — an internal node with child subtrees;
+      access is the union of its children. A relation built from
+      <code>union(this(), computed(...), tupleToUserset(...))</code> expands to a
+      union node with one child per branch.
+    </li>
+    <li>
+      <strong><code>LEAF</code></strong> — a terminal node carrying the concrete
+      <code>user_ids</code> and any nested usersets (<code>sets</code>) stored
+      directly for that branch.
+    </li>
+  </ul>
+  <p>
+    So a document that is shared with <code>dad</code> directly, with the
+    <code>family</code> group, and inherits from workspace <code>W</code> expands
+    to a <code>UNION</code> with three leaves: the direct viewers, the
+    <code>group:family#member</code> userset, and the
+    <code>workspace:W#member</code> userset. Each userset can be expanded again to
+    drill into nested groups.
+  </p>
+
+  <h2>ReadRelationTuples vs Check</h2>
+  <p>
+    Both read the store, but they answer different questions. Choose by whether you
+    want <em>what was written</em> or <em>what it evaluates to</em>.
+  </p>
+  <table>
+    <thead>
+      <tr>
+        <th></th>
+        <th><code>ReadRelationTuples</code></th>
+        <th><code>Check</code></th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Returns</td>
+        <td>Raw stored tuples matching a filter</td>
+        <td>A single <code>allowed</code> boolean</td>
+      </tr>
+      <tr>
+        <td>Rewrite evaluation</td>
+        <td>None — exactly what's stored</td>
+        <td>Full, transitive</td>
+      </tr>
+      <tr>
+        <td>Resolves groups / inheritance</td>
+        <td>No</td>
+        <td>Yes</td>
+      </tr>
+      <tr>
+        <td>Use for</td>
+        <td>Sync, audit, share-management UI</td>
+        <td>Authorization decisions</td>
+      </tr>
+    </tbody>
+  </table>
+  <p>
+    Never make an access decision from <code>ReadRelationTuples</code>: a user can
+    hold a relation through a group or a parent without any directly stored tuple.
+    For decisions, always <code>Check</code>.
+  </p>
+  <Code code={`curl -X POST http://localhost:8080/workspace.v1.AuthzService/ReadRelationTuples \\
+  -H "Authorization: Bearer $WS_SERVICE_TOKEN" \\
+  -H "Content-Type: application/json" \\
+  -d '{"namespace":"resource","object_id":"doc","relation":"viewer","subject_user_id":"dad"}'`} lang="bash" />
+
+  <h2>WriteRelationTuples — create, share, revoke</h2>
+  <p>
+    All grants and revocations go through one write API. The <code>updates</code>
+    array carries one or more ops, each <code>INSERT</code> or <code>DELETE</code>,
+    and the whole batch is applied together — so a re-share (revoke one subject,
+    grant another) is a single atomic call.
+  </p>
+  <Code code={`curl -X POST http://localhost:8080/workspace.v1.AuthzService/WriteRelationTuples \\
+  -H "Authorization: Bearer $WS_SERVICE_TOKEN" \\
+  -H "Content-Type: application/json" \\
+  -d '{"updates":[
+        {"op":"INSERT","tuple":{
+          "namespace":"resource","object_id":"doc","relation":"viewer",
+          "subject":{"user_id":"erin"}}},
+        {"op":"DELETE","tuple":{
+          "namespace":"resource","object_id":"doc","relation":"viewer",
+          "subject":{"user_id":"dad"}}}
+      ]}'`} lang="bash" />
+  <p>
+    A subject is either a concrete user (<code>"user_id"</code>) or a userset
+    (<code>"set"</code> with <code>namespace</code> / <code>object_id</code> /
+    <code>relation</code>) — the latter is how you grant a group or inherit from a
+    parent. The high-level <code>WorkspaceService</code> and
+    <code>GroupService</code> RPCs write these tuples for you for the common cases;
+    drop to <code>WriteRelationTuples</code> for direct resource sharing and custom
+    namespaces.
+  </p>
+
+  <h2>Picking the right RPC</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>You want to…</th>
+        <th>Call</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Gate an action for one user (hot path)</td>
+        <td><code>Check</code></td>
+      </tr>
+      <tr>
+        <td>List / debug who has access</td>
+        <td><code>Expand</code></td>
+      </tr>
+      <tr>
+        <td>Read the exact stored grants on an object</td>
+        <td><code>ReadRelationTuples</code></td>
+      </tr>
+      <tr>
+        <td>Grant, share, or revoke (atomic batch)</td>
+        <td><code>WriteRelationTuples</code></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>Where to next</h2>
+  <ul>
+    <li><a href="/workspace/docs/concepts/authorization-model">Authorization Model</a> — how rewrites evaluate, in full</li>
+    <li><a href="/workspace/docs/guides/sharing">Sharing Resources</a> — concrete share / revoke flows</li>
+    <li><a href="/workspace/docs/api-reference/overview">Using the API</a> — protocol, auth, and the live per-RPC reference</li>
+  </ul>
+</DocsLayout>

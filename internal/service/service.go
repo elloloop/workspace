@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/elloloop/workspaces/pkg/authz"
+	"github.com/elloloop/workspace/pkg/authz"
 )
 
 // Principal is the authenticated caller, resolved from the verified JWT by

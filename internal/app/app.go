@@ -9,38 +9,39 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/elloloop/workspaces/gen/go/workspace/workspaceconnect"
-	connecthandler "github.com/elloloop/workspaces/internal/connect"
-	"github.com/elloloop/workspaces/internal/middleware"
-	"github.com/elloloop/workspaces/internal/service"
-	"github.com/elloloop/workspaces/pkg/jwt"
+	"github.com/elloloop/workspace/gen/go/workspace/v1/workspacev1connect"
+	connecthandler "github.com/elloloop/workspace/internal/connect"
+	"github.com/elloloop/workspace/internal/middleware"
+	"github.com/elloloop/workspace/internal/service"
 )
 
 // Deps are the injectable dependencies needed to build the handler.
 type Deps struct {
 	Logger           *zap.Logger
 	Repo             service.Repository
-	Verifier         jwt.Verifier
 	DefaultProjectID string
 	AllowedOrigins   []string
+	// ServiceAuthTokens are the accepted service credentials. Empty disables
+	// the requirement (trusted network / mesh); see middleware.ServiceAuth.
+	ServiceAuthTokens []string
 }
 
 // New builds the full HTTP handler: the three Connect services plus health
-// routes, wrapped in the recover → CORS → auth middleware chain.
+// routes, wrapped in the recover → CORS → service-auth middleware chain.
 func New(d Deps) http.Handler {
 	logger := d.Logger
 	if logger == nil {
 		logger = zap.NewNop()
 	}
 	svc := service.New(d.Repo, nil, nil)
-	h := connecthandler.NewHandler(svc)
+	h := connecthandler.NewHandler(svc, d.DefaultProjectID)
 
 	mux := http.NewServeMux()
-	wsPath, wsHandler := workspaceconnect.NewWorkspaceServiceHandler(h)
+	wsPath, wsHandler := workspacev1connect.NewWorkspaceServiceHandler(h)
 	mux.Handle(wsPath, wsHandler)
-	grpPath, grpHandler := workspaceconnect.NewGroupServiceHandler(h)
+	grpPath, grpHandler := workspacev1connect.NewGroupServiceHandler(h)
 	mux.Handle(grpPath, grpHandler)
-	azPath, azHandler := workspaceconnect.NewAuthzServiceHandler(h)
+	azPath, azHandler := workspacev1connect.NewAuthzServiceHandler(h)
 	mux.Handle(azPath, azHandler)
 
 	health := middleware.Health()
@@ -50,6 +51,6 @@ func New(d Deps) http.Handler {
 	return middleware.Chain(mux,
 		middleware.Recover(logger),
 		middleware.CORS(d.AllowedOrigins),
-		middleware.Auth(d.Verifier, d.DefaultProjectID, logger),
+		middleware.ServiceAuth(d.ServiceAuthTokens, logger),
 	)
 }

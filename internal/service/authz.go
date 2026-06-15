@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/elloloop/workspaces/pkg/authz"
+	"github.com/elloloop/workspace/pkg/authz"
 )
 
 // TupleOp is an insert or delete in a relation-tuple write.

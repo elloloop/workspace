@@ -1,0 +1,141 @@
+---
+import DocsLayout from "../../../layouts/DocsLayout.astro";
+import { Code } from "astro-expressive-code/components";
+---
+
+<DocsLayout title="Groups & Nesting">
+  <h1>Groups &amp; Nesting</h1>
+  <p>
+    This guide models reusable membership sets — teams, distribution lists,
+    "family", "all-engineering" — with the built-in <code>group</code> namespace,
+    and shows how groups <strong>nest</strong> and how granting a group access to
+    anything works.
+  </p>
+  <p>
+    <strong>What you'll learn:</strong> how to add users and other groups to a
+    group, how to grant a group a role or a resource permission with a single
+    userset tuple, and how a <code>Check</code> resolves transitively through
+    nested groups.
+  </p>
+
+  <h2>The group namespace</h2>
+  <p>
+    A group has exactly one relation, and it is a plain leaf — just the directly
+    stored tuples:
+  </p>
+  <Code code={`member := this()`} lang="go" />
+  <p>
+    There is no role hierarchy inside a group; it is a flat set. The power comes
+    from <strong>what a member can be</strong>: a subject is either a concrete
+    user or a <em>userset</em> — and a userset may itself point at another
+    group's <code>member</code> relation. That is how groups nest.
+  </p>
+
+  <h2>Adding members</h2>
+  <p>
+    Use <code>GroupService.AddGroupMember</code>. Its <code>member</code> field is
+    a oneof: pass <code>user_id</code> to add a person, or
+    <code>group_id</code> to nest a whole group. Like all management RPCs it
+    requires <code>acting_user_id</code>.
+  </p>
+  <Code code={`# add a user to the backend team
+curl -X POST http://localhost:8080/workspace.v1.GroupService/AddGroupMember \\
+  -H "Authorization: Bearer $WS_SERVICE_TOKEN" \\
+  -H "Content-Type: application/json" \\
+  -d '{"group_id":"backend","member":{"user_id":"alice"},"acting_user_id":"alice"}'`} lang="bash" />
+  <p>That stores a tuple with a concrete-user subject:</p>
+  <Code code={`group:backend#member@alice`} lang="text" />
+
+  <h2>Nesting a group inside a group</h2>
+  <p>
+    To make every member of <code>backend</code> also a member of the broader
+    <code>all-eng</code> group, add <code>backend</code> as a
+    <strong>group</strong> member of <code>all-eng</code>:
+  </p>
+  <Code code={`curl -X POST http://localhost:8080/workspace.v1.GroupService/AddGroupMember \\
+  -H "Authorization: Bearer $WS_SERVICE_TOKEN" \\
+  -H "Content-Type: application/json" \\
+  -d '{"group_id":"all-eng","member":{"group_id":"backend"},"acting_user_id":"alice"}'`} lang="bash" />
+  <p>The stored tuple uses a <strong>userset</strong> subject:</p>
+  <Code code={`group:all-eng#member@group:backend#member`} lang="text" />
+  <p>
+    Read that as "everyone who is a <code>member</code> of <code>backend</code> is
+    a <code>member</code> of <code>all-eng</code>." Nesting is unbounded —
+    <code>all-eng</code> can in turn be nested inside <code>everyone</code>.
+    Traversal is cycle-safe, so an accidental loop cannot hang a check.
+  </p>
+
+  <h2>Granting a group access to anything</h2>
+  <p>
+    Because any subject may be a userset, you grant a whole group access to an
+    object by writing one tuple whose subject is the group's
+    <code>member</code> set. The same shape works across every namespace:
+  </p>
+  <Code code={`# the family group can view a document
+resource:doc#viewer@group:family#member
+
+# the all-eng group are members of the acme workspace
+workspace:acme#member@group:all-eng#member`} lang="text" />
+  <p>
+    These are written through <code>AuthzService.WriteRelationTuples</code> (one
+    or more <code>INSERT</code>/<code>DELETE</code> ops in a single call):
+  </p>
+  <Code code={`curl -X POST http://localhost:8080/workspace.v1.AuthzService/WriteRelationTuples \\
+  -H "Authorization: Bearer $WS_SERVICE_TOKEN" \\
+  -H "Content-Type: application/json" \\
+  -d '{"updates":[
+        {"op":"INSERT","tuple":{
+          "namespace":"workspace","object_id":"acme","relation":"member",
+          "subject":{"set":{"namespace":"group","object_id":"all-eng","relation":"member"}}}}
+      ]}'`} lang="bash" />
+  <p>
+    Now every member of <code>all-eng</code> — including the nested
+    <code>backend</code> members — is a member of <code>acme</code>, with no
+    per-user tuples. Add or remove a person from <code>backend</code> once and
+    their access everywhere those groups are granted updates automatically.
+  </p>
+
+  <h2>A transitive Check</h2>
+  <p>Given the tuples above:</p>
+  <Code code={`group:backend#member@alice
+group:all-eng#member@group:backend#member
+workspace:acme#member@group:all-eng#member`} lang="text" />
+  <p>Ask whether <code>alice</code> is a member of the <code>acme</code> workspace:</p>
+  <Code code={`curl -X POST http://localhost:8080/workspace.v1.AuthzService/Check \\
+  -H "Authorization: Bearer $WS_SERVICE_TOKEN" \\
+  -H "Content-Type: application/json" \\
+  -d '{"namespace":"workspace","object_id":"acme","relation":"member","subject_user_id":"alice"}'`} lang="bash" />
+  <Code code={`{ "allowed": true }`} lang="json" />
+  <p><code>Check</code> walks the chain:</p>
+  <ol>
+    <li>
+      <code>workspace:acme#member</code> has a userset subject
+      <code>group:all-eng#member</code> — recurse into
+      <code>Check(group, all-eng, member, alice)</code>.
+    </li>
+    <li>
+      <code>group:all-eng#member</code> has a userset subject
+      <code>group:backend#member</code> — recurse into
+      <code>Check(group, backend, member, alice)</code>.
+    </li>
+    <li>
+      <code>group:backend#member@alice</code> is a stored tuple with a concrete
+      subject — the leaf matches. <strong>Allowed.</strong>
+    </li>
+  </ol>
+
+  <div class="not-prose my-6 rounded-lg border border-border bg-muted/40 p-4 text-sm">
+    <strong>Groups are not workspaces.</strong> A group is a pure membership set
+    with no roles and no ownership of resources; it exists to be <em>referenced</em>
+    by grants. Keep "who is on the team" (groups) separate from "what the team can
+    do" (the tuples that grant the group access). See
+    <a href="/workspace/docs/adr/0003-groups-separate-from-workspaces">ADR-0003</a>.
+  </div>
+
+  <h2>Where to next</h2>
+  <ul>
+    <li><a href="/workspace/docs/guides/sharing">Sharing Resources</a> — combine group grants with direct shares and inheritance</li>
+    <li><a href="/workspace/docs/guides/check-and-expand">Check &amp; Expand</a> — use <code>Expand</code> to see who a group resolves to</li>
+    <li><a href="/workspace/docs/concepts/workspaces-and-groups">Workspaces &amp; Groups</a> — the product surface</li>
+  </ul>
+</DocsLayout>

@@ -1,0 +1,37 @@
+---
+import { buildBreadcrumbs } from "../data/nav";
+
+interface Props {
+  currentPath: string;
+}
+
+const { currentPath } = Astro.props;
+const crumbs = buildBreadcrumbs(currentPath);
+// Render only when we have at least one segment beyond just "Docs".
+const visible = crumbs.length > 1;
+---
+
+{
+  visible && (
+    <nav
+      aria-label="Breadcrumb"
+      class="mb-6 flex items-center gap-1.5 text-[13px] text-muted-foreground"
+    >
+      {crumbs.map((crumb, idx) => (
+        <>
+          {idx > 0 && <span class="text-border">/</span>}
+          {crumb.href ? (
+            <a
+              href={crumb.href}
+              class="rounded px-1 py-0.5 transition-colors hover:bg-muted hover:text-foreground"
+            >
+              {crumb.label}
+            </a>
+          ) : (
+            <span class="px-1 py-0.5 text-foreground">{crumb.label}</span>
+          )}
+        </>
+      ))}
+    </nav>
+  )
+}

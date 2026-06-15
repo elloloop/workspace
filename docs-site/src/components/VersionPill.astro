@@ -1,0 +1,84 @@
+---
+const versions = [
+  { label: "v0.1 (latest)", current: true },
+];
+---
+
+<details
+  id="version-pill"
+  class="relative hidden text-[13px] lg:block"
+>
+  <summary
+    class="flex cursor-pointer items-center gap-1.5 rounded-lg border border-border bg-muted/40 px-2.5 py-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+  >
+    <span>v0.1</span>
+    <svg
+      width="10"
+      height="10"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="2.5"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      aria-hidden="true"
+    >
+      <polyline points="6 9 12 15 18 9"></polyline>
+    </svg>
+  </summary>
+  <div
+    class="absolute right-0 top-[calc(100%+0.5rem)] z-40 w-56 rounded-lg border border-border bg-popover p-2 shadow-lg"
+  >
+    <ul class="mb-2 space-y-0.5">
+      {
+        versions.map((v) => (
+          <li>
+            <a
+              href="#"
+              class:list={[
+                "flex items-center justify-between rounded-md px-2.5 py-1.5 text-sm transition-colors",
+                v.current
+                  ? "bg-primary/10 font-medium text-primary"
+                  : "text-muted-foreground hover:bg-muted hover:text-foreground",
+              ]}
+            >
+              {v.label}
+              {v.current && (
+                <svg
+                  width="12"
+                  height="12"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="3"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  aria-hidden="true"
+                >
+                  <polyline points="20 6 9 17 4 12" />
+                </svg>
+              )}
+            </a>
+          </li>
+        ))
+      }
+    </ul>
+    <a
+      href="https://github.com/elloloop/workspace/releases"
+      target="_blank"
+      rel="noopener noreferrer"
+      class="block border-t border-border pt-2 text-center text-[12px] text-muted-foreground transition-colors hover:text-foreground"
+    >
+      View older versions on GitHub →
+    </a>
+  </div>
+</details>
+<style>
+  /* Hide the default <summary> marker. */
+  summary::-webkit-details-marker {
+    display: none;
+  }
+  summary {
+    list-style: none;
+  }
+</style>

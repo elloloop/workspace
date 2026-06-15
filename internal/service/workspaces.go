@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/elloloop/workspaces/pkg/authz"
+	"github.com/elloloop/workspace/pkg/authz"
 )
 
 // EnsurePersonalWorkspace returns the caller's personal workspace, creating

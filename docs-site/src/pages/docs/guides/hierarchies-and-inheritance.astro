@@ -1,0 +1,142 @@
+---
+import DocsLayout from "../../../layouts/DocsLayout.astro";
+import { Code } from "astro-expressive-code/components";
+---
+
+<DocsLayout title="Hierarchies & Inheritance">
+  <h1>Hierarchies &amp; Inheritance</h1>
+  <p>
+    This guide models parent/child resource hierarchies so that access flows down
+    a tree: grant someone a role on a workspace once, and they automatically get
+    the right access on every resource inside it — with zero per-resource tuples.
+  </p>
+  <p>
+    <strong>What you'll learn:</strong> how the <code>tuple_to_userset</code>
+    rewrite makes a <code>resource</code> inherit from its parent, how to write the
+    <code>parent</code> link, a step-by-step walk of the <code>Check</code>
+    evaluation, and how to extend the same pattern to deeper folder/document
+    trees. This is the Linear-issue and folder-tree pattern.
+  </p>
+
+  <h2>The resource namespace</h2>
+  <p>
+    The built-in <code>resource</code> namespace inherits from a parent workspace
+    via <code>tupleToUserset</code>:
+  </p>
+  <Code code={`parent := this()
+owner  := this()
+editor := union(this(), computed("owner"),  tupleToUserset("parent", "admin"))
+viewer := union(this(), computed("editor"), tupleToUserset("parent", "member"))`} lang="go" />
+  <ul>
+    <li>
+      <strong><code>parent</code></strong> stores the link to the enclosing
+      object — a userset like <code>workspace:W#member</code>.
+    </li>
+    <li>
+      <strong><code>editor</code></strong> = direct editors ∪ the resource's
+      <code>owner</code> ∪ <strong>every admin of the parent workspace</strong>.
+    </li>
+    <li>
+      <strong><code>viewer</code></strong> = direct viewers ∪ everyone who is an
+      <code>editor</code> ∪ <strong>every member of the parent workspace</strong>.
+    </li>
+  </ul>
+  <p>
+    <code>tupleToUserset("parent", "admin")</code> reads as: "for every userset
+    stored under the <code>parent</code> relation, evaluate <code>admin</code> on
+    the object it points to." That single primitive is the inheritance edge.
+  </p>
+
+  <h2>Linking an issue to its workspace</h2>
+  <p>
+    Write one <code>parent</code> tuple from the issue to the workspace. The
+    subject is a userset pointing at the workspace's <code>member</code> relation
+    — the conventional anchor the rewrite walks from.
+  </p>
+  <Code code={`resource:issue-42#parent@workspace:W#member`} lang="text" />
+  <Code code={`curl -X POST http://localhost:8080/workspace.v1.AuthzService/WriteRelationTuples \\
+  -H "Authorization: Bearer $WS_SERVICE_TOKEN" \\
+  -H "Content-Type: application/json" \\
+  -d '{"updates":[
+        {"op":"INSERT","tuple":{
+          "namespace":"resource","object_id":"issue-42","relation":"parent",
+          "subject":{"set":{"namespace":"workspace","object_id":"W","relation":"member"}}}}
+      ]}'`} lang="bash" />
+  <p>
+    That is the <strong>only</strong> tuple the issue needs. No per-user grants on
+    the issue — viewers and editors are derived from the workspace.
+  </p>
+
+  <h2>Walking the Check</h2>
+  <p>
+    Suppose <code>bob</code> is an <code>admin</code> of workspace <code>W</code>
+    (<code>workspace:W#admin@bob</code>) and the issue has only the
+    <code>parent</code> tuple above. Ask whether <code>bob</code> can edit the
+    issue:
+  </p>
+  <Code code={`curl -X POST http://localhost:8080/workspace.v1.AuthzService/Check \\
+  -H "Authorization: Bearer $WS_SERVICE_TOKEN" \\
+  -H "Content-Type: application/json" \\
+  -d '{"namespace":"resource","object_id":"issue-42","relation":"editor","subject_user_id":"bob"}'`} lang="bash" />
+  <Code code={`{ "allowed": true }`} lang="json" />
+  <p><code>Check</code> evaluates the <code>editor</code> rewrite, left to right:</p>
+  <ol>
+    <li>
+      <strong><code>this()</code></strong> — is there a direct
+      <code>resource:issue-42#editor@bob</code>? No.
+    </li>
+    <li>
+      <strong><code>computed("owner")</code></strong> — is <code>bob</code> the
+      issue's <code>owner</code>? No direct owner tuple. No.
+    </li>
+    <li>
+      <strong><code>tupleToUserset("parent", "admin")</code></strong> — read the
+      <code>parent</code> tuples on <code>issue-42</code>. There is one, pointing
+      at <code>workspace:W</code>. Recurse into
+      <code>Check(workspace, W, admin, bob)</code>.
+    </li>
+    <li>
+      <code>workspace:W#admin@bob</code> is a stored tuple — the <code>admin</code>
+      leaf matches. <strong>Allowed.</strong>
+    </li>
+  </ol>
+  <p>
+    A plain workspace <code>member</code> (not admin) would fail the
+    <code>editor</code> check at step 3 but pass a <code>viewer</code> check,
+    because <code>viewer</code> inherits the parent's <code>member</code> relation.
+    The role hierarchy on the workspace and the inheritance edge compose cleanly.
+  </p>
+
+  <h2>Deeper hierarchies: folders and documents</h2>
+  <p>
+    The same <code>parent</code> link chains. Model a folder as a
+    <code>resource</code>, put the folder under a workspace, and put a document
+    under the folder:
+  </p>
+  <Code code={`resource:folder-design#parent@workspace:W#member
+resource:doc-spec#parent@resource:folder-design#viewer`} lang="text" />
+  <p>
+    Here <code>doc-spec</code>'s parent points at the folder's
+    <code>viewer</code> relation. A <code>Check(resource, doc-spec, viewer, bob)</code>
+    recurses into <code>Check(resource, folder-design, viewer, bob)</code>, which
+    in turn recurses up to the workspace via the folder's own <code>parent</code>
+    tuple. Access granted at the top of the tree reaches the leaf document, and
+    moving a subtree is one tuple change.
+  </p>
+
+  <div class="not-prose my-6 rounded-lg border border-border bg-muted/40 p-4 text-sm">
+    <strong>Point the parent at the right relation.</strong> The second argument
+    of the inheritance edge decides what gets inherited: the built-in
+    <code>editor</code> walks the parent's <code>admin</code>, and
+    <code>viewer</code> walks the parent's <code>member</code>. When you chain your
+    own levels, choose the relation on the parent that should confer access at the
+    child — as in <code>doc-spec#parent@resource:folder-design#viewer</code> above.
+  </div>
+
+  <h2>Where to next</h2>
+  <ul>
+    <li><a href="/workspace/docs/guides/sharing">Sharing Resources</a> — add direct per-object shares on top of inheritance</li>
+    <li><a href="/workspace/docs/guides/roles-and-rbac">Roles &amp; RBAC</a> — the workspace roles that get inherited</li>
+    <li><a href="/workspace/docs/concepts/authorization-model">Authorization Model</a> — full rewrite reference and Check semantics</li>
+  </ul>
+</DocsLayout>

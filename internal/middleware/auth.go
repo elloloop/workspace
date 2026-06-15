@@ -1,44 +1,47 @@
 package middleware
 
 import (
+	"crypto/subtle"
 	"net/http"
 	"strings"
 
 	"go.uber.org/zap"
-
-	"github.com/elloloop/workspaces/internal/service"
-	"github.com/elloloop/workspaces/pkg/jwt"
 )
 
-// Auth verifies the bearer token on each request and, on success, attaches
-// the resulting Principal to the context. It never rejects outright: a
-// missing/invalid token simply leaves no principal, so unauthenticated
-// infrastructure routes (health, metrics) still pass while RPC handlers
-// reject via the absent principal. The token's project_id claim selects the
-// shard; an empty claim falls back to the configured default project.
-func Auth(verifier jwt.Verifier, defaultProjectID string, logger *zap.Logger) func(http.Handler) http.Handler {
+// ServiceAuth authenticates the CALLING SERVICE, not an end user. This is an
+// internal service: trusted product backends present a shared service
+// credential as `Authorization: Bearer <token>`; the end user is passed as
+// data in the request body (acting_user_id / subject_user_id), Zanzibar
+// style. End-user authentication happens at the product edge, before this
+// service is called.
+//
+// When no tokens are configured, the requirement is disabled and every
+// caller is trusted — appropriate only behind a service mesh / mTLS / a
+// private network. A loud warning is logged at construction so this is never
+// silent. Infrastructure routes (health, metrics) and CORS preflights always
+// bypass the check.
+func ServiceAuth(tokens []string, logger *zap.Logger) func(http.Handler) http.Handler {
 	if logger == nil {
 		logger = zap.NewNop()
 	}
+	tokens = nonEmpty(tokens)
+	if len(tokens) == 0 {
+		logger.Warn("service_auth_disabled",
+			zap.String("reason", "no GATEWAY_SERVICE_AUTH_TOKENS configured"),
+			zap.String("impact", "all callers trusted — deploy behind a private network/mesh or set the tokens"))
+	}
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			raw := bearerToken(r.Header.Get("Authorization"))
-			if raw == "" {
+			if len(tokens) == 0 || IsInfraPath(r.URL.Path) || r.Method == http.MethodOptions {
 				next.ServeHTTP(w, r)
 				return
 			}
-			claims, err := verifier.Verify(r.Context(), raw)
-			if err != nil {
-				logger.Debug("token_verification_failed", zap.Error(err))
-				next.ServeHTTP(w, r)
+			if !tokenMatches(bearerToken(r.Header.Get("Authorization")), tokens) {
+				// Bare 401: Connect maps it to CodeUnauthenticated for the client.
+				http.Error(w, "invalid service credentials", http.StatusUnauthorized)
 				return
 			}
-			projectID := claims.ProjectID
-			if projectID == "" {
-				projectID = defaultProjectID
-			}
-			p := service.Principal{UserID: claims.UserID, ProjectID: projectID}
-			next.ServeHTTP(w, r.WithContext(WithPrincipal(r.Context(), p)))
+			next.ServeHTTP(w, r)
 		})
 	}
 }
@@ -49,4 +52,29 @@ func bearerToken(header string) string {
 		return strings.TrimSpace(header[len(prefix):])
 	}
 	return ""
+}
+
+// tokenMatches reports whether presented equals any configured token, using a
+// constant-time comparison so a timing side-channel can't leak the secret.
+func tokenMatches(presented string, tokens []string) bool {
+	if presented == "" {
+		return false
+	}
+	ok := false
+	for _, t := range tokens {
+		if subtle.ConstantTimeCompare([]byte(presented), []byte(t)) == 1 {
+			ok = true
+		}
+	}
+	return ok
+}
+
+func nonEmpty(in []string) []string {
+	out := in[:0:0]
+	for _, s := range in {
+		if strings.TrimSpace(s) != "" {
+			out = append(out, s)
+		}
+	}
+	return out
 }

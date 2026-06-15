@@ -1,0 +1,72 @@
+---
+import DocsLayout from "../../../layouts/DocsLayout.astro";
+import { Code } from "astro-expressive-code/components";
+---
+
+<DocsLayout title="ADR-0002 · Personal & Team Workspaces">
+  <h1>ADR-0002 — Personal-by-default workspaces, and the personal/team split</h1>
+
+  <h2>Status</h2>
+  <p>
+    Accepted (2026-06-15). Builds on
+    <a href="/workspace/docs/adr/0001-relation-tuples-as-the-authz-primitive">ADR-0001</a>:
+    a workspace is an object in the <code>workspace</code> namespace, and its
+    membership is a set of relation tuples. This ADR decides the <em>product</em>
+    shape of that namespace.
+  </p>
+
+  <h2>Context</h2>
+  <p>The products this service backs span a spectrum from pure B2C to pure B2B:</p>
+  <ul>
+    <li>A <strong>personal-assistant</strong> user works alone and occasionally shares a task with a relative. They have no company.</li>
+    <li>A <strong>learning-platform</strong> user might be an individual buyer <em>or</em> an employee whose company bought seats.</li>
+    <li>A <strong>workplace collaboration</strong> user is always inside a company.</li>
+  </ul>
+  <p>
+    Claude and ChatGPT model exactly this spectrum with two workspace kinds:
+    every account has a personal space that exists from the moment you sign in,
+    and you can additionally create or join team workspaces. We want the same
+    shape so a single account can be a B2C user in one context and a team
+    collaborator in another, with no separate "upgrade to org" signup.
+  </p>
+  <p>
+    The design questions are: (1) does a workspace exist before the user creates
+    one, and (2) is "personal" just a team workspace with one member, or is it a
+    distinct, constrained kind?
+  </p>
+
+  <h2>Decision</h2>
+  <ol>
+    <li><strong>Every user owns exactly one personal workspace, auto-provisioned.</strong> <code>ListWorkspaces</code> provisions the caller's <code>PERSONAL</code> workspace on first call. The user never creates it and never has a "no workspace" state.</li>
+    <li><strong>Personal workspaces are closed.</strong> A personal workspace admits exactly one member, the owner, and <strong>cannot be deleted</strong>. <code>AddMember</code>, <code>CreateInvitation</code>, and <code>DeleteWorkspace</code> are rejected for it.</li>
+    <li><strong>Team workspaces are the collaboration surface.</strong> <code>CreateWorkspace</code> makes a <code>TEAM</code> workspace the caller owns. A team is anything from a family to a whole company; it takes members at a role (<code>owner</code> ⊃ <code>admin</code> ⊃ <code>member</code> ⊃ <code>guest</code>) and can be deleted by its owner.</li>
+    <li><strong>Personal and team are distinct kinds, not one with a member count.</strong> The <code>WorkspaceType</code> enum is explicit so the closed-ness of personal workspaces is enforced structurally. A team workspace that drops to one member is still a team workspace; a personal workspace can never become a team.</li>
+  </ol>
+  <p>
+    Because the end user is data, not the caller (ADR-0001), every management RPC
+    carries an <strong><code>acting_user_id</code></strong> — the user the action
+    is authorized as. It is required; omitting it returns
+    <code>InvalidArgument</code>. The very first <code>ListWorkspaces</code> for a
+    user auto-provisions their personal workspace:
+  </p>
+  <Code code={`curl -X POST http://localhost:8080/workspace.v1.WorkspaceService/ListWorkspaces \\
+  -H "Authorization: Bearer $WS_SERVICE_TOKEN" -H "Content-Type: application/json" \\
+  -d '{"acting_user_id":"alice"}'
+# => alice's PERSONAL workspace, provisioned on this first call.`} lang="bash" />
+  <p>
+    Both kinds are the same <code>workspace</code> namespace object underneath:
+    membership is mirrored as <code>workspace:&lt;id&gt;#&lt;role&gt;</code>
+    tuples, so <code>Check</code> and resource inheritance (ADR-0001) treat them
+    identically.
+  </p>
+
+  <h2>Consequences</h2>
+  <ul>
+    <li><strong>Positive.</strong> One account spans B2C and B2B with no mode switch.</li>
+    <li><strong>Positive.</strong> Auto-provisioning removes the "empty account" edge case — there is always an owner workspace for a user's first resource.</li>
+    <li><strong>Positive.</strong> Closing the personal workspace makes a clear privacy guarantee: it can never accidentally gain a second member or be destroyed.</li>
+    <li><strong>Negative.</strong> The personal/team asymmetry is special-cased in <code>WorkspaceService</code> (rejected mutations on personal workspaces).</li>
+    <li><strong>Negative.</strong> A user who wants to collaborate must create a team workspace and move resources into it; there is no "promote my personal workspace to a team". This keeps personal workspaces private at the cost of a migration step — accepted, and mirrors how Claude/ChatGPT keep personal and team plans separate.</li>
+  </ul>
+</DocsLayout>
+</content>

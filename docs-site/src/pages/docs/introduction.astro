@@ -1,0 +1,161 @@
+---
+import DocsLayout from "../../layouts/DocsLayout.astro";
+import { Code } from "astro-expressive-code/components";
+
+const base = import.meta.env.BASE_URL;
+---
+
+<DocsLayout title="Introduction">
+  <h1>Introduction</h1>
+  <p>
+    Workspaces is an internal authorization microservice (Go + Connect-RPC)
+    backed by Postgres. It owns workspaces, groups, invitations, and a
+    Zanzibar-style relation-tuple engine. This page explains where it sits, how
+    it is called, and the three things it gives you.
+  </p>
+
+  <h2>The identity / workspace split</h2>
+  <p>
+    Workspaces is the authorization half of the two-service split drawn by
+    identity's
+    <a href="https://github.com/elloloop/identity/blob/main/docs/adr/0001-two-service-split-identity-vs-workspace.md">ADR-0001</a>.
+    The AuthN/authz seam is a hard line:
+  </p>
+  <ul>
+    <li>
+      <strong>identity</strong> owns authentication, the <code>User</code> pool,
+      and tenancy. It issues the access token that proves who the end user is.
+    </li>
+    <li>
+      <strong>workspaces</strong> (this service) owns workspaces, workspace
+      membership, groups, invitations, and all fine-grained ReBAC.
+    </li>
+  </ul>
+  <p>
+    The two services <strong>never share a table</strong>. There is no shared
+    schema, no cross-service join, no synchronous callback from workspaces into
+    identity. The only contact point is the end user's access token — and that
+    token is verified at the <strong>product edge</strong>, not here. Workspaces
+    performs <strong>no</strong> end-user token verification: there is no JWKS,
+    no issuer check, no JWT logic in this service at all.
+  </p>
+
+  <h2>The service-to-service model</h2>
+  <p>
+    The caller of Workspaces is always a <strong>trusted product backend</strong>,
+    never a browser. The backend authenticates itself with a shared
+    <strong>service credential</strong> on every request:
+  </p>
+  <Code code={`Authorization: Bearer <service-token>`} lang="text" />
+  <p>
+    Valid tokens come from the <code>GATEWAY_SERVICE_AUTH_TOKENS</code>
+    environment variable (comma-separated). A missing or wrong credential
+    returns HTTP <code>401</code> / Connect code <code>Unauthenticated</code>.
+    Leaving the variable empty disables the requirement and logs a warning — for
+    meshes that enforce mTLS at the network layer instead.
+  </p>
+  <p>
+    Like Zanzibar, <strong>the end user is data, not the caller</strong>. The
+    user an action is authorized as travels in an explicit
+    <code>acting_user_id</code> field, and the user a permission is tested for
+    travels in <code>subject_user_id</code>. Both are independent of the service
+    credential. End-user authentication already happened at the product edge
+    before this service is called.
+  </p>
+
+  <h2>What it gives you</h2>
+  <ul>
+    <li>
+      <strong>Workspaces, groups, and invitations</strong>
+      (<code>WorkspaceService</code> + <code>GroupService</code>). Every user
+      owns one auto-provisioned <strong>personal</strong> workspace; they create
+      <strong>team</strong> workspaces and add members at a role. Groups are
+      reusable, nestable membership sets. Invitations are one-time, token-based
+      grants of a workspace role.
+    </li>
+    <li>
+      <strong>A generic relation-tuple engine</strong>
+      (<code>AuthzService</code>). Write tuples; ask <code>Check</code> "may
+      this user do this?" and <code>Expand</code> "who can?" It is generic over
+      namespaces, so any consuming product expresses its own access model as
+      tuples.
+    </li>
+    <li>
+      <strong>Multi-tenant projects.</strong> <code>project_id</code> is the
+      isolation shard (identity ADR-0002): every workspace, group, invitation,
+      and tuple is scoped to it. Empty means the configured
+      <code>GATEWAY_DEFAULT_PROJECT_ID</code>.
+    </li>
+  </ul>
+
+  <h2>What it is not</h2>
+  <ul>
+    <li>
+      <strong>Not an authenticator.</strong> It authorizes; it does not verify
+      end-user identity. It trusts the <code>acting_user_id</code> the product
+      backend passes, because the backend already verified the user at the edge.
+    </li>
+    <li>
+      <strong>Not a per-product schema.</strong> There are no
+      <code>workspace_members</code> or <code>doc_shares</code> tables — every
+      grant is a tuple over one uniform store (see
+      <a href={`${base}docs/concepts/authorization-model`}>the authorization model</a>).
+    </li>
+  </ul>
+
+  <h2>Who calls it</h2>
+  <p>
+    Product backends call Workspaces — never the browser directly. The browser
+    talks to your backend with the end user's identity token; your backend
+    verifies that token, then calls Workspaces with the
+    <strong>service</strong> credential plus the acting user as a field.
+  </p>
+  <Code
+    code={`  browser
+    |  end-user identity token (from identity)
+    v
+  product backend  ──  verifies the identity token at the edge
+    |  Authorization: Bearer <service-token>
+    |  body carries acting_user_id (and subject_user_id for Check)
+    v
+  workspaces  ──  workspaces · groups · invitations · relation tuples`}
+    lang="text"
+    title="call path"
+  />
+
+  <h2>Surface area</h2>
+  <p>
+    Three Connect-RPC services —
+    <code>workspace.v1.WorkspaceService</code>,
+    <code>workspace.v1.GroupService</code>, and
+    <code>workspace.v1.AuthzService</code> — over HTTP/JSON (also gRPC and
+    gRPC-Web). Every RPC is a POST to
+    <code>/workspace.v1.&lt;Service&gt;/&lt;Method&gt;</code>. The proto under
+    <a href="https://github.com/elloloop/workspace/tree/main/proto/workspace"><code>proto/workspace/v1/workspace.proto</code></a>
+    is the source of truth.
+  </p>
+  <Code
+    code={`# Every RPC is a POST to /workspace.v1.<Service>/<Method>
+curl -X POST http://localhost:8080/workspace.v1.WorkspaceService/ListWorkspaces \\
+  -H "Authorization: Bearer $WS_SERVICE_TOKEN" \\
+  -H "Content-Type: application/json" \\
+  -d '{"acting_user_id":"alice"}'`}
+    lang="bash"
+  />
+
+  <h2>Where to next</h2>
+  <ul>
+    <li>
+      <a href={`${base}docs/quickstart`}>Quick Start</a> — docker compose up,
+      then your first <code>Check</code>
+    </li>
+    <li>
+      <a href={`${base}docs/concepts/authorization-model`}>Authorization Model</a>
+      — tuples, namespaces, and rewrites
+    </li>
+    <li>
+      <a href={`${base}docs/concepts/security`}>Security &amp; Service Auth</a> —
+      the service credential and error codes
+    </li>
+  </ul>
+</DocsLayout>

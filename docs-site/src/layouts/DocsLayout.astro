@@ -1,0 +1,202 @@
+---
+import "../styles/global.css";
+import {
+  AppShell,
+  AppShellHeader,
+  AppShellSidebar,
+  AppShellMain,
+  AppShellContent,
+  AppShellMobileNav,
+  AppShellOverlay,
+  ThemeScript,
+  ThemeToggle,
+} from "@refraction-ui/astro";
+import { sidebarSections } from "../data/nav";
+import { getLastUpdated } from "../data/build-info";
+import Breadcrumbs from "../components/Breadcrumbs.astro";
+import PrevNext from "../components/PrevNext.astro";
+import Footer from "../components/Footer.astro";
+import TableOfContents from "../components/TableOfContents.astro";
+import EditOnGitHub from "../components/EditOnGitHub.astro";
+import SearchModal from "../components/SearchModal.astro";
+import SearchButton from "../components/SearchButton.astro";
+import GitHubBadge from "../components/GitHubBadge.astro";
+import VersionPill from "../components/VersionPill.astro";
+import HeadingAnchors from "../components/HeadingAnchors.astro";
+
+interface Props {
+  title: string;
+  hidePrevNext?: boolean;
+  hideBreadcrumbs?: boolean;
+  lastUpdated?: string;
+}
+
+const { title, hidePrevNext = false, hideBreadcrumbs = false, lastUpdated } =
+  Astro.props;
+const currentPath = Astro.url.pathname;
+const lastUpdatedDate = lastUpdated ?? getLastUpdated(currentPath);
+
+const navLinks = [
+  { label: "Docs", href: "/workspace/" },
+  { label: "GitHub", href: "https://github.com/elloloop/workspace" },
+  {
+    label: "Container",
+    href: "https://github.com/elloloop/workspace/pkgs/container/workspace",
+  },
+];
+
+const isActive = (href: string) =>
+  currentPath === href || currentPath === href + "/";
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{title} — Workspaces Documentation</title>
+    <meta
+      name="description"
+      content="Workspaces — the Zanzibar-inspired authorization layer for workspaces, groups, and fine-grained access. Single container, Postgres-backed, relation-tuple ReBAC over Connect-RPC. Internal, service-to-service; the user is passed as data."
+    />
+    <ThemeScript />
+  </head>
+  <body class="bg-background text-foreground antialiased">
+    <AppShell
+      sidebarWidth="17rem"
+      sidebarCollapsedWidth="4rem"
+      headerHeight="3.5rem"
+      mobileBreakpoint={768}
+      tabletBreakpoint={1024}
+    >
+      <AppShellSidebar>
+        <nav class="flex flex-col gap-1 overflow-y-auto p-4">
+          {
+            sidebarSections.map((section) => (
+              <div class="mb-4">
+                <div class="mb-2 px-3 text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                  {section.title}
+                </div>
+                {section.items.map((item) => (
+                  <a
+                    href={item.href}
+                    class:list={[
+                      "block rounded-md px-3 py-1.5 text-sm transition-colors",
+                      isActive(item.href)
+                        ? "bg-primary/10 font-medium text-primary"
+                        : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                    ]}
+                  >
+                    {item.label}
+                  </a>
+                ))}
+              </div>
+            ))
+          }
+        </nav>
+      </AppShellSidebar>
+
+      <AppShellMain>
+        <AppShellHeader>
+          <AppShellMobileNav />
+          <a
+            href="/workspace/"
+            class="flex items-center gap-2 font-bold"
+          >
+            <div
+              class="h-6 w-6 rounded-md bg-gradient-to-br from-primary to-primary/60"
+            >
+            </div>
+            <span class="text-primary">Workspaces</span>
+            <span class="hidden text-foreground sm:inline">Docs</span>
+          </a>
+          <nav class="hidden items-center gap-5 lg:flex lg:ml-6">
+            {
+              navLinks.map((link) => (
+                <a
+                  href={link.href}
+                  class="text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+                >
+                  {link.label}
+                </a>
+              ))
+            }
+          </nav>
+          <div class="ml-auto flex items-center gap-2 sm:gap-3">
+            <SearchButton />
+            <VersionPill />
+            <GitHubBadge />
+            <ThemeToggle variant="segmented" />
+          </div>
+        </AppShellHeader>
+
+        <AppShellContent>
+          <div class="mx-auto flex w-full max-w-[88rem] min-w-0 xl:gap-10">
+            <article
+              class="prose mx-auto min-w-0 w-full max-w-3xl flex-1 px-1 py-10 sm:px-2 xl:mx-0 xl:px-0"
+              data-pagefind-body
+            >
+              {
+                !hideBreadcrumbs && (
+                  <div data-pagefind-ignore>
+                    <Breadcrumbs currentPath={currentPath} />
+                  </div>
+                )
+              }
+              {
+                lastUpdatedDate && (
+                  <p
+                    class="-mb-6 mt-0 text-[13px] text-muted-foreground"
+                    data-last-updated
+                    data-pagefind-ignore
+                  >
+                    Last updated {lastUpdatedDate}
+                  </p>
+                )
+              }
+              <slot />
+              {
+                !hidePrevNext && (
+                  <div data-pagefind-ignore>
+                    <PrevNext currentPath={currentPath} />
+                  </div>
+                )
+              }
+            </article>
+            <div class="hidden w-60 shrink-0 py-10 xl:block">
+              <TableOfContents>
+                <div class="mt-6 border-t border-border pt-4">
+                  <EditOnGitHub currentPath={currentPath} />
+                </div>
+              </TableOfContents>
+            </div>
+          </div>
+          <Footer />
+        </AppShellContent>
+      </AppShellMain>
+
+      <AppShellOverlay />
+    </AppShell>
+    <SearchModal />
+    <HeadingAnchors />
+    <script>
+      // Move the "Last updated" stamp to sit directly after the page H1.
+      function repositionLastUpdated() {
+        const article = document.querySelector("article.prose");
+        if (!article) return;
+        const stamp = article.querySelector<HTMLElement>("[data-last-updated]");
+        const h1 = article.querySelector("h1");
+        if (!stamp || !h1) return;
+        if (h1.nextElementSibling === stamp) return;
+        stamp.classList.remove("-mb-6");
+        stamp.classList.add("-mt-4", "mb-8");
+        h1.insertAdjacentElement("afterend", stamp);
+      }
+      if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", repositionLastUpdated);
+      } else {
+        repositionLastUpdated();
+      }
+    </script>
+  </body>
+</html>

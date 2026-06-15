@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/elloloop/workspaces/internal/service"
-	"github.com/elloloop/workspaces/pkg/authz"
+	"github.com/elloloop/workspace/internal/service"
+	"github.com/elloloop/workspace/pkg/authz"
 )
 
 // Run executes the full conformance suite against repos produced by newRepo.

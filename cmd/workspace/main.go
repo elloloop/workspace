@@ -2,7 +2,7 @@
 // point. It loads configuration from the environment, selects a token
 // verifier and storage driver, and serves the Connect-RPC handler over h2c
 // plus a Prometheus metrics listener. All wiring lives in
-// github.com/elloloop/workspaces/workspaceserver so an embedder runs the
+// github.com/elloloop/workspace/workspaceserver so an embedder runs the
 // same code path this binary does.
 //
 // `workspace migrate` runs pending Postgres migrations and exits.
@@ -21,12 +21,11 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"go.uber.org/zap"
 
-	"github.com/elloloop/workspaces/internal/config"
-	"github.com/elloloop/workspaces/internal/repo/memory"
-	"github.com/elloloop/workspaces/internal/repo/postgres"
-	"github.com/elloloop/workspaces/internal/service"
-	"github.com/elloloop/workspaces/pkg/jwt"
-	"github.com/elloloop/workspaces/workspaceserver"
+	"github.com/elloloop/workspace/internal/config"
+	"github.com/elloloop/workspace/internal/repo/memory"
+	"github.com/elloloop/workspace/internal/repo/postgres"
+	"github.com/elloloop/workspace/internal/service"
+	"github.com/elloloop/workspace/workspaceserver"
 )
 
 func main() {
@@ -54,12 +53,12 @@ func main() {
 	defer closeRepo()
 
 	srv, err := workspaceserver.New(ctx, workspaceserver.Options{
-		Logger:   logger,
-		Verifier: buildVerifier(cfg),
-		Repo:     repo,
+		Logger: logger,
+		Repo:   repo,
 		Config: workspaceserver.Config{
-			DefaultProjectID: cfg.DefaultProjectID,
-			AllowedOrigins:   cfg.AllowedOrigins,
+			DefaultProjectID:  cfg.DefaultProjectID,
+			AllowedOrigins:    cfg.AllowedOrigins,
+			ServiceAuthTokens: cfg.ServiceAuthTokens,
 		},
 	})
 	if err != nil {
@@ -70,7 +69,8 @@ func main() {
 		zap.Int("connect_port", cfg.ConnectPort),
 		zap.Int("metrics_port", cfg.MetricsPort),
 		zap.String("default_project", cfg.DefaultProjectID),
-		zap.Bool("postgres", cfg.PostgresDSN != ""))
+		zap.Bool("postgres", cfg.PostgresDSN != ""),
+		zap.Bool("service_auth", len(cfg.ServiceAuthTokens) > 0))
 
 	connectServer := newHTTPServer(fmt.Sprintf(":%d", cfg.ConnectPort),
 		http.MaxBytesHandler(srv.Handler(), cfg.HTTPMaxBodyBytes))
@@ -123,13 +123,6 @@ func newHTTPServer(addr string, h http.Handler) *http.Server {
 		IdleTimeout:       120 * time.Second,
 		MaxHeaderBytes:    1 << 16,
 	}
-}
-
-func buildVerifier(cfg *config.Config) jwt.Verifier {
-	if cfg.JWKSURL != "" {
-		return jwt.NewJWKSVerifier(cfg.JWKSURL, cfg.JWTIssuer)
-	}
-	return jwt.NewHS256Verifier(cfg.HS256Secret, cfg.JWTIssuer)
 }
 
 // buildRepo selects the storage driver: postgres when a DSN is set

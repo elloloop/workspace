@@ -1,10 +1,9 @@
-module github.com/elloloop/workspaces
+module github.com/elloloop/workspace
 
 go 1.26.3
 
 require (
 	connectrpc.com/connect v1.20.0
-	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/jackc/pgx/v5 v5.10.0
 	github.com/prometheus/client_golang v1.23.2
 	go.uber.org/zap v1.28.0

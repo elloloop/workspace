@@ -1,0 +1,25 @@
+openapi: 3.1.0
+info:
+  title: Workspaces API
+  version: v1
+  description: |
+    The workspace authorization service — a Zanzibar-inspired relation-tuple
+    engine with workspaces, groups, and invitations on top.
+
+    This is an INTERNAL service. Callers authenticate service-to-service with
+    a bearer service credential (`Authorization: Bearer <token>`); the acting
+    user and the subject are passed as request fields, never inferred from the
+    caller. All RPCs use the Connect protocol over HTTP POST with JSON bodies.
+  license:
+    name: AGPL-3.0
+servers:
+  - url: http://localhost:8080
+    description: Local docker-compose
+security:
+  - serviceCredential: []
+components:
+  securitySchemes:
+    serviceCredential:
+      type: http
+      scheme: bearer
+      description: A service credential from GATEWAY_SERVICE_AUTH_TOKENS.

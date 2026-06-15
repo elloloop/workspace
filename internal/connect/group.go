@@ -6,8 +6,8 @@ import (
 
 	"connectrpc.com/connect"
 
-	workspacev1 "github.com/elloloop/workspaces/gen/go/workspace"
-	"github.com/elloloop/workspaces/internal/service"
+	workspacev1 "github.com/elloloop/workspace/gen/go/workspace/v1"
+	"github.com/elloloop/workspace/internal/service"
 )
 
 func groupMemberFromProto(m *workspacev1.GroupMember) (service.GroupMember, error) {
@@ -32,7 +32,7 @@ func groupMemberToProto(m service.GroupMember) *workspacev1.GroupMember {
 }
 
 func (h *Handler) CreateGroup(ctx context.Context, req *connect.Request[workspacev1.CreateGroupRequest]) (*connect.Response[workspacev1.CreateGroupResponse], error) {
-	p, err := principal(ctx)
+	p, err := h.acting(req.Msg.ActingUserId, req.Msg.ProjectId)
 	if err != nil {
 		return nil, err
 	}
@@ -44,7 +44,7 @@ func (h *Handler) CreateGroup(ctx context.Context, req *connect.Request[workspac
 }
 
 func (h *Handler) GetGroup(ctx context.Context, req *connect.Request[workspacev1.GetGroupRequest]) (*connect.Response[workspacev1.GetGroupResponse], error) {
-	p, err := principal(ctx)
+	p, err := h.acting(req.Msg.ActingUserId, req.Msg.ProjectId)
 	if err != nil {
 		return nil, err
 	}
@@ -56,7 +56,7 @@ func (h *Handler) GetGroup(ctx context.Context, req *connect.Request[workspacev1
 }
 
 func (h *Handler) ListGroups(ctx context.Context, req *connect.Request[workspacev1.ListGroupsRequest]) (*connect.Response[workspacev1.ListGroupsResponse], error) {
-	p, err := principal(ctx)
+	p, err := h.acting(req.Msg.ActingUserId, req.Msg.ProjectId)
 	if err != nil {
 		return nil, err
 	}
@@ -72,7 +72,7 @@ func (h *Handler) ListGroups(ctx context.Context, req *connect.Request[workspace
 }
 
 func (h *Handler) DeleteGroup(ctx context.Context, req *connect.Request[workspacev1.DeleteGroupRequest]) (*connect.Response[workspacev1.DeleteGroupResponse], error) {
-	p, err := principal(ctx)
+	p, err := h.acting(req.Msg.ActingUserId, req.Msg.ProjectId)
 	if err != nil {
 		return nil, err
 	}
@@ -83,7 +83,7 @@ func (h *Handler) DeleteGroup(ctx context.Context, req *connect.Request[workspac
 }
 
 func (h *Handler) AddGroupMember(ctx context.Context, req *connect.Request[workspacev1.AddGroupMemberRequest]) (*connect.Response[workspacev1.AddGroupMemberResponse], error) {
-	p, err := principal(ctx)
+	p, err := h.acting(req.Msg.ActingUserId, req.Msg.ProjectId)
 	if err != nil {
 		return nil, err
 	}
@@ -98,7 +98,7 @@ func (h *Handler) AddGroupMember(ctx context.Context, req *connect.Request[works
 }
 
 func (h *Handler) RemoveGroupMember(ctx context.Context, req *connect.Request[workspacev1.RemoveGroupMemberRequest]) (*connect.Response[workspacev1.RemoveGroupMemberResponse], error) {
-	p, err := principal(ctx)
+	p, err := h.acting(req.Msg.ActingUserId, req.Msg.ProjectId)
 	if err != nil {
 		return nil, err
 	}
@@ -113,7 +113,7 @@ func (h *Handler) RemoveGroupMember(ctx context.Context, req *connect.Request[wo
 }
 
 func (h *Handler) ListGroupMembers(ctx context.Context, req *connect.Request[workspacev1.ListGroupMembersRequest]) (*connect.Response[workspacev1.ListGroupMembersResponse], error) {
-	p, err := principal(ctx)
+	p, err := h.acting(req.Msg.ActingUserId, req.Msg.ProjectId)
 	if err != nil {
 		return nil, err
 	}

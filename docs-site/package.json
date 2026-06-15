@@ -1,0 +1,24 @@
+{
+  "name": "workspaces-docs",
+  "type": "module",
+  "version": "0.0.1",
+  "scripts": {
+    "dev": "astro dev",
+    "build": "astro build",
+    "preview": "astro preview"
+  },
+  "dependencies": {
+    "@astrojs/tailwind": "6.0.2",
+    "@fontsource-variable/inter": "5.2.8",
+    "@fontsource-variable/jetbrains-mono": "5.2.8",
+    "@microsoft/applicationinsights-web": "^3.4.1",
+    "@pagefind/default-ui": "1.5.2",
+    "@refraction-ui/astro": "0.15.0",
+    "@refraction-ui/tailwind-config": "0.1.7",
+    "astro": "6.4.6",
+    "astro-expressive-code": "0.43.1",
+    "astro-pagefind": "2.0.0",
+    "posthog-js": "^1.386.8",
+    "tailwindcss": "3.4.17"
+  }
+}

@@ -6,9 +6,9 @@ import (
 
 	"connectrpc.com/connect"
 
-	workspacev1 "github.com/elloloop/workspaces/gen/go/workspace"
-	"github.com/elloloop/workspaces/internal/service"
-	"github.com/elloloop/workspaces/pkg/authz"
+	workspacev1 "github.com/elloloop/workspace/gen/go/workspace/v1"
+	"github.com/elloloop/workspace/internal/service"
+	"github.com/elloloop/workspace/pkg/authz"
 )
 
 func subjectFromProto(s *workspacev1.Subject) (authz.Subject, error) {
@@ -61,10 +61,7 @@ func tupleToProto(projectID string, t authz.Tuple) *workspacev1.RelationTuple {
 }
 
 func (h *Handler) WriteRelationTuples(ctx context.Context, req *connect.Request[workspacev1.WriteRelationTuplesRequest]) (*connect.Response[workspacev1.WriteRelationTuplesResponse], error) {
-	p, err := principal(ctx)
-	if err != nil {
-		return nil, err
-	}
+	p := h.scope(req.Msg.ProjectId)
 	ops := make([]service.TupleOp, 0, len(req.Msg.Updates))
 	for _, u := range req.Msg.Updates {
 		t, err := tupleFromProto(u.Tuple)
@@ -87,10 +84,7 @@ func (h *Handler) WriteRelationTuples(ctx context.Context, req *connect.Request[
 }
 
 func (h *Handler) ReadRelationTuples(ctx context.Context, req *connect.Request[workspacev1.ReadRelationTuplesRequest]) (*connect.Response[workspacev1.ReadRelationTuplesResponse], error) {
-	p, err := principal(ctx)
-	if err != nil {
-		return nil, err
-	}
+	p := h.scope(req.Msg.ProjectId)
 	tuples, err := h.svc.ReadTuples(ctx, p, service.TupleFilter{
 		Namespace:     req.Msg.Namespace,
 		ObjectID:      req.Msg.ObjectId,
@@ -108,10 +102,7 @@ func (h *Handler) ReadRelationTuples(ctx context.Context, req *connect.Request[w
 }
 
 func (h *Handler) Check(ctx context.Context, req *connect.Request[workspacev1.CheckRequest]) (*connect.Response[workspacev1.CheckResponse], error) {
-	p, err := principal(ctx)
-	if err != nil {
-		return nil, err
-	}
+	p := h.scope(req.Msg.ProjectId)
 	allowed, err := h.svc.Check(ctx, p, req.Msg.Namespace, req.Msg.ObjectId, req.Msg.Relation, req.Msg.SubjectUserId)
 	if err != nil {
 		return nil, errToConnect(err)
@@ -120,10 +111,7 @@ func (h *Handler) Check(ctx context.Context, req *connect.Request[workspacev1.Ch
 }
 
 func (h *Handler) Expand(ctx context.Context, req *connect.Request[workspacev1.ExpandRequest]) (*connect.Response[workspacev1.ExpandResponse], error) {
-	p, err := principal(ctx)
-	if err != nil {
-		return nil, err
-	}
+	p := h.scope(req.Msg.ProjectId)
 	tree, err := h.svc.Expand(ctx, p, req.Msg.Namespace, req.Msg.ObjectId, req.Msg.Relation)
 	if err != nil {
 		return nil, errToConnect(err)

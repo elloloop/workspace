@@ -25,11 +25,12 @@ type Config struct {
 	// PostgresAutoMigrate runs pending migrations on boot when true.
 	PostgresAutoMigrate bool
 
-	// Token verification: a JWKS URL (production RS256) takes precedence; a
-	// shared HS256 secret is the fallback for tests and simple deployments.
-	JWKSURL     string
-	HS256Secret string
-	JWTIssuer   string
+	// ServiceAuthTokens are the accepted service credentials presented by
+	// calling backends as `Authorization: Bearer <token>`. This is an
+	// internal service authenticated service-to-service (not by end-user
+	// tokens); the user is passed as data in the request. Empty disables the
+	// requirement — trust the network/mesh — and the service logs a warning.
+	ServiceAuthTokens []string
 
 	AllowedOrigins   []string
 	HTTPMaxBodyBytes int64
@@ -43,9 +44,7 @@ func Load() (*Config, error) {
 		DefaultProjectID:    envStr("GATEWAY_DEFAULT_PROJECT_ID", DefaultProjectIDFallback),
 		PostgresDSN:         envStr("GATEWAY_POSTGRES_DSN", ""),
 		PostgresAutoMigrate: envBool("GATEWAY_POSTGRES_AUTO_MIGRATE", true),
-		JWKSURL:             envStr("GATEWAY_JWT_JWKS_URL", ""),
-		HS256Secret:         envStr("GATEWAY_JWT_HS256_SECRET", ""),
-		JWTIssuer:           envStr("GATEWAY_JWT_ISSUER", "identity"),
+		ServiceAuthTokens:   envCSV("GATEWAY_SERVICE_AUTH_TOKENS"),
 		AllowedOrigins:      envCSV("GATEWAY_ALLOWED_ORIGINS"),
 		HTTPMaxBodyBytes:    int64(envInt("GATEWAY_HTTP_MAX_BODY_BYTES", 1<<20)),
 	}
@@ -62,9 +61,6 @@ func (c *Config) Validate() error {
 	}
 	if c.MetricsPort <= 0 || c.MetricsPort > 65535 {
 		return fmt.Errorf("GATEWAY_METRICS_PORT out of range: %d", c.MetricsPort)
-	}
-	if c.JWKSURL == "" && c.HS256Secret == "" {
-		return errors.New("no token verifier configured: set GATEWAY_JWT_JWKS_URL or GATEWAY_JWT_HS256_SECRET")
 	}
 	if c.HTTPMaxBodyBytes <= 0 {
 		return errors.New("GATEWAY_HTTP_MAX_BODY_BYTES must be positive")

@@ -1,0 +1,115 @@
+---
+const year = new Date().getFullYear();
+
+const columns = [
+  {
+    title: "Product",
+    links: [
+      { label: "Documentation", href: "/workspace/" },
+      {
+        label: "GitHub",
+        href: "https://github.com/elloloop/workspace",
+      },
+      {
+        label: "Releases",
+        href: "https://github.com/elloloop/workspace/releases",
+      },
+    ],
+  },
+  {
+    title: "Resources",
+    links: [
+      {
+        label: "Container Image",
+        href: "https://github.com/elloloop/workspace/pkgs/container/workspace",
+      },
+      {
+        label: "Identity service",
+        href: "https://github.com/elloloop/identity",
+      },
+      {
+        label: "proto/workspace",
+        href: "https://github.com/elloloop/workspace/tree/main/proto/workspace",
+      },
+    ],
+  },
+  {
+    title: "Community",
+    links: [
+      {
+        label: "Issues",
+        href: "https://github.com/elloloop/workspace/issues",
+      },
+      {
+        label: "Discussions",
+        href: "https://github.com/elloloop/workspace/discussions",
+      },
+      {
+        label: "License (AGPL-3.0)",
+        href: "https://github.com/elloloop/workspace/blob/main/LICENSE",
+      },
+    ],
+  },
+];
+---
+
+<footer
+  class="mt-24 border-t border-border bg-muted/20 px-6 py-12 text-sm md:px-10"
+>
+  <div class="mx-auto grid max-w-6xl gap-10 sm:grid-cols-2 md:grid-cols-4">
+    <div class="space-y-3">
+      <a
+        href="/workspace/"
+        class="flex items-center gap-2 font-bold"
+      >
+        <div
+          class="h-6 w-6 rounded-md bg-gradient-to-br from-primary to-primary/60"
+        >
+        </div>
+        <span class="text-primary">Workspaces</span>
+      </a>
+      <p class="text-xs text-muted-foreground leading-relaxed">
+        Workspace and authorization service. Single container,
+        Postgres-backed, Zanzibar-style relation-tuple ReBAC.
+      </p>
+      <p class="text-xs text-muted-foreground">© {year} Workspaces</p>
+    </div>
+    {
+      columns.map((col) => (
+        <div>
+          <h4 class="mb-3 text-xs font-semibold uppercase tracking-wider text-foreground">
+            {col.title}
+          </h4>
+          <ul class="space-y-2">
+            {col.links.map((link) => (
+              <li>
+                <a
+                  href={link.href}
+                  class="text-muted-foreground transition-colors hover:text-foreground"
+                >
+                  {link.label}
+                </a>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ))
+    }
+  </div>
+  <div
+    class="mx-auto mt-10 flex max-w-6xl flex-col items-center justify-between gap-4 border-t border-border pt-6 text-xs text-muted-foreground sm:flex-row"
+  >
+    <p>© {year} Workspaces · AGPL-3.0 License</p>
+    <ul class="flex items-center gap-5">
+      <li>
+        <a href="#" class="transition-colors hover:text-foreground">Status</a>
+      </li>
+      <li>
+        <a href="#" class="transition-colors hover:text-foreground">Privacy</a>
+      </li>
+      <li>
+        <a href="#" class="transition-colors hover:text-foreground">Terms</a>
+      </li>
+    </ul>
+  </div>
+</footer>

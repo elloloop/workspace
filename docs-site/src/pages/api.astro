@@ -1,0 +1,41 @@
+---
+// Live API reference, rendered by Scalar from the OpenAPI spec that buf
+// auto-generates from proto/workspace/v1/workspace.proto (see `make openapi`).
+// This is a full-bleed standalone page so Scalar gets the whole viewport.
+const base = import.meta.env.BASE_URL;
+const specUrl = `${base}openapi/workspace-v1.yaml`;
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Workspaces API Reference</title>
+    <meta
+      name="description"
+      content="Auto-generated reference for the Workspaces authorization API — workspaces, groups, invitations, and the Zanzibar-style Check/Expand/Write tuple RPCs."
+    />
+    <link rel="icon" href={`${base}favicon.svg`} />
+    <style>
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        background: #0b0b0f;
+      }
+    </style>
+  </head>
+  <body>
+    <script
+      id="api-reference"
+      data-url={specUrl}
+      data-configuration={JSON.stringify({
+        theme: "purple",
+        darkMode: true,
+        hideDownloadButton: false,
+        metaData: { title: "Workspaces API Reference" },
+      })}></script>
+    <script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference"></script>
+  </body>
+</html>

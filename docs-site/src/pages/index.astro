@@ -1,0 +1,105 @@
+---
+import DocsLayout from "../layouts/DocsLayout.astro";
+import { Code } from "astro-expressive-code/components";
+
+const base = import.meta.env.BASE_URL;
+---
+
+<DocsLayout title="Overview" hidePrevNext>
+  <h1>Workspaces</h1>
+  <p>
+    The Zanzibar-inspired authorization layer for workspaces, groups, and
+    fine-grained access. Run a single container, point it at Postgres, and you
+    have a relation-tuple ReBAC engine plus a workspace, membership, and
+    invitation product surface — all over Connect-RPC on HTTP/JSON.
+  </p>
+  <p>
+    This is the <strong>workspace/authz service</strong> from identity's
+    ADR-0001 two-service split. Identity authenticates the end user and mints an
+    access token; the token is verified at your product edge. Your product
+    backend then calls Workspaces with a trusted service credential, passing the
+    acting user as an explicit field. The two services
+    <strong>never share a table</strong>.
+  </p>
+
+  <h2>What you get</h2>
+  <div class="not-prose my-8 grid gap-4 sm:grid-cols-2">
+    <div class="rounded-lg border border-border bg-muted/30 p-5">
+      <h3 class="mb-1 text-base font-semibold text-foreground">
+        Relation-tuple engine
+      </h3>
+      <p class="text-sm text-muted-foreground">
+        A Zanzibar-style ReBAC core. Write tuples, then ask
+        <code>Check</code> "may this user do this?" and <code>Expand</code>
+        "who can?" Userset rewrites are evaluated transitively and are
+        cycle-safe.
+      </p>
+    </div>
+    <div class="rounded-lg border border-border bg-muted/30 p-5">
+      <h3 class="mb-1 text-base font-semibold text-foreground">
+        Personal &amp; team workspaces
+      </h3>
+      <p class="text-sm text-muted-foreground">
+        Every user owns exactly one auto-provisioned <strong>personal</strong>
+        workspace; they create <strong>team</strong> workspaces for
+        collaboration, with members at a role
+        (owner ⊃ admin ⊃ member ⊃ guest). The Claude/ChatGPT model — serves
+        B2C and B2B alike.
+      </p>
+    </div>
+    <div class="rounded-lg border border-border bg-muted/30 p-5">
+      <h3 class="mb-1 text-base font-semibold text-foreground">
+        Nestable groups
+      </h3>
+      <p class="text-sm text-muted-foreground">
+        Reusable membership sets, separate from workspaces. A group's members
+        can themselves be groups, so <code>group:all-eng#member</code> can
+        contain <code>group:backend#member</code> — resolved transitively at
+        <code>Check</code> time.
+      </p>
+    </div>
+    <div class="rounded-lg border border-border bg-muted/30 p-5">
+      <h3 class="mb-1 text-base font-semibold text-foreground">
+        Multi-tenant projects
+      </h3>
+      <p class="text-sm text-muted-foreground">
+        <code>project_id</code> is the isolation shard. Every workspace, group,
+        invitation, and tuple is scoped to a project. Run one B2C product as a
+        single project, or shard a B2B platform per customer.
+      </p>
+    </div>
+  </div>
+
+  <h2>In 30 seconds</h2>
+  <p>
+    Every RPC is an HTTP POST to <code>/workspace.v1.&lt;Service&gt;/&lt;Method&gt;</code>
+    with a JSON body, a Bearer service token, and — for actions — the acting
+    user as a field. Ask whether <code>bob</code> is an admin of a workspace:
+  </p>
+  <Code
+    code={`curl -X POST http://localhost:8080/workspace.v1.AuthzService/Check \\
+  -H "Authorization: Bearer $WS_SERVICE_TOKEN" \\
+  -H "Content-Type: application/json" \\
+  -d '{"namespace":"workspace","object_id":"acme","relation":"admin","subject_user_id":"bob"}'
+
+# => { "allowed": false }`}
+    lang="bash"
+    title="Check"
+  />
+
+  <h2>Where to next</h2>
+  <ul>
+    <li>
+      <a href={`${base}docs/quickstart`}>Quick Start</a> — docker compose up,
+      then your first <code>Check</code> in five minutes
+    </li>
+    <li>
+      <a href={`${base}docs/concepts/authorization-model`}>Authorization Model</a>
+      — tuples, namespaces, and userset rewrites
+    </li>
+    <li>
+      <a href={`${base}api`}>Live API Reference</a> — every RPC and message,
+      rendered from the OpenAPI spec
+    </li>
+  </ul>
+</DocsLayout>

@@ -1,0 +1,88 @@
+---
+import DocsLayout from "../../../layouts/DocsLayout.astro";
+import { Code } from "astro-expressive-code/components";
+---
+
+<DocsLayout title="ADR-0003 · Groups Separate from Workspaces">
+  <h1>ADR-0003 — Groups as a distinct nestable namespace, not a workspace sub-type</h1>
+
+  <h2>Status</h2>
+  <p>
+    Accepted (2026-06-15). Builds on
+    <a href="/workspace/docs/adr/0001-relation-tuples-as-the-authz-primitive">ADR-0001</a>
+    (relation tuples) and
+    <a href="/workspace/docs/adr/0002-personal-and-team-workspaces">ADR-0002</a>
+    (workspaces). This ADR decides how reusable membership sets — email lists,
+    chat groups, on-call rotations — are modelled.
+  </p>
+
+  <h2>Context</h2>
+  <p>The motivating products all need named, reusable sets of people that are <em>not</em> tenancy boundaries:</p>
+  <ul>
+    <li>The <strong>workplace</strong> tool has email distribution lists, chat channels, and on-call rotations (<code>all-engineering</code>, <code>sre</code>, <code>incident-responders</code>).</li>
+    <li>The <strong>personal-assistant</strong> user has a <code>family</code> list they share many different tasks with.</li>
+    <li>A <strong>learning</strong> company has cohorts and teaching-assistant groups.</li>
+  </ul>
+  <p>These sets share three properties that a workspace does not have:</p>
+  <ol>
+    <li><strong>They are reused across many objects.</strong> <code>sre</code> should grant access to dozens of incidents without being re-declared each time.</li>
+    <li><strong>They nest.</strong> <code>all-engineering</code> contains <code>backend</code> and <code>frontend</code>; adding a person to <code>backend</code> should propagate.</li>
+    <li><strong>They are not an ownership/billing boundary.</strong> A workspace has one owner and is where resources live; a group is just a membership set.</li>
+  </ol>
+  <p>
+    The temptation is to model a group as a special workspace or a fixed sub-list
+    inside one workspace. Both are wrong: a workspace is single-owner and
+    tenancy-scoped (ADR-0002), and a group that lives <em>inside</em> one
+    workspace cannot be referenced from another, defeating reuse.
+  </p>
+
+  <h2>Decision</h2>
+  <p>Model groups as their own first-class namespace, <code>group</code>, distinct from <code>workspace</code>.</p>
+  <ol>
+    <li><strong><code>group</code> is a separate namespace with relation <code>member</code>.</strong> Its rewrite rule is <code>this</code>, and a member may itself be a userset, so <strong>groups nest</strong>: <code>group:all-eng#member@group:backend#member</code>. A <code>GroupMember</code> is a <code>oneof</code> of a <code>user_id</code> or a nested <code>group_id</code>.</li>
+    <li>
+      <strong>Granting a group access is one tuple.</strong> Because a tuple's subject can be a userset, granting a group access to anything is <code>…#&lt;relation&gt;@group:&lt;id&gt;#member</code>:
+      <Code code={`workspace:acme#member@group:all-eng#member     # all engineers are acme members
+resource:incident-7#editor@group:sre#member    # on-call can edit the incident
+resource:task-buy-milk#viewer@group:family#member`} lang="text" />
+      <code>Check</code> resolves the group transitively, including nested groups, with no special-casing in the consuming product.
+    </li>
+    <li><strong>Groups are referenceable across workspaces.</strong> A group may be project-level (empty <code>workspace_id</code> — a B2C user's <code>family</code> list) or scoped to a workspace (a company's internal groups). Either way it is referenced by id from any workspace or resource tuple; scoping is an organisational convenience, not a reuse boundary.</li>
+  </ol>
+  <p>
+    Like every other RPC here, <code>GroupService</code> is reached at
+    <code>/workspace.v1.GroupService/&lt;Method&gt;</code> with the service
+    credential, and management calls carry <code>acting_user_id</code> as data:
+  </p>
+  <Code code={`# Nest the backend group inside all-eng.
+curl -X POST http://localhost:8080/workspace.v1.GroupService/AddGroupMember \\
+  -H "Authorization: Bearer $WS_SERVICE_TOKEN" -H "Content-Type: application/json" \\
+  -d '{"group_id":"all-eng","member":{"group_id":"backend"},"acting_user_id":"alice"}'`} lang="bash" />
+
+  <h2>Consequences</h2>
+  <ul>
+    <li><strong>Positive.</strong> One group, many grants. <code>sre</code> is defined once and granted across every incident; membership changes propagate everywhere via the userset, with no re-grant.</li>
+    <li><strong>Positive.</strong> Nesting is free — it is the same userset mechanism ADR-0001 already provides.</li>
+    <li><strong>Positive.</strong> Clean separation of concerns: <code>workspace</code> is the ownership/tenancy boundary, <code>group</code> is the membership set.</li>
+    <li><strong>Negative.</strong> There are now two membership concepts and contributors must pick the right one. The rule of thumb: if it owns resources and bills, it is a workspace; if it is a named set of people you grant access <em>with</em>, it is a group.</li>
+    <li><strong>Negative / cycle risk.</strong> Nested groups can in principle form a cycle. The engine must bound <code>Check</code> traversal (visited-set / depth limit) so a malformed nesting cannot loop; this is an engine-level guard rather than a schema constraint.</li>
+  </ul>
+
+  <h2>Future work — ADR-0004</h2>
+  <p>
+    These three ADRs cover the authorization <em>model</em>. The
+    <strong>service-to-service authentication</strong> decision — that this is an
+    internal service called by trusted product backends with a shared
+    <code>Authorization: Bearer</code> credential
+    (<code>GATEWAY_SERVICE_AUTH_TOKENS</code>), with the end user passed as data
+    (<code>acting_user_id</code> / <code>subject_user_id</code>) rather than
+    inferred from the caller — deserves its own record. A future
+    <strong>ADR-0004</strong> should capture that contract: why end-user JWT
+    verification lives at the product edge and not here, the mesh/mTLS mode
+    (empty token list), and the trust boundary between this service and its
+    callers. It is noted here as a placeholder; the decision itself is documented
+    under <a href="/workspace/docs/concepts/security">Security &amp; Service Auth</a>
+    until the ADR is written.
+  </p>
+</DocsLayout>
+</content>

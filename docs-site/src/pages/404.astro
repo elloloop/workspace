@@ -1,0 +1,114 @@
+---
+import DocsLayout from "../layouts/DocsLayout.astro";
+
+const popular = [
+  {
+    title: "Quick Start",
+    description: "Run the container and make your first Check.",
+    href: "/workspace/docs/quickstart",
+  },
+  {
+    title: "Authorization Model",
+    description: "Tuples, namespaces, and userset rewrites.",
+    href: "/workspace/docs/concepts/authorization-model",
+  },
+  {
+    title: "Configuration",
+    description: "Every GATEWAY_* environment variable.",
+    href: "/workspace/docs/installation/configuration",
+  },
+  {
+    title: "AuthzService",
+    description: "Check, Expand, and the tuple store RPCs.",
+    href: "/workspace/docs/api-reference/authz-service",
+  },
+  {
+    title: "Workspaces & Groups",
+    description: "Personal vs. team, and nestable groups.",
+    href: "/workspace/docs/concepts/workspaces-and-groups",
+  },
+  {
+    title: "GitHub repository",
+    description: "Source, issues, releases.",
+    href: "https://github.com/elloloop/workspace",
+  },
+];
+---
+
+<DocsLayout
+  title="Page not found"
+  hidePrevNext
+  hideBreadcrumbs
+  lastUpdated=""
+>
+  <div class="py-8">
+    <p
+      class="font-mono text-[12px] font-semibold uppercase tracking-[0.2em] text-primary"
+    >
+      Error 404
+    </p>
+    <h1 class="!mt-3 !text-5xl">Page not found</h1>
+    <p class="text-lg text-muted-foreground">
+      The page you're looking for doesn't exist or has been moved. Try one of
+      the popular destinations below, or search the docs with
+      <kbd
+        class="rounded border border-border bg-muted/40 px-1.5 py-0.5 text-[12px]"
+        style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;"
+      >⌘K</kbd>.
+    </p>
+    <div class="mt-6">
+      <button
+        type="button"
+        data-search-trigger
+        class="inline-flex w-full items-center gap-3 rounded-lg border border-border bg-muted/40 px-4 py-2.5 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground sm:w-96"
+      >
+        <svg
+          width="16"
+          height="16"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          aria-hidden="true"
+        >
+          <circle cx="11" cy="11" r="7"></circle>
+          <path d="m21 21-4.3-4.3"></path>
+        </svg>
+        Search documentation...
+        <kbd
+          class="ml-auto rounded border border-border bg-background px-1.5 py-0.5 text-[10px] font-medium"
+          style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;"
+        >⌘K</kbd>
+      </button>
+    </div>
+
+    <h2 class="!mt-12 !border-b-0 !pb-0">Popular destinations</h2>
+    <div class="mt-4 grid gap-3 sm:grid-cols-2">
+      {
+        popular.map((item) => (
+          <a
+            href={item.href}
+            class="group block rounded-lg border border-border bg-card p-4 no-underline transition-colors hover:border-primary/40 hover:bg-muted/40"
+            style="text-decoration: none;"
+          >
+            <div class="font-semibold text-foreground transition-colors group-hover:text-primary">
+              {item.title}
+            </div>
+            <div class="mt-1 text-sm text-muted-foreground">
+              {item.description}
+            </div>
+          </a>
+        ))
+      }
+    </div>
+  </div>
+</DocsLayout>
+
+<style>
+  /* Hide the layout's "Last updated" stamp on the 404 page. */
+  :global(article.prose [data-last-updated]) {
+    display: none;
+  }
+</style>

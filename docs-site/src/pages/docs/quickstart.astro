@@ -1,0 +1,216 @@
+---
+import DocsLayout from "../../layouts/DocsLayout.astro";
+import { Code } from "astro-expressive-code/components";
+
+const base = import.meta.env.BASE_URL;
+---
+
+<DocsLayout title="Quick Start">
+  <h1>Quick Start</h1>
+  <p>
+    Get a working Workspaces instance and run a real authorization decision in
+    about five minutes. You will bring up the service with Docker Compose, list
+    a user's workspaces, create a team, add a member, run <code>Check</code>,
+    and share a resource with a single tuple — all against the Connect JSON API.
+  </p>
+
+  <h2>1. Start the stack</h2>
+  <p>
+    The repo ships a <code>docker-compose.yml</code> that brings up Postgres and
+    the workspaces service together. Set
+    <code>GATEWAY_SERVICE_AUTH_TOKENS</code> to one or more service credentials
+    your product backend will present; here we use a single token.
+  </p>
+  <Code
+    code={`# In docker-compose.yml, the workspaces service sets:
+#   GATEWAY_SERVICE_AUTH_TOKENS=dev-service-token
+#   GATEWAY_DEFAULT_PROJECT_ID=default
+docker compose up -d
+
+# health probes
+curl http://localhost:8080/healthz
+curl http://localhost:8080/readyz`}
+    lang="bash"
+    title="docker compose"
+  />
+  <p>
+    Pending migrations apply automatically on first connect while
+    <code>GATEWAY_POSTGRES_AUTO_MIGRATE=true</code> (the default). Export the
+    service token so the curls below can reuse it:
+  </p>
+  <Code code={`export WS_SERVICE_TOKEN=dev-service-token`} lang="bash" />
+  <aside class="not-prose my-6 rounded-md border-l-4 border-primary bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
+    The Bearer token is the <strong>service</strong> credential — it identifies
+    your product backend, not the end user. The end user is passed as data, in
+    the request body. A missing or wrong token returns HTTP <code>401</code> /
+    Connect <code>Unauthenticated</code>.
+  </aside>
+
+  <h2>2. List alice's workspaces</h2>
+  <p>
+    Every RPC is a POST to <code>/workspace.v1.&lt;Service&gt;/&lt;Method&gt;</code>
+    with the request message as a JSON body. Management RPCs require
+    <code>acting_user_id</code> — the user the action is authorized as.
+    <code>ListWorkspaces</code> auto-provisions that user's
+    <code>PERSONAL</code> workspace on first call.
+  </p>
+  <Code
+    code={`curl -X POST http://localhost:8080/workspace.v1.WorkspaceService/ListWorkspaces \\
+  -H "Authorization: Bearer $WS_SERVICE_TOKEN" \\
+  -H "Content-Type: application/json" \\
+  -d '{"acting_user_id":"alice"}'`}
+    lang="bash"
+  />
+  <Code
+    code={`{
+  "workspaces": [
+    {
+      "id": "ws_personal_alice",
+      "projectId": "default",
+      "slug": "alice",
+      "displayName": "alice",
+      "type": "WORKSPACE_TYPE_PERSONAL",
+      "ownerUserId": "alice"
+    }
+  ]
+}`}
+    lang="json"
+  />
+  <aside class="not-prose my-6 rounded-md border-l-4 border-primary bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
+    The personal workspace is <strong>closed</strong>: a single member (the
+    owner), no members can be added, and it cannot be deleted. Team workspaces
+    are where collaboration happens.
+  </aside>
+
+  <h2>3. Create a team workspace</h2>
+  <p>
+    Create a <code>TEAM</code> workspace named "Acme". The acting user becomes
+    its owner.
+  </p>
+  <Code
+    code={`curl -X POST http://localhost:8080/workspace.v1.WorkspaceService/CreateWorkspace \\
+  -H "Authorization: Bearer $WS_SERVICE_TOKEN" \\
+  -H "Content-Type: application/json" \\
+  -d '{"acting_user_id":"alice","display_name":"Acme","slug":"acme"}'`}
+    lang="bash"
+  />
+  <Code
+    code={`{
+  "workspace": {
+    "id": "acme",
+    "projectId": "default",
+    "slug": "acme",
+    "displayName": "Acme",
+    "type": "WORKSPACE_TYPE_TEAM",
+    "ownerUserId": "alice"
+  }
+}`}
+    lang="json"
+  />
+  <p>
+    Ownership is recorded as the tuple
+    <code>workspace:acme#owner@user:alice</code>, so a <code>Check</code> against
+    the <code>workspace</code> namespace honours it immediately.
+  </p>
+
+  <h2>4. Add bob as a member</h2>
+  <p>
+    Add <code>bob</code> to Acme at <code>ROLE_MEMBER</code>.
+    <code>AddMember</code> writes <code>workspace:acme#member@user:bob</code>.
+  </p>
+  <Code
+    code={`curl -X POST http://localhost:8080/workspace.v1.WorkspaceService/AddMember \\
+  -H "Authorization: Bearer $WS_SERVICE_TOKEN" \\
+  -H "Content-Type: application/json" \\
+  -d '{"acting_user_id":"alice","workspace_id":"acme","user_id":"bob","role":"ROLE_MEMBER"}'`}
+    lang="bash"
+  />
+  <aside class="not-prose my-6 rounded-md border-l-4 border-primary bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
+    <code>AddMember</code> rejects <code>ROLE_OWNER</code> — ownership is set at
+    creation, not granted later. Roles nest:
+    owner ⊃ admin ⊃ member ⊃ guest.
+  </aside>
+
+  <h2>5. Check the decision</h2>
+  <p>
+    Ask whether <code>bob</code> is a member of Acme — then whether he is an
+    admin. <code>Check</code> evaluates the namespace's userset-rewrite rules
+    transitively and answers <code>allowed</code>.
+  </p>
+  <Code
+    code={`# workspace:acme#member@bob  -> allowed
+curl -X POST http://localhost:8080/workspace.v1.AuthzService/Check \\
+  -H "Authorization: Bearer $WS_SERVICE_TOKEN" \\
+  -H "Content-Type: application/json" \\
+  -d '{"namespace":"workspace","object_id":"acme","relation":"member","subject_user_id":"bob"}'`}
+    lang="bash"
+  />
+  <Code code={`{ "allowed": true }`} lang="json" />
+  <Code
+    code={`# workspace:acme#admin@bob  -> denied (member is not admin)
+curl -X POST http://localhost:8080/workspace.v1.AuthzService/Check \\
+  -H "Authorization: Bearer $WS_SERVICE_TOKEN" \\
+  -H "Content-Type: application/json" \\
+  -d '{"namespace":"workspace","object_id":"acme","relation":"admin","subject_user_id":"bob"}'`}
+    lang="bash"
+  />
+  <Code code={`{ "allowed": false }`} lang="json" />
+  <p>
+    <code>member</code> unions in <code>admin</code> and <code>owner</code>, so
+    alice (the owner) passes a member check too — but the reverse does not hold,
+    so bob's <code>admin</code> check is denied.
+  </p>
+
+  <h2>6. Share a resource with a tuple</h2>
+  <p>
+    The engine is generic, not limited to workspaces. Grant <code>bob</code>
+    direct <code>viewer</code> access to a product object <code>doc1</code> in
+    the <code>resource</code> namespace, then check it.
+  </p>
+  <Code
+    code={`curl -X POST http://localhost:8080/workspace.v1.AuthzService/WriteRelationTuples \\
+  -H "Authorization: Bearer $WS_SERVICE_TOKEN" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "updates": [
+      {
+        "op": "OPERATION_INSERT",
+        "tuple": {
+          "namespace": "resource",
+          "object_id": "doc1",
+          "relation": "viewer",
+          "subject": { "user_id": "bob" }
+        }
+      }
+    ]
+  }'`}
+    lang="bash"
+  />
+  <Code
+    code={`curl -X POST http://localhost:8080/workspace.v1.AuthzService/Check \\
+  -H "Authorization: Bearer $WS_SERVICE_TOKEN" \\
+  -H "Content-Type: application/json" \\
+  -d '{"namespace":"resource","object_id":"doc1","relation":"viewer","subject_user_id":"bob"}'`}
+    lang="bash"
+  />
+  <Code code={`{ "allowed": true }`} lang="json" />
+  <p>
+    That single tuple — <code>resource:doc1#viewer@user:bob</code> — is the
+    whole grant. No per-resource table, no schema change.
+  </p>
+
+  <h2>Next steps</h2>
+  <ul>
+    <li>
+      <a href={`${base}docs/concepts/authorization-model`}>Authorization Model</a>
+      — how <code>Check</code> evaluates rewrites
+    </li>
+    <li>
+      <a href={`${base}docs/concepts/workspaces-and-groups`}>Workspaces &amp; Groups</a>
+      — the product surface over the engine
+    </li>
+    <li>
+      <a href={`${base}api`}>Live API Reference</a> — every RPC and message
+    </li>
+  </ul>
+</DocsLayout>

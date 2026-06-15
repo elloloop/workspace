@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/elloloop/workspaces/pkg/authz"
+	"github.com/elloloop/workspace/pkg/authz"
 )
 
 // AddMember grants userID the given role on a workspace. Requires the caller

@@ -1,14 +1,21 @@
 # Workspaces
 
-Workspace and authorization service. Deploys as a single container; points at
-Postgres, verifies identity's JWT, exposes Connect-RPC over HTTP/JSON.
+Internal workspace and authorization microservice. Deploys as a single
+container; points at Postgres, exposes Connect-RPC over HTTP/JSON, and is called
+**service-to-service** by trusted product backends.
 
 This is the **workspace/authz service** that identity's
 [ADR-0001](https://github.com/elloloop/identity/blob/main/docs/adr/0001-two-service-split-identity-vs-workspace.md)
 said would be built separately. Identity owns authentication and tenancy and
-mints an access token; workspaces consumes that token and owns workspace
-membership and fine-grained, ReBAC-style authorization. The two services
-**never share a table** — token issuance is the entire contract between them.
+issues the access token; workspaces owns workspace membership and fine-grained,
+ReBAC-style authorization. The two services **never share a table** — the access
+token, verified at the **product edge**, is the entire contact point between
+them.
+
+> **Docs.** Full guides, concepts, and a live, per-RPC API reference are hosted
+> at **<https://elloloop.github.io/workspaces/>**. The Scalar-rendered API
+> reference (generated from the proto) is at
+> **<https://elloloop.github.io/workspaces/api>**.
 
 ## What it provides
 
@@ -16,21 +23,20 @@ membership and fine-grained, ReBAC-style authorization. The two services
   ReBAC core. Write tuples, then ask `Check` "may this user do this?" and
   `Expand` "who can?". Generic over namespaces, so any consuming product
   expresses its own access model as tuples.
-- **Workspaces** (`WorkspaceService`) — every authenticated user automatically
-  owns one **personal** workspace; they may create **team** workspaces and add
-  members with a role (`owner` ⊃ `admin` ⊃ `member` ⊃ `guest`). This serves
-  both B2C (a personal-assistant user sharing tasks with relatives) and B2B
-  SaaS (a company's employees collaborating), the way Claude and ChatGPT model
-  personal vs. team plans.
+- **Workspaces** (`WorkspaceService`) — every user automatically owns one
+  **personal** workspace; they may create **team** workspaces and add members
+  with a role (`owner` ⊃ `admin` ⊃ `member` ⊃ `guest`). This serves both B2C (a
+  personal-assistant user sharing tasks with relatives) and B2B SaaS (a
+  company's employees collaborating), the way Claude and ChatGPT model personal
+  vs. team plans.
 - **Groups** (`GroupService`) — reusable, nestable membership sets (an email
   distribution list, a chat group, an on-call rotation), separate from
   workspaces and referenceable from many of them.
 - **Invitations** — token-based invites to a workspace at a given role,
   delivered out of band and redeemed by the invitee.
 
-Workspaces authorizes; it does not authenticate. It trusts the `sub`,
-`project_id`, and issuer of a JWT minted by identity and applies its own
-authorization model on top.
+Workspaces authorizes; it does not authenticate. End users are authenticated at
+the product edge — this service never sees or verifies an end-user token.
 
 ## The authorization model
 
@@ -60,11 +66,11 @@ of three primitives:
   then check a relation there (this is how a resource inherits access from its
   parent workspace).
 
-`Check(namespace, object, relation, user)` evaluates that rule **transitively**
-and answers `allowed`. `Expand(...)` returns the effective userset tree (the
-union of leaves and child usersets) for auditing "who has access".
-`ReadRelationTuples` is the raw store read — it does **not** evaluate rewrites;
-use `Check` for decisions.
+`Check(namespace, object, relation, subject_user_id)` evaluates that rule
+**transitively** and answers `allowed`. `Expand(...)` returns the effective
+userset tree (the union of leaves and child usersets) for auditing "who has
+access". `ReadRelationTuples` is the raw store read — it does **not** evaluate
+rewrites; use `Check` for decisions.
 
 The built-in namespaces (`pkg/authz/model.go`):
 
@@ -130,10 +136,12 @@ tasks.
 - **Personal workspace.** `ListWorkspaces` auto-provisions the caller's single
   `PERSONAL` workspace on first call. It is undeletable and admits exactly one
   member — the owner (see [ADR-0002](docs/adr/0002-personal-and-team-workspaces.md)).
-- **Team workspaces.** `CreateWorkspace` makes a `TEAM` workspace the caller
-  owns. `AddMember` / `UpdateMemberRole` / `RemoveMember` / `ListMembers`
+- **Team workspaces.** `CreateWorkspace` makes a `TEAM` workspace the acting
+  user owns. `AddMember` / `UpdateMemberRole` / `RemoveMember` / `ListMembers`
   manage membership; each membership is mirrored as a `workspace:<id>#<role>`
   tuple, so a `Check` against the workspace namespace honours it immediately.
+  `AddMember`, `UpdateMemberRole`, and `CreateInvitation` reject `ROLE_OWNER` —
+  ownership is set at creation, not granted.
 - **Invitations.** `CreateInvitation` returns a one-time `token` (echoed only
   on creation, never by `ListInvitations`) for out-of-band delivery;
   `AcceptInvitation` redeems it into a membership; `RevokeInvitation` cancels a
@@ -146,6 +154,31 @@ may be project-level (a B2C user's "family" list) or scoped to a workspace (a
 company's internal groups), and a group member is either a user or another
 group. See [ADR-0003](docs/adr/0003-groups-separate-from-workspaces.md).
 
+### Calling the API
+
+Every RPC is an HTTP `POST` over the [Connect protocol](https://connectrpc.com)
+(JSON, with gRPC and gRPC-Web also supported) at
+`/workspace.v1.<Service>/<Method>`. The caller authenticates as a **service**
+with a shared bearer credential; the end user is passed as **data**:
+management RPCs take a required `acting_user_id` (omitting it returns
+`InvalidArgument`), and `Check` takes a `subject_user_id` independent of the
+caller. `project_id` is optional and defaults to the configured project.
+
+```bash
+# List (and auto-provision) alice's workspaces. acting_user_id is required.
+curl -X POST http://localhost:8080/workspace.v1.WorkspaceService/ListWorkspaces \
+  -H "Authorization: Bearer $WS_SERVICE_TOKEN" -H "Content-Type: application/json" \
+  -d '{"acting_user_id":"alice"}'
+
+# Ask the engine whether bob is an admin of workspace W.
+curl -X POST http://localhost:8080/workspace.v1.AuthzService/Check \
+  -H "Authorization: Bearer $WS_SERVICE_TOKEN" -H "Content-Type: application/json" \
+  -d '{"namespace":"workspace","object_id":"W","relation":"admin","subject_user_id":"bob"}'
+```
+
+A missing or wrong service credential returns HTTP `401` / Connect code
+`Unauthenticated`.
+
 ## How it relates to identity
 
 Per identity
@@ -155,30 +188,35 @@ the AuthN/authz seam is a hard line:
 - **identity** owns authentication, the `User` pool, `Project`, `Tenant`,
   `Domain`, and tenant-level membership. It issues the access token.
 - **workspaces** (this service) owns workspaces, workspace membership, groups,
-  and all fine-grained ReBAC. It reads the token and applies its own model.
+  and all fine-grained ReBAC.
 
-The contract is **token-only**: no shared schema, no cross-service table, no
-synchronous callback from workspaces into identity. Workspaces verifies the JWT
-against identity's JWKS (`GATEWAY_JWT_JWKS_URL`) or a shared HS256 secret
-(`GATEWAY_JWT_HS256_SECRET`), checks the issuer, and takes the user from `sub`.
-The `project_id` claim is the **isolation shard** (identity
+The two **never share a table**. End-user authentication happens at the
+**product edge**: the product backend verifies the user's identity token, then
+calls this service **as itself** over an internal, service-to-service channel.
+Like Zanzibar, the end user is **data** here, not the caller — the acting user
+and the subject are explicit request fields.
+
+`project_id` is the **isolation shard** (identity
 [ADR-0002](https://github.com/elloloop/identity/blob/main/docs/adr/0002-project-the-isolation-shard.md)):
-every workspace row, group, and relation tuple is scoped to it.
+every workspace row, group, invitation, and relation tuple is scoped to it. A
+request with no `project_id` falls back to `GATEWAY_DEFAULT_PROJECT_ID`. One
+B2C product is typically one project with many users' personal workspaces; a
+B2B platform can shard per customer into separate projects.
 
 ## Configuration
 
-All config is via environment variables.
+All config is via environment variables (the `GATEWAY_` prefix matches identity).
 
 | Var | Purpose | Default |
 |---|---|---|
 | `GATEWAY_CONNECT_PORT` | Connect/HTTP (JSON + gRPC) listen port | `8080` |
 | `GATEWAY_METRICS_PORT` | Prometheus metrics listen port | `9090` |
+| `GATEWAY_DEFAULT_PROJECT_ID` | Project shard pinned for requests with no `project_id` | `default` |
 | `GATEWAY_POSTGRES_DSN` | Postgres connection string; selects the postgres storage driver | — (memory driver if unset) |
-| `GATEWAY_DEFAULT_PROJECT_ID` | Project shard pinned for requests whose token carries no `project_id` | — |
-| `GATEWAY_JWT_JWKS_URL` | Identity's JWKS endpoint for token signature verification | — |
-| `GATEWAY_JWT_ISSUER` | Expected token issuer; tokens with a different `iss` are rejected | — |
-| `GATEWAY_JWT_HS256_SECRET` | Shared HS256 secret — an alternative to JWKS for symmetric verification | — |
-| `GATEWAY_ALLOWED_ORIGINS` | CORS origins for browser callers | — |
+| `GATEWAY_POSTGRES_AUTO_MIGRATE` | Apply pending migrations on boot | `true` |
+| `GATEWAY_SERVICE_AUTH_TOKENS` | Accepted service credentials, comma-separated, presented as `Authorization: Bearer <token>`. **Empty disables the requirement** (trust the network/mesh) and logs a warning. | — |
+| `GATEWAY_ALLOWED_ORIGINS` | CORS origins for browser callers, comma-separated | — |
+| `GATEWAY_HTTP_MAX_BODY_BYTES` | Maximum request body size | `1048576` |
 
 ## Deployment
 
@@ -187,15 +225,10 @@ workspaces service together:
 
 ```bash
 docker compose up -d --build
-curl http://localhost:8080/health
+curl http://localhost:8080/healthz
 docker compose logs -f workspaces
 docker compose down -v          # stop and wipe the postgres volume
 ```
-
-Compose seeds `GATEWAY_DEFAULT_PROJECT_ID=local` and points
-`GATEWAY_JWT_JWKS_URL` at a local identity deployment — override it to match
-yours. Pending migrations apply automatically on first connect when
-`GATEWAY_POSTGRES_AUTO_MIGRATE=true` (the default).
 
 Run standalone against an existing Postgres:
 
@@ -203,10 +236,14 @@ Run standalone against an existing Postgres:
 docker run -p 8080:8080 -p 9090:9090 \
   -e GATEWAY_POSTGRES_DSN='postgres://workspaces:password@db:5432/workspaces?sslmode=disable' \
   -e GATEWAY_DEFAULT_PROJECT_ID=my-product \
-  -e GATEWAY_JWT_JWKS_URL=https://identity.my-product.com/.well-known/jwks.json \
-  -e GATEWAY_JWT_ISSUER=https://identity.my-product.com \
-  ghcr.io/elloloop/workspaces:0.1.0
+  -e GATEWAY_SERVICE_AUTH_TOKENS="$(openssl rand -hex 32)" \
+  ghcr.io/elloloop/workspace:latest
 ```
+
+The binary lives at `cmd/workspace`; `workspace migrate` runs Postgres
+migrations explicitly (they also apply on boot when
+`GATEWAY_POSTGRES_AUTO_MIGRATE=true`, the default). Health probes are
+`GET /healthz` and `GET /readyz`; Prometheus metrics are on `:9090/metrics`.
 
 ## Storage
 
@@ -214,9 +251,10 @@ Workspaces persists behind a single `service.Repository` interface with two
 drivers:
 
 - **memory** — the default when `GATEWAY_POSTGRES_DSN` is unset; for tests and
-  zero-dependency local runs.
-- **postgres** — the production driver; the relation-tuple store, workspaces,
-  memberships, groups, and invitations all live here, keyed by `project_id`.
+  zero-dependency local runs. It is also the conformance reference.
+- **postgres** — the production driver (pgx); the relation-tuple store,
+  workspaces, memberships, groups, and invitations all live here. Every table
+  and index leads with `project_id`.
 
 A **conformance suite** asserts both drivers behave identically across every
 `Repository` method — same uniqueness, ordering, and error-translation
@@ -229,8 +267,11 @@ with `make conformance-all`.
 make ci         # lint, tidy-check, vuln, build, test, smoke, integration, fuzz
 make test       # unit tests with the race detector
 make proto      # regenerate Go stubs from proto (buf generate)
+make openapi    # regenerate the OpenAPI spec that the live API reference reads
 ```
 
-`make help` lists every target. The proto under `proto/workspace/workspace.proto`
-is the source of truth for the API; regenerate stubs with `make proto` after
+`make help` lists every target. The proto under
+[`proto/workspace/v1/workspace.proto`](proto/workspace/v1/workspace.proto) is
+the source of truth for the API; regenerate stubs with `make proto` after
 editing it.
+</content>

@@ -1,0 +1,190 @@
+---
+import DocsLayout from "../../../layouts/DocsLayout.astro";
+import { Code } from "astro-expressive-code/components";
+---
+
+<DocsLayout title="Roles & RBAC">
+  <h1>Roles &amp; RBAC</h1>
+  <p>
+    This guide models classic <strong>role-based access control</strong> with the
+    built-in <code>workspace</code> namespace: a fixed hierarchy of roles where a
+    stronger role automatically holds every weaker role's permissions.
+  </p>
+  <p>
+    <strong>What you'll learn:</strong> how the
+    <code>owner ⊃ admin ⊃ member ⊃ guest</code> hierarchy is expressed with
+    <code>computed_userset</code> rewrites, which relation tuples
+    <code>AddMember</code> writes, how to ask "can bob administer this workspace?"
+    with a single <code>Check</code>, and how to map your app's permissions onto
+    these four relations.
+  </p>
+
+  <h2>The role hierarchy</h2>
+  <p>
+    The <code>workspace</code> namespace defines four relations. Each one unions
+    its own directly stored tuples with the relation immediately above it, so a
+    grant flows down the chain: an owner is implicitly an admin, a member, and a
+    guest.
+  </p>
+  <Code code={`owner  := this()
+admin  := union(this(), computed("owner"))
+member := union(this(), computed("admin"))
+guest  := union(this(), computed("member"))`} lang="go" />
+  <p>
+    <code>this()</code> is the leaf — the directly stored tuples for that
+    relation. <code>computed("owner")</code> is a <strong>computed_userset</strong>:
+    "also count everyone who holds <code>owner</code> on this same object." That
+    single primitive is the whole RBAC hierarchy.
+  </p>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Role (proto <code>Role</code>)</th>
+        <th>Relation</th>
+        <th>Implicitly also holds</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>ROLE_OWNER</code></td>
+        <td><code>owner</code></td>
+        <td><code>admin</code>, <code>member</code>, <code>guest</code></td>
+      </tr>
+      <tr>
+        <td><code>ROLE_ADMIN</code></td>
+        <td><code>admin</code></td>
+        <td><code>member</code>, <code>guest</code></td>
+      </tr>
+      <tr>
+        <td><code>ROLE_MEMBER</code></td>
+        <td><code>member</code></td>
+        <td><code>guest</code></td>
+      </tr>
+      <tr>
+        <td><code>ROLE_GUEST</code></td>
+        <td><code>guest</code></td>
+        <td>—</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="not-prose my-6 rounded-lg border border-border bg-muted/40 p-4 text-sm">
+    <strong>Ownership is set at creation, not granted.</strong>
+    <code>AddMember</code>, <code>UpdateMemberRole</code>, and
+    <code>CreateInvitation</code> reject <code>ROLE_OWNER</code> with
+    <code>InvalidArgument</code>. The owner is whoever created the workspace.
+    To hand off ownership, model it in your product; this service does not
+    re-assign <code>owner</code> through the membership RPCs.
+  </div>
+
+  <h2>What AddMember writes</h2>
+  <p>
+    You rarely write role tuples by hand.
+    <code>WorkspaceService.AddMember</code> is the high-level API: give it a
+    workspace, a user, and a role, and it stores the matching tuple. The call
+    must carry <code>acting_user_id</code> — the user the action is authorized as
+    (omitting it returns <code>InvalidArgument</code>).
+  </p>
+  <Code code={`curl -X POST http://localhost:8080/workspace.v1.WorkspaceService/AddMember \\
+  -H "Authorization: Bearer $WS_SERVICE_TOKEN" \\
+  -H "Content-Type: application/json" \\
+  -d '{"workspace_id":"W","user_id":"bob","role":"ROLE_ADMIN","acting_user_id":"alice"}'`} lang="bash" />
+  <p>That stores a single tuple:</p>
+  <Code code={`workspace:W#admin@bob`} lang="text" />
+  <p>
+    <code>AddMember</code> with <code>ROLE_MEMBER</code> would store
+    <code>workspace:W#member@bob</code>, and so on. There is no
+    <code>workspace_members</code> table behind the scenes — membership <em>is</em>
+    the tuple.
+  </p>
+  <p>
+    The header <code>Authorization: Bearer $WS_SERVICE_TOKEN</code> is the
+    <strong>service</strong> credential of the calling product backend, not an end
+    user. The acting user (<code>alice</code>) and the subject (<code>bob</code>)
+    are explicit request fields — they are data. See
+    <a href="/workspace/docs/concepts/security">Security &amp; Service Auth</a>.
+  </p>
+
+  <h2>Checking a permission</h2>
+  <p>
+    On the request hot path you ask one question: does this user hold this
+    relation on this object? "Can bob administer workspace W?" is exactly:
+  </p>
+  <Code code={`curl -X POST http://localhost:8080/workspace.v1.AuthzService/Check \\
+  -H "Authorization: Bearer $WS_SERVICE_TOKEN" \\
+  -H "Content-Type: application/json" \\
+  -d '{"namespace":"workspace","object_id":"W","relation":"admin","subject_user_id":"bob"}'`} lang="bash" />
+  <Code code={`{ "allowed": true }`} lang="json" />
+  <p>
+    <code>subject_user_id</code> is the user being tested — independent of the
+    caller. Because <code>bob</code> was added as <code>admin</code>, the
+    <code>admin</code> rule's <code>this()</code> leaf matches directly.
+  </p>
+  <p>
+    Now ask whether <code>bob</code> is a <strong>member</strong>. There is no
+    <code>workspace:W#member@bob</code> tuple, but <code>Check</code> evaluates
+    the rewrite: <code>member = union(this(), computed("admin"))</code>, and
+    <code>bob</code> is an admin — so the answer is still <code>allowed</code>.
+  </p>
+  <Code code={`-d '{"namespace":"workspace","object_id":"W","relation":"member","subject_user_id":"bob"}'
+# -> { "allowed": true }   (admin implies member)`} lang="bash" />
+  <p>
+    Conversely, a plain member fails an <code>admin</code> check — the hierarchy
+    only flows downward.
+  </p>
+
+  <h2>Mapping app permissions to relations</h2>
+  <p>
+    RBAC means choosing, per action, the <strong>minimum</strong> relation that
+    may perform it, then gating the action with a <code>Check</code> for that
+    relation. Because the hierarchy is inclusive, you only ever check the floor.
+  </p>
+  <table>
+    <thead>
+      <tr>
+        <th>App action</th>
+        <th>Minimum relation to <code>Check</code></th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Delete the workspace, change billing</td>
+        <td><code>owner</code></td>
+      </tr>
+      <tr>
+        <td>Add/remove members, change settings</td>
+        <td><code>admin</code></td>
+      </tr>
+      <tr>
+        <td>Create and edit content</td>
+        <td><code>member</code></td>
+      </tr>
+      <tr>
+        <td>Read-only access</td>
+        <td><code>guest</code></td>
+      </tr>
+    </tbody>
+  </table>
+  <p>
+    For example, before letting someone open the settings page, gate it on
+    <code>Check(workspace, W, admin, &lt;user&gt;)</code>. Owners pass it for free
+    (owner ⊃ admin); members and guests do not.
+  </p>
+
+  <div class="not-prose my-6 rounded-lg border border-border bg-muted/40 p-4 text-sm">
+    <strong>Personal workspaces are closed.</strong> Every user owns exactly one
+    auto-provisioned <code>PERSONAL</code> workspace with a single member — the
+    owner. It cannot accept new members and cannot be deleted, so
+    <code>AddMember</code> against it is rejected. RBAC across multiple roles
+    applies to <code>TEAM</code> workspaces (see
+    <a href="/workspace/docs/adr/0002-personal-and-team-workspaces">ADR-0002</a>).
+  </div>
+
+  <h2>Where to next</h2>
+  <ul>
+    <li><a href="/workspace/docs/guides/groups-and-nesting">Groups &amp; Nesting</a> — grant a whole team a role at once</li>
+    <li><a href="/workspace/docs/guides/hierarchies-and-inheritance">Hierarchies &amp; Inheritance</a> — let resources inherit workspace roles</li>
+    <li><a href="/workspace/docs/concepts/authorization-model">Authorization Model</a> — the full rewrite reference</li>
+  </ul>
+</DocsLayout>

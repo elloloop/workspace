@@ -1,8 +1,8 @@
 syntax = "proto3";
 
-package workspace;
+package workspace.v1;
 
-option go_package = "github.com/elloloop/workspaces/gen/go/workspace;workspace";
+option go_package = "github.com/elloloop/workspace/gen/go/workspace/v1;workspacev1";
 
 import "google/protobuf/timestamp.proto";
 
@@ -10,24 +10,35 @@ import "google/protobuf/timestamp.proto";
 // Workspaces — the authorization layer
 // ═══════════════════════════════════════════════════════════════════════
 //
-// Two services live here, meeting only at the access token:
+// This is an INTERNAL service. It is called service-to-service by trusted
+// product backends — never directly by a browser or mobile client. Like
+// Zanzibar, the caller authenticates as a SERVICE (a shared credential or
+// mTLS at the mesh), NOT as an end user, and the user identity is passed as
+// DATA, not inferred from the caller:
 //
-//   * WorkspaceService — the product surface. Every authenticated user
-//     owns a default PERSONAL workspace; they may create TEAM workspaces
-//     and add other people (family or colleagues) with a role. This serves
-//     both B2C (a personal-assistant user sharing tasks with relatives) and
-//     B2B SaaS (a company's employees collaborating), the way Claude and
-//     ChatGPT model personal vs. team plans.
+//   * `acting_user_id` on the management RPCs is the user the action is
+//     performed on behalf of; the service authorizes that user (e.g. "must
+//     be an admin to add a member").
+//   * `subject_user_id` on Check is the user whose access is being tested.
+//   * `project_id` is the isolation shard; empty means the deployment's
+//     default project.
 //
-//   * AuthzService — a Zanzibar-style relation-tuple engine. It is generic
-//     over namespaces: WorkspaceService writes tuples under the `workspace`
-//     namespace, and consuming products write tuples under their own
-//     namespaces (a Linear-like issue, a learning-platform course, a shared
-//     task) that inherit access from a parent workspace via userset
-//     rewrites, or are shared directly with an individual user.
+// End-user authentication happens at the product's edge, before this
+// service is in the picture. The product verifies the user's identity token
+// (issued by github.com/elloloop/identity), then calls here as itself.
 //
-// Identity (github.com/elloloop/identity) authenticates the user and mints
-// the JWT this service verifies. The two services never share a table.
+// Two services live here:
+//
+//   * WorkspaceService + GroupService — the product surface. Every user
+//     owns a default PERSONAL workspace; they may create TEAM workspaces and
+//     add other people (family or colleagues) with a role. Groups are a
+//     reusable, nestable membership set, separate from workspaces. This
+//     serves both B2C (a personal-assistant user sharing tasks) and B2B SaaS
+//     (a company's employees collaborating), the way Claude and ChatGPT
+//     model personal vs. team plans.
+//
+//   * AuthzService — a Zanzibar-style relation-tuple engine, generic over
+//     namespaces. The product writes tuples and asks Check on its hot path.
 
 // ─── Common enums ──────────────────────────────────────────────────────
 
@@ -71,8 +82,7 @@ enum InvitationStatus {
 message Workspace {
   string id = 1;
   // project_id is the isolation shard (identity ADR-0002): every row and
-  // every relation tuple is scoped to it. Resolved from the caller's token
-  // or the configured default project.
+  // every relation tuple is scoped to it.
   string project_id = 2;
   string slug = 3;
   string display_name = 4;
@@ -106,35 +116,55 @@ message Invitation {
 }
 
 // ─── WorkspaceService requests/responses ───────────────────────────────
+//
+// Every management request carries acting_user_id (the user the call acts
+// as — used for authorization) and project_id (the shard; empty = default).
 
 message CreateWorkspaceRequest {
   string display_name = 1;
   // slug is optional; the server derives one from display_name when empty.
   string slug = 2;
+  string acting_user_id = 3;
+  string project_id = 4;
 }
 message CreateWorkspaceResponse { Workspace workspace = 1; }
 
-message GetWorkspaceRequest { string workspace_id = 1; }
+message GetWorkspaceRequest {
+  string workspace_id = 1;
+  string acting_user_id = 2;
+  string project_id = 3;
+}
 message GetWorkspaceResponse { Workspace workspace = 1; }
 
-// ListWorkspaces returns every workspace the caller is an active member of,
-// auto-provisioning their PERSONAL workspace on first call.
-message ListWorkspacesRequest {}
+// ListWorkspaces returns every workspace acting_user_id is an active member
+// of, auto-provisioning their PERSONAL workspace on first call.
+message ListWorkspacesRequest {
+  string acting_user_id = 1;
+  string project_id = 2;
+}
 message ListWorkspacesResponse { repeated Workspace workspaces = 1; }
 
 message UpdateWorkspaceRequest {
   string workspace_id = 1;
   string display_name = 2;
+  string acting_user_id = 3;
+  string project_id = 4;
 }
 message UpdateWorkspaceResponse { Workspace workspace = 1; }
 
-message DeleteWorkspaceRequest { string workspace_id = 1; }
+message DeleteWorkspaceRequest {
+  string workspace_id = 1;
+  string acting_user_id = 2;
+  string project_id = 3;
+}
 message DeleteWorkspaceResponse {}
 
 message AddMemberRequest {
   string workspace_id = 1;
   string user_id = 2;
   Role role = 3;
+  string acting_user_id = 4;
+  string project_id = 5;
 }
 message AddMemberResponse { Membership membership = 1; }
 
@@ -142,32 +172,54 @@ message UpdateMemberRoleRequest {
   string workspace_id = 1;
   string user_id = 2;
   Role role = 3;
+  string acting_user_id = 4;
+  string project_id = 5;
 }
 message UpdateMemberRoleResponse { Membership membership = 1; }
 
 message RemoveMemberRequest {
   string workspace_id = 1;
   string user_id = 2;
+  string acting_user_id = 3;
+  string project_id = 4;
 }
 message RemoveMemberResponse {}
 
-message ListMembersRequest { string workspace_id = 1; }
+message ListMembersRequest {
+  string workspace_id = 1;
+  string acting_user_id = 2;
+  string project_id = 3;
+}
 message ListMembersResponse { repeated Membership members = 1; }
 
 message CreateInvitationRequest {
   string workspace_id = 1;
   string email = 2;
   Role role = 3;
+  string acting_user_id = 4;
+  string project_id = 5;
 }
 message CreateInvitationResponse { Invitation invitation = 1; }
 
-message AcceptInvitationRequest { string token = 1; }
+message AcceptInvitationRequest {
+  string token = 1;
+  string acting_user_id = 2;
+  string project_id = 3;
+}
 message AcceptInvitationResponse { Membership membership = 1; }
 
-message ListInvitationsRequest { string workspace_id = 1; }
+message ListInvitationsRequest {
+  string workspace_id = 1;
+  string acting_user_id = 2;
+  string project_id = 3;
+}
 message ListInvitationsResponse { repeated Invitation invitations = 1; }
 
-message RevokeInvitationRequest { string invitation_id = 1; }
+message RevokeInvitationRequest {
+  string invitation_id = 1;
+  string acting_user_id = 2;
+  string project_id = 3;
+}
 message RevokeInvitationResponse {}
 
 service WorkspaceService {
@@ -231,34 +283,54 @@ message CreateGroupRequest {
   string slug = 2;
   // optional owning workspace; empty for a standalone group.
   string workspace_id = 3;
+  string acting_user_id = 4;
+  string project_id = 5;
 }
 message CreateGroupResponse { Group group = 1; }
 
-message GetGroupRequest { string group_id = 1; }
+message GetGroupRequest {
+  string group_id = 1;
+  string acting_user_id = 2;
+  string project_id = 3;
+}
 message GetGroupResponse { Group group = 1; }
 
 message ListGroupsRequest {
   // optional: restrict to groups owned by this workspace.
   string workspace_id = 1;
+  string acting_user_id = 2;
+  string project_id = 3;
 }
 message ListGroupsResponse { repeated Group groups = 1; }
 
-message DeleteGroupRequest { string group_id = 1; }
+message DeleteGroupRequest {
+  string group_id = 1;
+  string acting_user_id = 2;
+  string project_id = 3;
+}
 message DeleteGroupResponse {}
 
 message AddGroupMemberRequest {
   string group_id = 1;
   GroupMember member = 2;
+  string acting_user_id = 3;
+  string project_id = 4;
 }
 message AddGroupMemberResponse {}
 
 message RemoveGroupMemberRequest {
   string group_id = 1;
   GroupMember member = 2;
+  string acting_user_id = 3;
+  string project_id = 4;
 }
 message RemoveGroupMemberResponse {}
 
-message ListGroupMembersRequest { string group_id = 1; }
+message ListGroupMembersRequest {
+  string group_id = 1;
+  string acting_user_id = 2;
+  string project_id = 3;
+}
 message ListGroupMembersResponse { repeated GroupMember members = 1; }
 
 service GroupService {
@@ -277,7 +349,8 @@ service GroupService {
 //
 // A relation tuple reads `namespace:object_id#relation@subject`, where the
 // subject is either a concrete user or a userset (another object#relation).
-// Consuming products express their access model as tuples and ask Check.
+// These RPCs are pure data operations — the user is an argument, never the
+// caller. project_id scopes the operation; empty means the default project.
 
 // SubjectSet references the set of subjects related to another object — the
 // userset `namespace:object_id#relation`. When relation is empty it denotes
@@ -314,7 +387,11 @@ message TupleUpdate {
   RelationTuple tuple = 2;
 }
 
-message WriteRelationTuplesRequest { repeated TupleUpdate updates = 1; }
+message WriteRelationTuplesRequest {
+  repeated TupleUpdate updates = 1;
+  // project_id scopes every tuple in the batch; empty = default project.
+  string project_id = 2;
+}
 message WriteRelationTuplesResponse {}
 
 // ReadRelationTuples returns stored tuples matching the non-empty filter
@@ -326,6 +403,7 @@ message ReadRelationTuplesRequest {
   string relation = 3;
   // optional: restrict to tuples whose subject is this concrete user.
   string subject_user_id = 4;
+  string project_id = 5;
 }
 message ReadRelationTuplesResponse { repeated RelationTuple tuples = 1; }
 
@@ -336,6 +414,7 @@ message CheckRequest {
   string object_id = 2;
   string relation = 3;
   string subject_user_id = 4;
+  string project_id = 5;
 }
 message CheckResponse { bool allowed = 1; }
 
@@ -344,6 +423,7 @@ message ExpandRequest {
   string namespace = 1;
   string object_id = 2;
   string relation = 3;
+  string project_id = 4;
 }
 
 message UsersetTree {

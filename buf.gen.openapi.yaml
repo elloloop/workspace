@@ -1,0 +1,11 @@
+# OpenAPI generation, kept separate from the Go codegen template so the
+# `make openapi` target can run it with the locally-installed
+# protoc-gen-connect-openapi plugin (pinned in the Makefile). The generated
+# spec describes the Connect HTTP/JSON API and is rendered by Scalar on the
+# docs site. Regenerate with `make openapi`.
+version: v2
+plugins:
+  - local: .bin/protoc-gen-connect-openapi
+    out: gen/openapi
+    opt:
+      - base=proto/openapi.base.yaml

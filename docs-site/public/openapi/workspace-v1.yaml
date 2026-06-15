@@ -1,0 +1,1887 @@
+openapi: 3.1.0
+info:
+  title: Workspaces API
+  description: |
+    Zanzibar-inspired workspace authorization service. Internal, service-to-service: callers present a bearer service credential; the acting user and subject are request fields. Connect protocol over HTTP POST + JSON.
+  version: v1
+  license:
+    name: AGPL-3.0
+servers:
+  - url: http://localhost:8080
+    description: Local docker-compose
+security:
+  - serviceCredential: []
+components:
+  securitySchemes:
+    serviceCredential:
+      type: http
+      scheme: bearer
+      description: A service credential from GATEWAY_SERVICE_AUTH_TOKENS.
+  schemas:
+    workspace.v1.InvitationStatus:
+      type: string
+      title: InvitationStatus
+      enum:
+        - INVITATION_STATUS_UNSPECIFIED
+        - INVITATION_STATUS_PENDING
+        - INVITATION_STATUS_ACCEPTED
+        - INVITATION_STATUS_REVOKED
+        - INVITATION_STATUS_EXPIRED
+    workspace.v1.MembershipStatus:
+      type: string
+      title: MembershipStatus
+      enum:
+        - MEMBERSHIP_STATUS_UNSPECIFIED
+        - MEMBERSHIP_STATUS_ACTIVE
+        - MEMBERSHIP_STATUS_INVITED
+        - MEMBERSHIP_STATUS_SUSPENDED
+    workspace.v1.Role:
+      type: string
+      title: Role
+      enum:
+        - ROLE_UNSPECIFIED
+        - ROLE_OWNER
+        - ROLE_ADMIN
+        - ROLE_MEMBER
+        - ROLE_GUEST
+      description: |-
+        Role is the coarse membership grade. It maps 1:1 onto a relation in the
+         `workspace` authz namespace, ordered owner ⊃ admin ⊃ member ⊃ guest.
+    workspace.v1.TupleUpdate.Op:
+      type: string
+      title: Op
+      enum:
+        - OP_UNSPECIFIED
+        - OP_INSERT
+        - OP_DELETE
+    workspace.v1.UsersetTree.NodeType:
+      type: string
+      title: NodeType
+      enum:
+        - NODE_TYPE_UNSPECIFIED
+        - NODE_TYPE_UNION
+        - NODE_TYPE_LEAF
+    workspace.v1.WorkspaceType:
+      type: string
+      title: WorkspaceType
+      enum:
+        - WORKSPACE_TYPE_UNSPECIFIED
+        - WORKSPACE_TYPE_PERSONAL
+        - WORKSPACE_TYPE_TEAM
+    google.protobuf.Timestamp:
+      type: string
+      examples:
+        - 1s
+        - 1.000340012s
+      format: date-time
+      description: |-
+        A Timestamp represents a point in time independent of any time zone or local
+         calendar, encoded as a count of seconds and fractions of seconds at
+         nanosecond resolution. The count is relative to an epoch at UTC midnight on
+         January 1, 1970, in the proleptic Gregorian calendar which extends the
+         Gregorian calendar backwards to year one.
+
+         All minutes are 60 seconds long. Leap seconds are "smeared" so that no leap
+         second table is needed for interpretation, using a [24-hour linear
+         smear](https://developers.google.com/time/smear).
+
+         The range is from 0001-01-01T00:00:00Z to 9999-12-31T23:59:59.999999999Z. By
+         restricting to that range, we ensure that we can convert to and from [RFC
+         3339](https://www.ietf.org/rfc/rfc3339.txt) date strings.
+
+         # Examples
+
+         Example 1: Compute Timestamp from POSIX `time()`.
+
+             Timestamp timestamp;
+             timestamp.set_seconds(time(NULL));
+             timestamp.set_nanos(0);
+
+         Example 2: Compute Timestamp from POSIX `gettimeofday()`.
+
+             struct timeval tv;
+             gettimeofday(&tv, NULL);
+
+             Timestamp timestamp;
+             timestamp.set_seconds(tv.tv_sec);
+             timestamp.set_nanos(tv.tv_usec * 1000);
+
+         Example 3: Compute Timestamp from Win32 `GetSystemTimeAsFileTime()`.
+
+             FILETIME ft;
+             GetSystemTimeAsFileTime(&ft);
+             UINT64 ticks = (((UINT64)ft.dwHighDateTime) << 32) | ft.dwLowDateTime;
+
+             // A Windows tick is 100 nanoseconds. Windows epoch 1601-01-01T00:00:00Z
+             // is 11644473600 seconds before Unix epoch 1970-01-01T00:00:00Z.
+             Timestamp timestamp;
+             timestamp.set_seconds((INT64) ((ticks / 10000000) - 11644473600LL));
+             timestamp.set_nanos((INT32) ((ticks % 10000000) * 100));
+
+         Example 4: Compute Timestamp from Java `System.currentTimeMillis()`.
+
+             long millis = System.currentTimeMillis();
+
+             Timestamp timestamp = Timestamp.newBuilder().setSeconds(millis / 1000)
+                 .setNanos((int) ((millis % 1000) * 1000000)).build();
+
+         Example 5: Compute Timestamp from Java `Instant.now()`.
+
+             Instant now = Instant.now();
+
+             Timestamp timestamp =
+                 Timestamp.newBuilder().setSeconds(now.getEpochSecond())
+                     .setNanos(now.getNano()).build();
+
+         Example 6: Compute Timestamp from current time in Python.
+
+             timestamp = Timestamp()
+             timestamp.GetCurrentTime()
+
+         # JSON Mapping
+
+         In JSON format, the Timestamp type is encoded as a string in the
+         [RFC 3339](https://www.ietf.org/rfc/rfc3339.txt) format. That is, the
+         format is "{year}-{month}-{day}T{hour}:{min}:{sec}[.{frac_sec}]Z"
+         where {year} is always expressed using four digits while {month}, {day},
+         {hour}, {min}, and {sec} are zero-padded to two digits each. The fractional
+         seconds, which can go up to 9 digits (i.e. up to 1 nanosecond resolution),
+         are optional. The "Z" suffix indicates the timezone ("UTC"); the timezone
+         is required. A proto3 JSON serializer should always use UTC (as indicated by
+         "Z") when printing the Timestamp type and a proto3 JSON parser should be
+         able to accept both UTC and other timezones (as indicated by an offset).
+
+         For example, "2017-01-15T01:30:15.01Z" encodes 15.01 seconds past
+         01:30 UTC on January 15, 2017.
+
+         In JavaScript, one can convert a Date object to this format using the
+         standard
+         [toISOString()](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Date/toISOString)
+         method. In Python, a standard `datetime.datetime` object can be converted
+         to this format using
+         [`strftime`](https://docs.python.org/2/library/time.html#time.strftime) with
+         the time format spec '%Y-%m-%dT%H:%M:%S.%fZ'. Likewise, in Java, one can use
+         the Joda Time's [`ISODateTimeFormat.dateTime()`](
+         http://joda-time.sourceforge.net/apidocs/org/joda/time/format/ISODateTimeFormat.html#dateTime()
+         ) to obtain a formatter capable of generating timestamps in this format.
+    workspace.v1.AcceptInvitationRequest:
+      type: object
+      properties:
+        token:
+          type: string
+          title: token
+        actingUserId:
+          type: string
+          title: acting_user_id
+        projectId:
+          type: string
+          title: project_id
+      title: AcceptInvitationRequest
+      additionalProperties: false
+    workspace.v1.AcceptInvitationResponse:
+      type: object
+      properties:
+        membership:
+          title: membership
+          $ref: '#/components/schemas/workspace.v1.Membership'
+      title: AcceptInvitationResponse
+      additionalProperties: false
+    workspace.v1.AddGroupMemberRequest:
+      type: object
+      properties:
+        groupId:
+          type: string
+          title: group_id
+        member:
+          title: member
+          $ref: '#/components/schemas/workspace.v1.GroupMember'
+        actingUserId:
+          type: string
+          title: acting_user_id
+        projectId:
+          type: string
+          title: project_id
+      title: AddGroupMemberRequest
+      additionalProperties: false
+    workspace.v1.AddGroupMemberResponse:
+      type: object
+      title: AddGroupMemberResponse
+      additionalProperties: false
+    workspace.v1.AddMemberRequest:
+      type: object
+      properties:
+        workspaceId:
+          type: string
+          title: workspace_id
+        userId:
+          type: string
+          title: user_id
+        role:
+          title: role
+          $ref: '#/components/schemas/workspace.v1.Role'
+        actingUserId:
+          type: string
+          title: acting_user_id
+        projectId:
+          type: string
+          title: project_id
+      title: AddMemberRequest
+      additionalProperties: false
+    workspace.v1.AddMemberResponse:
+      type: object
+      properties:
+        membership:
+          title: membership
+          $ref: '#/components/schemas/workspace.v1.Membership'
+      title: AddMemberResponse
+      additionalProperties: false
+    workspace.v1.CheckRequest:
+      type: object
+      properties:
+        namespace:
+          type: string
+          title: namespace
+        objectId:
+          type: string
+          title: object_id
+        relation:
+          type: string
+          title: relation
+        subjectUserId:
+          type: string
+          title: subject_user_id
+        projectId:
+          type: string
+          title: project_id
+      title: CheckRequest
+      additionalProperties: false
+      description: |-
+        Check answers "does subject have relation on namespace:object_id?",
+         evaluating the namespace's userset rewrite rules transitively.
+    workspace.v1.CheckResponse:
+      type: object
+      properties:
+        allowed:
+          type: boolean
+          title: allowed
+      title: CheckResponse
+      additionalProperties: false
+    workspace.v1.CreateGroupRequest:
+      type: object
+      properties:
+        displayName:
+          type: string
+          title: display_name
+        slug:
+          type: string
+          title: slug
+        workspaceId:
+          type: string
+          title: workspace_id
+          description: optional owning workspace; empty for a standalone group.
+        actingUserId:
+          type: string
+          title: acting_user_id
+        projectId:
+          type: string
+          title: project_id
+      title: CreateGroupRequest
+      additionalProperties: false
+    workspace.v1.CreateGroupResponse:
+      type: object
+      properties:
+        group:
+          title: group
+          $ref: '#/components/schemas/workspace.v1.Group'
+      title: CreateGroupResponse
+      additionalProperties: false
+    workspace.v1.CreateInvitationRequest:
+      type: object
+      properties:
+        workspaceId:
+          type: string
+          title: workspace_id
+        email:
+          type: string
+          title: email
+        role:
+          title: role
+          $ref: '#/components/schemas/workspace.v1.Role'
+        actingUserId:
+          type: string
+          title: acting_user_id
+        projectId:
+          type: string
+          title: project_id
+      title: CreateInvitationRequest
+      additionalProperties: false
+    workspace.v1.CreateInvitationResponse:
+      type: object
+      properties:
+        invitation:
+          title: invitation
+          $ref: '#/components/schemas/workspace.v1.Invitation'
+      title: CreateInvitationResponse
+      additionalProperties: false
+    workspace.v1.CreateWorkspaceRequest:
+      type: object
+      properties:
+        displayName:
+          type: string
+          title: display_name
+        slug:
+          type: string
+          title: slug
+          description: slug is optional; the server derives one from display_name when empty.
+        actingUserId:
+          type: string
+          title: acting_user_id
+        projectId:
+          type: string
+          title: project_id
+      title: CreateWorkspaceRequest
+      additionalProperties: false
+    workspace.v1.CreateWorkspaceResponse:
+      type: object
+      properties:
+        workspace:
+          title: workspace
+          $ref: '#/components/schemas/workspace.v1.Workspace'
+      title: CreateWorkspaceResponse
+      additionalProperties: false
+    workspace.v1.DeleteGroupRequest:
+      type: object
+      properties:
+        groupId:
+          type: string
+          title: group_id
+        actingUserId:
+          type: string
+          title: acting_user_id
+        projectId:
+          type: string
+          title: project_id
+      title: DeleteGroupRequest
+      additionalProperties: false
+    workspace.v1.DeleteGroupResponse:
+      type: object
+      title: DeleteGroupResponse
+      additionalProperties: false
+    workspace.v1.DeleteWorkspaceRequest:
+      type: object
+      properties:
+        workspaceId:
+          type: string
+          title: workspace_id
+        actingUserId:
+          type: string
+          title: acting_user_id
+        projectId:
+          type: string
+          title: project_id
+      title: DeleteWorkspaceRequest
+      additionalProperties: false
+    workspace.v1.DeleteWorkspaceResponse:
+      type: object
+      title: DeleteWorkspaceResponse
+      additionalProperties: false
+    workspace.v1.ExpandRequest:
+      type: object
+      properties:
+        namespace:
+          type: string
+          title: namespace
+        objectId:
+          type: string
+          title: object_id
+        relation:
+          type: string
+          title: relation
+        projectId:
+          type: string
+          title: project_id
+      title: ExpandRequest
+      additionalProperties: false
+      description: Expand returns the effective userset tree for namespace:object_id#relation.
+    workspace.v1.ExpandResponse:
+      type: object
+      properties:
+        tree:
+          title: tree
+          $ref: '#/components/schemas/workspace.v1.UsersetTree'
+      title: ExpandResponse
+      additionalProperties: false
+    workspace.v1.GetGroupRequest:
+      type: object
+      properties:
+        groupId:
+          type: string
+          title: group_id
+        actingUserId:
+          type: string
+          title: acting_user_id
+        projectId:
+          type: string
+          title: project_id
+      title: GetGroupRequest
+      additionalProperties: false
+    workspace.v1.GetGroupResponse:
+      type: object
+      properties:
+        group:
+          title: group
+          $ref: '#/components/schemas/workspace.v1.Group'
+      title: GetGroupResponse
+      additionalProperties: false
+    workspace.v1.GetWorkspaceRequest:
+      type: object
+      properties:
+        workspaceId:
+          type: string
+          title: workspace_id
+        actingUserId:
+          type: string
+          title: acting_user_id
+        projectId:
+          type: string
+          title: project_id
+      title: GetWorkspaceRequest
+      additionalProperties: false
+    workspace.v1.GetWorkspaceResponse:
+      type: object
+      properties:
+        workspace:
+          title: workspace
+          $ref: '#/components/schemas/workspace.v1.Workspace'
+      title: GetWorkspaceResponse
+      additionalProperties: false
+    workspace.v1.Group:
+      type: object
+      properties:
+        id:
+          type: string
+          title: id
+        projectId:
+          type: string
+          title: project_id
+        workspaceId:
+          type: string
+          title: workspace_id
+          description: |-
+            workspace_id optionally scopes the group to a workspace (a company's
+             internal groups). Empty for project-level / standalone groups (a B2C
+             user's "family" list).
+        slug:
+          type: string
+          title: slug
+        displayName:
+          type: string
+          title: display_name
+        createdByUserId:
+          type: string
+          title: created_by_user_id
+        createdAt:
+          title: created_at
+          $ref: '#/components/schemas/google.protobuf.Timestamp'
+        updatedAt:
+          title: updated_at
+          $ref: '#/components/schemas/google.protobuf.Timestamp'
+      title: Group
+      additionalProperties: false
+    workspace.v1.GroupMember:
+      type: object
+      oneOf:
+        - properties:
+            groupId:
+              type: string
+              title: group_id
+          title: group_id
+          required:
+            - groupId
+        - properties:
+            userId:
+              type: string
+              title: user_id
+          title: user_id
+          required:
+            - userId
+      title: GroupMember
+      additionalProperties: false
+      description: GroupMember is either a user or a nested group.
+    workspace.v1.Invitation:
+      type: object
+      properties:
+        id:
+          type: string
+          title: id
+        workspaceId:
+          type: string
+          title: workspace_id
+        email:
+          type: string
+          title: email
+        role:
+          title: role
+          $ref: '#/components/schemas/workspace.v1.Role'
+        status:
+          title: status
+          $ref: '#/components/schemas/workspace.v1.InvitationStatus'
+        invitedByUserId:
+          type: string
+          title: invited_by_user_id
+        createdAt:
+          title: created_at
+          $ref: '#/components/schemas/google.protobuf.Timestamp'
+        expiresAt:
+          title: expires_at
+          $ref: '#/components/schemas/google.protobuf.Timestamp'
+        token:
+          type: string
+          title: token
+          description: |-
+            token is returned ONLY from CreateInvitation so the caller can deliver
+             it out of band; it is never echoed by ListInvitations.
+      title: Invitation
+      additionalProperties: false
+    workspace.v1.ListGroupMembersRequest:
+      type: object
+      properties:
+        groupId:
+          type: string
+          title: group_id
+        actingUserId:
+          type: string
+          title: acting_user_id
+        projectId:
+          type: string
+          title: project_id
+      title: ListGroupMembersRequest
+      additionalProperties: false
+    workspace.v1.ListGroupMembersResponse:
+      type: object
+      properties:
+        members:
+          type: array
+          items:
+            $ref: '#/components/schemas/workspace.v1.GroupMember'
+          title: members
+      title: ListGroupMembersResponse
+      additionalProperties: false
+    workspace.v1.ListGroupsRequest:
+      type: object
+      properties:
+        workspaceId:
+          type: string
+          title: workspace_id
+          description: 'optional: restrict to groups owned by this workspace.'
+        actingUserId:
+          type: string
+          title: acting_user_id
+        projectId:
+          type: string
+          title: project_id
+      title: ListGroupsRequest
+      additionalProperties: false
+    workspace.v1.ListGroupsResponse:
+      type: object
+      properties:
+        groups:
+          type: array
+          items:
+            $ref: '#/components/schemas/workspace.v1.Group'
+          title: groups
+      title: ListGroupsResponse
+      additionalProperties: false
+    workspace.v1.ListInvitationsRequest:
+      type: object
+      properties:
+        workspaceId:
+          type: string
+          title: workspace_id
+        actingUserId:
+          type: string
+          title: acting_user_id
+        projectId:
+          type: string
+          title: project_id
+      title: ListInvitationsRequest
+      additionalProperties: false
+    workspace.v1.ListInvitationsResponse:
+      type: object
+      properties:
+        invitations:
+          type: array
+          items:
+            $ref: '#/components/schemas/workspace.v1.Invitation'
+          title: invitations
+      title: ListInvitationsResponse
+      additionalProperties: false
+    workspace.v1.ListMembersRequest:
+      type: object
+      properties:
+        workspaceId:
+          type: string
+          title: workspace_id
+        actingUserId:
+          type: string
+          title: acting_user_id
+        projectId:
+          type: string
+          title: project_id
+      title: ListMembersRequest
+      additionalProperties: false
+    workspace.v1.ListMembersResponse:
+      type: object
+      properties:
+        members:
+          type: array
+          items:
+            $ref: '#/components/schemas/workspace.v1.Membership'
+          title: members
+      title: ListMembersResponse
+      additionalProperties: false
+    workspace.v1.ListWorkspacesRequest:
+      type: object
+      properties:
+        actingUserId:
+          type: string
+          title: acting_user_id
+        projectId:
+          type: string
+          title: project_id
+      title: ListWorkspacesRequest
+      additionalProperties: false
+      description: |-
+        ListWorkspaces returns every workspace acting_user_id is an active member
+         of, auto-provisioning their PERSONAL workspace on first call.
+    workspace.v1.ListWorkspacesResponse:
+      type: object
+      properties:
+        workspaces:
+          type: array
+          items:
+            $ref: '#/components/schemas/workspace.v1.Workspace'
+          title: workspaces
+      title: ListWorkspacesResponse
+      additionalProperties: false
+    workspace.v1.Membership:
+      type: object
+      properties:
+        workspaceId:
+          type: string
+          title: workspace_id
+        userId:
+          type: string
+          title: user_id
+        role:
+          title: role
+          $ref: '#/components/schemas/workspace.v1.Role'
+        status:
+          title: status
+          $ref: '#/components/schemas/workspace.v1.MembershipStatus'
+        createdAt:
+          title: created_at
+          $ref: '#/components/schemas/google.protobuf.Timestamp'
+        updatedAt:
+          title: updated_at
+          $ref: '#/components/schemas/google.protobuf.Timestamp'
+      title: Membership
+      additionalProperties: false
+    workspace.v1.ReadRelationTuplesRequest:
+      type: object
+      properties:
+        namespace:
+          type: string
+          title: namespace
+        objectId:
+          type: string
+          title: object_id
+        relation:
+          type: string
+          title: relation
+        subjectUserId:
+          type: string
+          title: subject_user_id
+          description: 'optional: restrict to tuples whose subject is this concrete user.'
+        projectId:
+          type: string
+          title: project_id
+      title: ReadRelationTuplesRequest
+      additionalProperties: false
+      description: |-
+        ReadRelationTuples returns stored tuples matching the non-empty filter
+         fields (exact match). It does NOT evaluate userset rewrites — it is the
+         raw store read. Use Check for permission decisions.
+    workspace.v1.ReadRelationTuplesResponse:
+      type: object
+      properties:
+        tuples:
+          type: array
+          items:
+            $ref: '#/components/schemas/workspace.v1.RelationTuple'
+          title: tuples
+      title: ReadRelationTuplesResponse
+      additionalProperties: false
+    workspace.v1.RelationTuple:
+      type: object
+      properties:
+        projectId:
+          type: string
+          title: project_id
+        namespace:
+          type: string
+          title: namespace
+        objectId:
+          type: string
+          title: object_id
+        relation:
+          type: string
+          title: relation
+        subject:
+          title: subject
+          $ref: '#/components/schemas/workspace.v1.Subject'
+      title: RelationTuple
+      additionalProperties: false
+    workspace.v1.RemoveGroupMemberRequest:
+      type: object
+      properties:
+        groupId:
+          type: string
+          title: group_id
+        member:
+          title: member
+          $ref: '#/components/schemas/workspace.v1.GroupMember'
+        actingUserId:
+          type: string
+          title: acting_user_id
+        projectId:
+          type: string
+          title: project_id
+      title: RemoveGroupMemberRequest
+      additionalProperties: false
+    workspace.v1.RemoveGroupMemberResponse:
+      type: object
+      title: RemoveGroupMemberResponse
+      additionalProperties: false
+    workspace.v1.RemoveMemberRequest:
+      type: object
+      properties:
+        workspaceId:
+          type: string
+          title: workspace_id
+        userId:
+          type: string
+          title: user_id
+        actingUserId:
+          type: string
+          title: acting_user_id
+        projectId:
+          type: string
+          title: project_id
+      title: RemoveMemberRequest
+      additionalProperties: false
+    workspace.v1.RemoveMemberResponse:
+      type: object
+      title: RemoveMemberResponse
+      additionalProperties: false
+    workspace.v1.RevokeInvitationRequest:
+      type: object
+      properties:
+        invitationId:
+          type: string
+          title: invitation_id
+        actingUserId:
+          type: string
+          title: acting_user_id
+        projectId:
+          type: string
+          title: project_id
+      title: RevokeInvitationRequest
+      additionalProperties: false
+    workspace.v1.RevokeInvitationResponse:
+      type: object
+      title: RevokeInvitationResponse
+      additionalProperties: false
+    workspace.v1.Subject:
+      type: object
+      oneOf:
+        - properties:
+            set:
+              title: set
+              $ref: '#/components/schemas/workspace.v1.SubjectSet'
+          title: set
+          required:
+            - set
+        - properties:
+            userId:
+              type: string
+              title: user_id
+          title: user_id
+          required:
+            - userId
+      title: Subject
+      additionalProperties: false
+      description: 'Subject is the right-hand side of a tuple: a concrete user OR a userset.'
+    workspace.v1.SubjectSet:
+      type: object
+      properties:
+        namespace:
+          type: string
+          title: namespace
+        objectId:
+          type: string
+          title: object_id
+        relation:
+          type: string
+          title: relation
+      title: SubjectSet
+      additionalProperties: false
+      description: |-
+        SubjectSet references the set of subjects related to another object — the
+         userset `namespace:object_id#relation`. When relation is empty it denotes
+         the object itself (rarely needed).
+    workspace.v1.TupleUpdate:
+      type: object
+      properties:
+        op:
+          title: op
+          $ref: '#/components/schemas/workspace.v1.TupleUpdate.Op'
+        tuple:
+          title: tuple
+          $ref: '#/components/schemas/workspace.v1.RelationTuple'
+      title: TupleUpdate
+      additionalProperties: false
+    workspace.v1.UpdateMemberRoleRequest:
+      type: object
+      properties:
+        workspaceId:
+          type: string
+          title: workspace_id
+        userId:
+          type: string
+          title: user_id
+        role:
+          title: role
+          $ref: '#/components/schemas/workspace.v1.Role'
+        actingUserId:
+          type: string
+          title: acting_user_id
+        projectId:
+          type: string
+          title: project_id
+      title: UpdateMemberRoleRequest
+      additionalProperties: false
+    workspace.v1.UpdateMemberRoleResponse:
+      type: object
+      properties:
+        membership:
+          title: membership
+          $ref: '#/components/schemas/workspace.v1.Membership'
+      title: UpdateMemberRoleResponse
+      additionalProperties: false
+    workspace.v1.UpdateWorkspaceRequest:
+      type: object
+      properties:
+        workspaceId:
+          type: string
+          title: workspace_id
+        displayName:
+          type: string
+          title: display_name
+        actingUserId:
+          type: string
+          title: acting_user_id
+        projectId:
+          type: string
+          title: project_id
+      title: UpdateWorkspaceRequest
+      additionalProperties: false
+    workspace.v1.UpdateWorkspaceResponse:
+      type: object
+      properties:
+        workspace:
+          title: workspace
+          $ref: '#/components/schemas/workspace.v1.Workspace'
+      title: UpdateWorkspaceResponse
+      additionalProperties: false
+    workspace.v1.UsersetTree:
+      type: object
+      properties:
+        type:
+          title: type
+          $ref: '#/components/schemas/workspace.v1.UsersetTree.NodeType'
+        userIds:
+          type: array
+          items:
+            type: string
+          title: user_ids
+          description: 'For LEAF nodes: the concrete subjects and usersets at this node.'
+        sets:
+          type: array
+          items:
+            $ref: '#/components/schemas/workspace.v1.SubjectSet'
+          title: sets
+        children:
+          type: array
+          items:
+            $ref: '#/components/schemas/workspace.v1.UsersetTree'
+          title: children
+          description: 'For UNION nodes: the child subtrees.'
+        expanded:
+          title: expanded
+          description: The userset this node expands.
+          $ref: '#/components/schemas/workspace.v1.SubjectSet'
+      title: UsersetTree
+      additionalProperties: false
+    workspace.v1.Workspace:
+      type: object
+      properties:
+        id:
+          type: string
+          title: id
+        projectId:
+          type: string
+          title: project_id
+          description: |-
+            project_id is the isolation shard (identity ADR-0002): every row and
+             every relation tuple is scoped to it.
+        slug:
+          type: string
+          title: slug
+        displayName:
+          type: string
+          title: display_name
+        type:
+          title: type
+          $ref: '#/components/schemas/workspace.v1.WorkspaceType'
+        ownerUserId:
+          type: string
+          title: owner_user_id
+        createdAt:
+          title: created_at
+          $ref: '#/components/schemas/google.protobuf.Timestamp'
+        updatedAt:
+          title: updated_at
+          $ref: '#/components/schemas/google.protobuf.Timestamp'
+      title: Workspace
+      additionalProperties: false
+    workspace.v1.WriteRelationTuplesRequest:
+      type: object
+      properties:
+        updates:
+          type: array
+          items:
+            $ref: '#/components/schemas/workspace.v1.TupleUpdate'
+          title: updates
+        projectId:
+          type: string
+          title: project_id
+          description: project_id scopes every tuple in the batch; empty = default project.
+      title: WriteRelationTuplesRequest
+      additionalProperties: false
+    workspace.v1.WriteRelationTuplesResponse:
+      type: object
+      title: WriteRelationTuplesResponse
+      additionalProperties: false
+    connect-protocol-version:
+      type: number
+      title: Connect-Protocol-Version
+      enum:
+        - 1
+      description: Define the version of the Connect protocol
+      const: 1
+    connect-timeout-header:
+      type: number
+      title: Connect-Timeout-Ms
+      description: Define the timeout, in ms
+    connect.error:
+      type: object
+      properties:
+        code:
+          type: string
+          examples:
+            - not_found
+          enum:
+            - canceled
+            - unknown
+            - invalid_argument
+            - deadline_exceeded
+            - not_found
+            - already_exists
+            - permission_denied
+            - resource_exhausted
+            - failed_precondition
+            - aborted
+            - out_of_range
+            - unimplemented
+            - internal
+            - unavailable
+            - data_loss
+            - unauthenticated
+          description: The status code, which should be an enum value of [google.rpc.Code][google.rpc.Code].
+        message:
+          type: string
+          description: A developer-facing error message, which should be in English. Any user-facing error message should be localized and sent in the [google.rpc.Status.details][google.rpc.Status.details] field, or localized by the client.
+        detail:
+          $ref: '#/components/schemas/google.protobuf.Any'
+      title: Connect Error
+      additionalProperties: true
+      description: 'Error type returned by Connect: https://connectrpc.com/docs/go/errors/#http-representation'
+    google.protobuf.Any:
+      type: object
+      properties:
+        type:
+          type: string
+        value:
+          type: string
+          format: binary
+        debug:
+          type: object
+          additionalProperties: true
+      additionalProperties: true
+      description: Contains an arbitrary serialized message along with a @type that describes the type of the serialized message.
+paths:
+  /workspace.v1.WorkspaceService/CreateWorkspace:
+    post:
+      tags:
+        - workspace.v1.WorkspaceService
+      summary: CreateWorkspace
+      operationId: workspace.v1.WorkspaceService.CreateWorkspace
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          required: true
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+        - name: Connect-Timeout-Ms
+          in: header
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/workspace.v1.CreateWorkspaceRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/workspace.v1.CreateWorkspaceResponse'
+  /workspace.v1.WorkspaceService/GetWorkspace:
+    post:
+      tags:
+        - workspace.v1.WorkspaceService
+      summary: GetWorkspace
+      operationId: workspace.v1.WorkspaceService.GetWorkspace
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          required: true
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+        - name: Connect-Timeout-Ms
+          in: header
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/workspace.v1.GetWorkspaceRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/workspace.v1.GetWorkspaceResponse'
+  /workspace.v1.WorkspaceService/ListWorkspaces:
+    post:
+      tags:
+        - workspace.v1.WorkspaceService
+      summary: ListWorkspaces
+      operationId: workspace.v1.WorkspaceService.ListWorkspaces
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          required: true
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+        - name: Connect-Timeout-Ms
+          in: header
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/workspace.v1.ListWorkspacesRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/workspace.v1.ListWorkspacesResponse'
+  /workspace.v1.WorkspaceService/UpdateWorkspace:
+    post:
+      tags:
+        - workspace.v1.WorkspaceService
+      summary: UpdateWorkspace
+      operationId: workspace.v1.WorkspaceService.UpdateWorkspace
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          required: true
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+        - name: Connect-Timeout-Ms
+          in: header
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/workspace.v1.UpdateWorkspaceRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/workspace.v1.UpdateWorkspaceResponse'
+  /workspace.v1.WorkspaceService/DeleteWorkspace:
+    post:
+      tags:
+        - workspace.v1.WorkspaceService
+      summary: DeleteWorkspace
+      operationId: workspace.v1.WorkspaceService.DeleteWorkspace
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          required: true
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+        - name: Connect-Timeout-Ms
+          in: header
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/workspace.v1.DeleteWorkspaceRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/workspace.v1.DeleteWorkspaceResponse'
+  /workspace.v1.WorkspaceService/AddMember:
+    post:
+      tags:
+        - workspace.v1.WorkspaceService
+      summary: AddMember
+      operationId: workspace.v1.WorkspaceService.AddMember
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          required: true
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+        - name: Connect-Timeout-Ms
+          in: header
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/workspace.v1.AddMemberRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/workspace.v1.AddMemberResponse'
+  /workspace.v1.WorkspaceService/UpdateMemberRole:
+    post:
+      tags:
+        - workspace.v1.WorkspaceService
+      summary: UpdateMemberRole
+      operationId: workspace.v1.WorkspaceService.UpdateMemberRole
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          required: true
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+        - name: Connect-Timeout-Ms
+          in: header
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/workspace.v1.UpdateMemberRoleRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/workspace.v1.UpdateMemberRoleResponse'
+  /workspace.v1.WorkspaceService/RemoveMember:
+    post:
+      tags:
+        - workspace.v1.WorkspaceService
+      summary: RemoveMember
+      operationId: workspace.v1.WorkspaceService.RemoveMember
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          required: true
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+        - name: Connect-Timeout-Ms
+          in: header
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/workspace.v1.RemoveMemberRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/workspace.v1.RemoveMemberResponse'
+  /workspace.v1.WorkspaceService/ListMembers:
+    post:
+      tags:
+        - workspace.v1.WorkspaceService
+      summary: ListMembers
+      operationId: workspace.v1.WorkspaceService.ListMembers
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          required: true
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+        - name: Connect-Timeout-Ms
+          in: header
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/workspace.v1.ListMembersRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/workspace.v1.ListMembersResponse'
+  /workspace.v1.WorkspaceService/CreateInvitation:
+    post:
+      tags:
+        - workspace.v1.WorkspaceService
+      summary: CreateInvitation
+      operationId: workspace.v1.WorkspaceService.CreateInvitation
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          required: true
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+        - name: Connect-Timeout-Ms
+          in: header
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/workspace.v1.CreateInvitationRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/workspace.v1.CreateInvitationResponse'
+  /workspace.v1.WorkspaceService/AcceptInvitation:
+    post:
+      tags:
+        - workspace.v1.WorkspaceService
+      summary: AcceptInvitation
+      operationId: workspace.v1.WorkspaceService.AcceptInvitation
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          required: true
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+        - name: Connect-Timeout-Ms
+          in: header
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/workspace.v1.AcceptInvitationRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/workspace.v1.AcceptInvitationResponse'
+  /workspace.v1.WorkspaceService/ListInvitations:
+    post:
+      tags:
+        - workspace.v1.WorkspaceService
+      summary: ListInvitations
+      operationId: workspace.v1.WorkspaceService.ListInvitations
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          required: true
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+        - name: Connect-Timeout-Ms
+          in: header
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/workspace.v1.ListInvitationsRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/workspace.v1.ListInvitationsResponse'
+  /workspace.v1.WorkspaceService/RevokeInvitation:
+    post:
+      tags:
+        - workspace.v1.WorkspaceService
+      summary: RevokeInvitation
+      operationId: workspace.v1.WorkspaceService.RevokeInvitation
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          required: true
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+        - name: Connect-Timeout-Ms
+          in: header
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/workspace.v1.RevokeInvitationRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/workspace.v1.RevokeInvitationResponse'
+  /workspace.v1.GroupService/CreateGroup:
+    post:
+      tags:
+        - workspace.v1.GroupService
+      summary: CreateGroup
+      operationId: workspace.v1.GroupService.CreateGroup
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          required: true
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+        - name: Connect-Timeout-Ms
+          in: header
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/workspace.v1.CreateGroupRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/workspace.v1.CreateGroupResponse'
+  /workspace.v1.GroupService/GetGroup:
+    post:
+      tags:
+        - workspace.v1.GroupService
+      summary: GetGroup
+      operationId: workspace.v1.GroupService.GetGroup
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          required: true
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+        - name: Connect-Timeout-Ms
+          in: header
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/workspace.v1.GetGroupRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/workspace.v1.GetGroupResponse'
+  /workspace.v1.GroupService/ListGroups:
+    post:
+      tags:
+        - workspace.v1.GroupService
+      summary: ListGroups
+      operationId: workspace.v1.GroupService.ListGroups
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          required: true
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+        - name: Connect-Timeout-Ms
+          in: header
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/workspace.v1.ListGroupsRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/workspace.v1.ListGroupsResponse'
+  /workspace.v1.GroupService/DeleteGroup:
+    post:
+      tags:
+        - workspace.v1.GroupService
+      summary: DeleteGroup
+      operationId: workspace.v1.GroupService.DeleteGroup
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          required: true
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+        - name: Connect-Timeout-Ms
+          in: header
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/workspace.v1.DeleteGroupRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/workspace.v1.DeleteGroupResponse'
+  /workspace.v1.GroupService/AddGroupMember:
+    post:
+      tags:
+        - workspace.v1.GroupService
+      summary: AddGroupMember
+      operationId: workspace.v1.GroupService.AddGroupMember
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          required: true
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+        - name: Connect-Timeout-Ms
+          in: header
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/workspace.v1.AddGroupMemberRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/workspace.v1.AddGroupMemberResponse'
+  /workspace.v1.GroupService/RemoveGroupMember:
+    post:
+      tags:
+        - workspace.v1.GroupService
+      summary: RemoveGroupMember
+      operationId: workspace.v1.GroupService.RemoveGroupMember
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          required: true
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+        - name: Connect-Timeout-Ms
+          in: header
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/workspace.v1.RemoveGroupMemberRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/workspace.v1.RemoveGroupMemberResponse'
+  /workspace.v1.GroupService/ListGroupMembers:
+    post:
+      tags:
+        - workspace.v1.GroupService
+      summary: ListGroupMembers
+      operationId: workspace.v1.GroupService.ListGroupMembers
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          required: true
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+        - name: Connect-Timeout-Ms
+          in: header
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/workspace.v1.ListGroupMembersRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/workspace.v1.ListGroupMembersResponse'
+  /workspace.v1.AuthzService/WriteRelationTuples:
+    post:
+      tags:
+        - workspace.v1.AuthzService
+      summary: WriteRelationTuples
+      operationId: workspace.v1.AuthzService.WriteRelationTuples
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          required: true
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+        - name: Connect-Timeout-Ms
+          in: header
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/workspace.v1.WriteRelationTuplesRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/workspace.v1.WriteRelationTuplesResponse'
+  /workspace.v1.AuthzService/ReadRelationTuples:
+    post:
+      tags:
+        - workspace.v1.AuthzService
+      summary: ReadRelationTuples
+      operationId: workspace.v1.AuthzService.ReadRelationTuples
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          required: true
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+        - name: Connect-Timeout-Ms
+          in: header
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/workspace.v1.ReadRelationTuplesRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/workspace.v1.ReadRelationTuplesResponse'
+  /workspace.v1.AuthzService/Check:
+    post:
+      tags:
+        - workspace.v1.AuthzService
+      summary: Check
+      operationId: workspace.v1.AuthzService.Check
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          required: true
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+        - name: Connect-Timeout-Ms
+          in: header
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/workspace.v1.CheckRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/workspace.v1.CheckResponse'
+  /workspace.v1.AuthzService/Expand:
+    post:
+      tags:
+        - workspace.v1.AuthzService
+      summary: Expand
+      operationId: workspace.v1.AuthzService.Expand
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          required: true
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+        - name: Connect-Timeout-Ms
+          in: header
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/workspace.v1.ExpandRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/workspace.v1.ExpandResponse'
+tags:
+  - name: workspace.v1.WorkspaceService
+  - name: workspace.v1.GroupService
+  - name: workspace.v1.AuthzService

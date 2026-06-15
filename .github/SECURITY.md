@@ -4,7 +4,7 @@
 
 **Do not open a public issue for security vulnerabilities.**
 
-Report privately via [GitHub Security Advisories](https://github.com/elloloop/workspaces/security/advisories/new).
+Report privately via [GitHub Security Advisories](https://github.com/elloloop/workspace/security/advisories/new).
 
 Include:
 

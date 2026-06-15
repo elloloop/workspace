@@ -1,0 +1,204 @@
+---
+import DocsLayout from "../../../layouts/DocsLayout.astro";
+import { Code } from "astro-expressive-code/components";
+
+const BASE = import.meta.env.BASE_URL;
+---
+
+<DocsLayout title="Workplace Collaboration Tool">
+  <h1>Workplace Collaboration Tool</h1>
+  <p>
+    This page models a Slack-plus-Linear-plus-email-plus-HR-plus-incident.io
+    workplace product entirely as relation tuples — no per-feature permission
+    tables. You will see the exact tuples written as a company onboards, a team
+    forms, an issue is filed, a doc is shared with a group, and an on-call
+    rotation is granted incident access — and the <code>Check</code> answers
+    each one produces.
+  </p>
+
+  <h2>The model</h2>
+  <p>
+    Everything maps onto three namespaces and their userset-rewrite rules from
+    the
+    <a href={`${BASE}/docs/concepts/authorization-model`}>Authorization Model</a>:
+  </p>
+  <ul>
+    <li>
+      <strong>Company → <code>workspace</code> (TEAM).</strong> Employees are
+      members at a role; <code>owner ⊃ admin ⊃ member ⊃ guest</code>.
+    </li>
+    <li>
+      <strong>Departments, teams, on-call rotations → <code>group</code>.</strong>
+      Groups <em>nest</em>, so <code>all-eng</code> can contain
+      <code>backend</code> and <code>frontend</code>.
+    </li>
+    <li>
+      <strong>A Linear issue, a channel, an HR record, an incident →
+      <code>resource</code>.</strong> Each is <code>parent</code>ed to the
+      company workspace (so it inherits company access) and can additionally
+      carry direct shares and group grants.
+    </li>
+  </ul>
+  <p>
+    The two rewrite rules that do all the inheritance work:
+    <code>resource.viewer</code> unions <code>this</code>, the resource's own
+    <code>editor</code>s, and <code>tupleToUserset(parent, member)</code>;
+    <code>resource.editor</code> unions <code>this</code>, the resource's
+    <code>owner</code>, and <code>tupleToUserset(parent, admin)</code>. That is
+    how "any company admin can edit anything in the company" is a single rule,
+    not a join rewritten per feature.
+  </p>
+
+  <h2>1 · A company onboards</h2>
+  <p>
+    The product backend calls <code>CreateWorkspace</code> on behalf of the
+    founder. <code>acting_user_id</code> is required — it is the user the action
+    is authorized as (the end user is data here, never the caller). The owner is
+    set at creation and mirrored as a <code>workspace:acme#owner</code> tuple.
+  </p>
+  <Code code={`curl -X POST http://localhost:8080/workspace.v1.WorkspaceService/CreateWorkspace \\
+  -H "Authorization: Bearer $WS_SERVICE_TOKEN" -H "Content-Type: application/json" \\
+  -d '{"display_name":"Acme","slug":"acme","acting_user_id":"ceo"}'`} lang="bash" title="onboard the company" />
+  <p>
+    Then employees are added with <code>AddMember</code>. Note
+    <code>AddMember</code> rejects <code>ROLE_OWNER</code> — ownership is fixed at
+    creation — so new staff arrive as admin, member, or guest.
+  </p>
+  <Code code={`curl -X POST http://localhost:8080/workspace.v1.WorkspaceService/AddMember \\
+  -H "Authorization: Bearer $WS_SERVICE_TOKEN" -H "Content-Type: application/json" \\
+  -d '{"workspace_id":"acme","user_id":"eng-lead","role":"ROLE_ADMIN","acting_user_id":"ceo"}'`} lang="bash" title="add an engineering lead as admin" />
+  <p>The resulting company-membership tuples:</p>
+  <Code code={`workspace:acme#owner@user:ceo
+workspace:acme#admin@user:eng-lead
+workspace:acme#member@user:alice
+workspace:acme#member@user:bob`} lang="text" title="company membership tuples" />
+
+  <h2>2 · A team is formed</h2>
+  <p>
+    Departments and teams are <code>group</code>s scoped to the workspace
+    (<code>workspace_id</code> set). Groups nest, so the backend team is a member
+    of all-engineering. Create the group, then add members — a member can be a
+    user <em>or</em> another group.
+  </p>
+  <Code code={`# create the team as a workspace-scoped group
+curl -X POST http://localhost:8080/workspace.v1.GroupService/CreateGroup \\
+  -H "Authorization: Bearer $WS_SERVICE_TOKEN" -H "Content-Type: application/json" \\
+  -d '{"display_name":"Backend","slug":"backend","workspace_id":"acme","acting_user_id":"eng-lead"}'
+
+# add a user to the team
+curl -X POST http://localhost:8080/workspace.v1.GroupService/AddGroupMember \\
+  -H "Authorization: Bearer $WS_SERVICE_TOKEN" -H "Content-Type: application/json" \\
+  -d '{"group_id":"backend","member":{"user_id":"alice"},"acting_user_id":"eng-lead"}'
+
+# nest the backend team inside all-engineering
+curl -X POST http://localhost:8080/workspace.v1.GroupService/AddGroupMember \\
+  -H "Authorization: Bearer $WS_SERVICE_TOKEN" -H "Content-Type: application/json" \\
+  -d '{"group_id":"all-eng","member":{"group_id":"backend"},"acting_user_id":"eng-lead"}'`} lang="bash" title="form a nested team" />
+  <p>The tuples these write — note the nested-group subject is a userset:</p>
+  <Code code={`group:backend#member@user:alice
+group:backend#member@user:bob
+group:all-eng#member@group:backend#member     # backend nests into all-eng`} lang="text" title="team membership tuples" />
+  <p>
+    Because <code>group.member = this</code> and subjects may themselves be
+    <code>group:&lt;id&gt;#member</code> usersets,
+    <code>Check(group, all-eng, member, alice)</code> walks
+    <code>backend</code> transitively and returns
+    <strong>allowed</strong>. Evaluation is cycle-safe.
+  </p>
+
+  <h2>3 · An issue is created</h2>
+  <p>
+    A Linear-style issue is a <code>resource</code> parented to the company
+    workspace, with the filer as its owner. That is <strong>two tuples</strong> —
+    and every Acme member can already view it and every Acme admin can already
+    edit it, by inheritance, with zero per-issue tuples for those users.
+  </p>
+  <Code code={`curl -X POST http://localhost:8080/workspace.v1.AuthzService/WriteRelationTuples \\
+  -H "Authorization: Bearer $WS_SERVICE_TOKEN" -H "Content-Type: application/json" \\
+  -d '{
+    "updates": [
+      {"op":"OP_INSERT","tuple":{"namespace":"resource","object_id":"issue-42","relation":"parent","subject":{"set":{"namespace":"workspace","object_id":"acme","relation":""}}}},
+      {"op":"OP_INSERT","tuple":{"namespace":"resource","object_id":"issue-42","relation":"owner","subject":{"user_id":"alice"}}}
+    ]
+  }'`} lang="bash" title="file the issue" />
+  <Code code={`resource:issue-42#parent@workspace:acme        # the issue lives in acme
+resource:issue-42#owner@user:alice             # alice filed it`} lang="text" title="issue tuples" />
+  <p>
+    Now <code>Check(resource, issue-42, viewer, bob)</code> for an ordinary Acme
+    member: the <code>viewer</code> rule's
+    <code>tupleToUserset(parent, member)</code> walks the issue's
+    <code>parent</code> to <code>workspace:acme</code>, evaluates
+    <code>member</code> there, and returns <strong>allowed</strong>.
+  </p>
+  <Code code={`curl -X POST http://localhost:8080/workspace.v1.AuthzService/Check \\
+  -H "Authorization: Bearer $WS_SERVICE_TOKEN" -H "Content-Type: application/json" \\
+  -d '{"namespace":"resource","object_id":"issue-42","relation":"viewer","subject_user_id":"bob"}'`} lang="bash" title="can bob view the issue?" />
+  <Code code={`{"allowed": true}`} lang="json" />
+  <p>
+    A guest with no path to the company workspace, by contrast, gets
+    <code>{`{"allowed": false}`}</code> for the same call.
+  </p>
+
+  <h2>4 · A doc is shared with a group</h2>
+  <p>
+    An HR record, a channel, or a design doc is shared with a whole team in a
+    <strong>single tuple</strong> whose subject is the group's
+    <code>member</code> userset. Add or remove a teammate once and access
+    propagates to every resource that group is granted on.
+  </p>
+  <Code code={`curl -X POST http://localhost:8080/workspace.v1.AuthzService/WriteRelationTuples \\
+  -H "Authorization: Bearer $WS_SERVICE_TOKEN" -H "Content-Type: application/json" \\
+  -d '{
+    "updates": [
+      {"op":"OP_INSERT","tuple":{"namespace":"resource","object_id":"doc-roadmap","relation":"editor","subject":{"set":{"namespace":"group","object_id":"all-eng","relation":"member"}}}}
+    ]
+  }'`} lang="bash" title="share the roadmap with all of engineering" />
+  <Code code={`resource:doc-roadmap#editor@group:all-eng#member`} lang="text" title="group grant tuple" />
+  <p>
+    <code>Check(resource, doc-roadmap, editor, alice)</code> resolves
+    <code>group:all-eng#member</code>, which nests <code>backend</code>, which
+    contains <code>alice</code> — <strong>allowed</strong>. Because
+    <code>viewer</code> unions <code>computed(editor)</code>, alice is also a
+    <code>viewer</code> with no second tuple.
+  </p>
+
+  <h2>5 · An on-call rotation is granted incident access</h2>
+  <p>
+    An incident is a <code>resource</code>; the on-call rotation is a
+    <code>group</code>. Grant the rotation <code>editor</code> on the incident in
+    one tuple. Whoever is on-call this week — set by group membership — can edit
+    it, with no change to the incident's tuples.
+  </p>
+  <Code code={`group:sre-oncall#member@user:bob               # bob is on the rotation
+resource:incident-7#parent@workspace:acme      # incident lives in acme
+resource:incident-7#editor@group:sre-oncall#member   # on-call can edit it`} lang="text" title="incident + on-call tuples" />
+  <Code code={`curl -X POST http://localhost:8080/workspace.v1.AuthzService/Check \\
+  -H "Authorization: Bearer $WS_SERVICE_TOKEN" -H "Content-Type: application/json" \\
+  -d '{"namespace":"resource","object_id":"incident-7","relation":"editor","subject_user_id":"bob"}'`} lang="bash" title="can bob edit the incident?" />
+  <Code code={`{"allowed": true}`} lang="json" />
+  <p>
+    Rotate the on-call by deleting bob's <code>group:sre-oncall#member</code>
+    tuple and inserting the next responder's — the incident grant never changes.
+  </p>
+
+  <h2>Inspecting who has access</h2>
+  <p>
+    <code>Expand(resource, doc-roadmap, viewer)</code> returns the effective
+    userset tree — a union with <code>this</code>, the <code>editor</code>
+    subtree (carrying <code>group:all-eng#member</code>), and the
+    <code>tupleToUserset(parent, member)</code> subtree resolving to
+    <code>workspace:acme#member</code>. Use it to render a "shared with" panel
+    or to debug why a <code>Check</code> resolved the way it did. See
+    <a href={`${BASE}/docs/guides/check-and-expand`}>Check &amp; Expand</a>.
+  </p>
+
+  <h2>Why this scales</h2>
+  <p>
+    HR records, incidents, issues, channels, and docs are all
+    <code>resource</code>s parented to the company workspace, and they all
+    inherit company access through the same two rewrite rules. New features add
+    no permission tables and no new <code>Check</code> code — only new tuples.
+    For the personal-vs-team boundary and standalone groups, see
+    <a href={`${BASE}/docs/concepts/workspaces-and-groups`}>Workspaces &amp; Groups</a>.
+  </p>
+</DocsLayout>

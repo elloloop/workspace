@@ -4,13 +4,43 @@ This is the deep reference for the relation-tuple engine that backs the
 workspaces service. It explains the tuple format, every built-in namespace and
 its rewrite rules, how `Check` evaluates transitively, how to add a namespace,
 and how the three motivating products map onto the model. The source of truth
-for the API is [`proto/workspace/workspace.proto`](../proto/workspace/workspace.proto);
-the source of truth for the built-in model is
+for the API is [`proto/workspace/v1/workspace.proto`](../proto/workspace/v1/workspace.proto)
+(proto package `workspace.v1`); the source of truth for the built-in model is
 [`pkg/authz/model.go`](../pkg/authz/model.go).
 
 The engine is Zanzibar-inspired: a uniform store of relation tuples plus
 per-namespace userset-rewrite rules (see
 [ADR-0001](adr/0001-relation-tuples-as-the-authz-primitive.md)).
+
+## Calling the engine
+
+This is an **internal** service, called service-to-service by trusted product
+backends — never directly by a browser or mobile client. Every RPC is an HTTP
+`POST` over the Connect protocol (JSON, with gRPC and gRPC-Web also supported)
+at `/workspace.v1.<Service>/<Method>`. The caller authenticates as a **service**
+with a shared bearer credential (`Authorization: Bearer <service-token>`, drawn
+from `GATEWAY_SERVICE_AUTH_TOKENS`); a missing or wrong credential returns HTTP
+`401` / Connect code `Unauthenticated`.
+
+As in Zanzibar, the **end user is data, not the caller**. End-user
+authentication happens at the product edge, before this service is called. The
+relevant user is an explicit request field: management RPCs take a required
+`acting_user_id` (the user the action is authorized as; omitting it returns
+`InvalidArgument`), and `Check` takes a `subject_user_id` (the user being
+tested). `project_id` is optional and defaults to `GATEWAY_DEFAULT_PROJECT_ID`.
+
+```bash
+# Write a tuple: grant bob admin on workspace acme.
+curl -X POST http://localhost:8080/workspace.v1.AuthzService/WriteRelationTuples \
+  -H "Authorization: Bearer $WS_SERVICE_TOKEN" -H "Content-Type: application/json" \
+  -d '{"updates":[{"op":"OP_INSERT","tuple":{"namespace":"workspace","object_id":"acme","relation":"admin","subject":{"user_id":"bob"}}}]}'
+
+# Check the decision. admin ⊃ member, so this returns allowed.
+curl -X POST http://localhost:8080/workspace.v1.AuthzService/Check \
+  -H "Authorization: Bearer $WS_SERVICE_TOKEN" -H "Content-Type: application/json" \
+  -d '{"namespace":"workspace","object_id":"acme","relation":"member","subject_user_id":"bob"}'
+# => {"allowed": true}
+```
 
 ## The tuple format
 

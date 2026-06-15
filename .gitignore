@@ -27,3 +27,6 @@ cover.out
 
 # Load-test run artifacts
 tests/load/results/
+
+# locally-installed codegen plugins
+.bin/

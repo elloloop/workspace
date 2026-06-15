@@ -1,0 +1,130 @@
+---
+import DocsLayout from "../../../layouts/DocsLayout.astro";
+import { Code } from "astro-expressive-code/components";
+
+const BASE = import.meta.env.BASE_URL;
+---
+
+<DocsLayout title="Security & Service Auth">
+  <h1>Security &amp; Service Auth</h1>
+  <p>
+    This page is the authoritative reference for how requests to this service are
+    authenticated and where the trust boundary sits. Read it before deploying.
+    The short version: workspaces is an <strong>internal</strong> service.
+    Callers are trusted product backends that authenticate
+    <strong>service-to-service</strong> with a shared credential. The end user is
+    never the caller — they are <em>data</em> in the request, authenticated at
+    the product edge before this service is ever called.
+  </p>
+
+  <h2>Service-to-service authentication</h2>
+  <p>
+    A calling backend presents a shared service credential on every RPC:
+  </p>
+  <Code code={`Authorization: Bearer <service-token>`} lang="text" />
+  <p>
+    The accepted credentials come from <code>GATEWAY_SERVICE_AUTH_TOKENS</code>
+    (comma-separated, so you can rotate). The middleware compares the presented
+    token against each configured token with a
+    <strong>constant-time comparison</strong> (<code>crypto/subtle</code>), so a
+    timing side-channel cannot leak the secret. A missing or wrong credential
+    returns <strong>HTTP 401</strong>, which Connect surfaces to the client as
+    code <strong><code>Unauthenticated</code></strong>.
+  </p>
+  <table>
+    <tr><th>Condition</th><th>Result</th></tr>
+    <tr><td>Valid <code>Bearer</code> token (matches a configured token)</td><td>Request proceeds</td></tr>
+    <tr><td>Missing / malformed / wrong token</td><td>HTTP 401 → Connect <code>Unauthenticated</code></td></tr>
+    <tr><td><code>GATEWAY_SERVICE_AUTH_TOKENS</code> empty</td><td>Auth <strong>disabled</strong>; every caller trusted; a warning is logged at startup</td></tr>
+    <tr><td>Health (<code>/healthz</code>, <code>/readyz</code>), metrics, and CORS preflight (<code>OPTIONS</code>)</td><td>Always bypass the check</td></tr>
+  </table>
+  <p>
+    Leaving the tokens empty is intentional for deployments where a service mesh
+    or mTLS already authenticates callers — the requirement is disabled and a
+    loud warning is logged at construction so it is never silently off. If you
+    are not behind a mesh, set the tokens.
+  </p>
+  <div class="rounded-md border border-border bg-muted/40 px-4 py-3">
+    <p class="my-0">
+      <strong>There is no end-user JWT in this service.</strong> No JWKS, no
+      HS256 secret, no issuer check, no token-verification step. The
+      <code>Authorization</code> header carries the <em>service</em> credential,
+      not a user's access token.
+    </p>
+  </div>
+
+  <h2>The end user is data, not the caller</h2>
+  <p>
+    Like Zanzibar, the user whose access is being managed or tested is an
+    explicit request field, independent of who is calling:
+  </p>
+  <ul>
+    <li><strong><code>acting_user_id</code></strong> (management RPCs) — the user the action is authorized as, e.g. "must be an admin to add a member". <strong>Required</strong>; omitting it returns <code>InvalidArgument</code>.</li>
+    <li><strong><code>subject_user_id</code></strong> (<code>Check</code>) — the user whose access is being tested. Pure data, completely independent of the caller.</li>
+  </ul>
+  <Code code={`curl -X POST http://localhost:8080/workspace.v1.AuthzService/Check \\
+  -H "Authorization: Bearer $WS_SERVICE_TOKEN" -H "Content-Type: application/json" \\
+  -d '{"namespace":"workspace","object_id":"W","relation":"admin","subject_user_id":"bob"}'
+# The service auth says WHO IS CALLING (a trusted backend);
+# subject_user_id says WHOSE ACCESS to evaluate (data).`} lang="bash" />
+
+  <h3>Why service-auth, not forwarding the end-user token</h3>
+  <p>
+    A tempting alternative is to forward the end user's access token from the
+    product into this service and have it re-verify the JWT. This service does
+    <strong>not</strong> do that, deliberately:
+  </p>
+  <ul>
+    <li><strong>Separation of concerns.</strong> Authentication belongs to identity and the product edge; authorization belongs here. Re-verifying a user token would duplicate identity's job and couple this service to identity's key material and token format.</li>
+    <li><strong>Zanzibar correctness.</strong> An authorization service answers "does user X have relation R on object O?" — X is an argument. The caller is a service. Binding the answer to whoever's token happens to be on the wire conflates the questioner with the subject and makes server-to-server queries (background jobs, "can user X see this?" from an admin tool) impossible to express.</li>
+    <li><strong>Decoupling.</strong> Many product surfaces (web, mobile, cron, internal tools) call one backend, which calls here as itself. The user is passed as data, so none of those surfaces need this service to understand their particular token.</li>
+  </ul>
+
+  <h2>Trust boundary</h2>
+  <Code code={`  End user                Product backend                 workspaces (this service)
+  (browser/mobile)        (trusted caller)
+  ───────────             ────────────────                ──────────────────────────
+  identity access  ─────▶ verifies the user token  ─────▶ Authorization: Bearer
+  token (verified         at its OWN edge, resolves        <service-token>
+  at the edge)            the user + tenant                + acting_user_id / subject_user_id
+                                                           + project_id   (all DATA)
+
+  └─ authN happens here ──┘                        └─ authZ happens here, never authN ─┘`} lang="text" />
+  <p>
+    Everything left of the backend is the product's responsibility. This service
+    trusts the backend's service credential and the user/project it passes; it
+    performs <strong>authorization only</strong>, never authentication.
+  </p>
+
+  <h2>Callers are trusted — a deployment consideration</h2>
+  <p>
+    Because the trust model is service-to-service, an authenticated caller is
+    trusted within its project. In particular,
+    <strong><code>WriteRelationTuples</code> is open to any authenticated service</strong>:
+    there is no per-tuple authorization on the write path — a valid service
+    credential can write or delete any tuple in any project it names. This is
+    correct for a single trusted backend (it is the system of record for its own
+    grants), but call it out explicitly:
+  </p>
+  <ul>
+    <li>Do not hand the service token to an untrusted or multi-tenant-shared component. A leaked token is full write access to the tuple store.</li>
+    <li>If multiple backends share the deployment, they share trust — there is no mutual isolation between callers beyond the <code>project_id</code> each one chooses to send.</li>
+    <li>Route end-user-facing mutations through your backend's own authorization first; do not expose <code>WriteRelationTuples</code> to clients.</li>
+  </ul>
+
+  <h2>Hardening</h2>
+  <ul>
+    <li><strong>Rotate tokens with the CSV.</strong> <code>GATEWAY_SERVICE_AUTH_TOKENS</code> is comma-separated: add the new token, roll callers over, then drop the old one — zero-downtime rotation with no window where both are required.</li>
+    <li><strong>Terminate mTLS at the mesh.</strong> When a service mesh or mTLS already authenticates callers, you may leave the tokens empty (and accept the startup warning) or keep them as defense-in-depth. Never expose the service on a public network with auth disabled.</li>
+    <li><strong>Restrict CORS.</strong> Set <code>GATEWAY_ALLOWED_ORIGINS</code> to the exact origins that may call the service from a browser. Since this is an internal service, that list is usually empty.</li>
+    <li><strong>Keep it internal.</strong> Bind it to the private network; only your trusted backends should be able to reach <code>GATEWAY_CONNECT_PORT</code>. Health and metrics ports need not be public either.</li>
+    <li><strong>Cap request size.</strong> <code>GATEWAY_HTTP_MAX_BODY_BYTES</code> (default 1 MiB) bounds request bodies.</li>
+  </ul>
+
+  <h2>Where to next</h2>
+  <ul>
+    <li><a href={`${BASE}docs/concepts/projects`}>Projects &amp; Multi-Tenancy</a> — the <code>project_id</code> isolation shard callers pass.</li>
+    <li><a href={`${BASE}docs/installation/configuration`}>Configuration</a> — every <code>GATEWAY_</code> environment variable.</li>
+    <li><a href={`${BASE}docs/api-reference/overview`}>Using the API</a> — protocol, error codes, and the live per-RPC reference.</li>
+  </ul>
+</DocsLayout>

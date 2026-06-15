@@ -175,13 +175,25 @@ fuzz: ## Fuzz smoke — runs each fuzz target with seed corpus + 15s fuzzing
 # Proto — buf lint + codegen
 # ---------------------------------------------------------------------------
 
+CONNECT_OPENAPI_VERSION ?= v0.18.0
+
 .PHONY: proto
-proto: ## Regenerate Go stubs from proto (buf generate)
+proto: ## Regenerate Go stubs + OpenAPI from proto (buf generate)
 	$(BUF) generate
+	$(MAKE) openapi
 
 .PHONY: buf-lint
 buf-lint: ## Lint the proto sources
 	$(BUF) lint
+
+.PHONY: openapi
+openapi: ## Regenerate the OpenAPI spec and publish it to the docs site (Scalar)
+	GOBIN=$(CURDIR)/.bin $(GO) install github.com/sudorandom/protoc-gen-connect-openapi@$(CONNECT_OPENAPI_VERSION)
+	$(BUF) generate --template buf.gen.openapi.yaml
+	perl -0pi -e 's/^  title: workspace\.v1\n/  title: Workspaces API\n  description: |\n    Zanzibar-inspired workspace authorization service. Internal, service-to-service: callers present a bearer service credential; the acting user and subject are request fields. Connect protocol over HTTP POST + JSON.\n/m' gen/openapi/workspace/v1/workspace.openapi.yaml
+	mkdir -p docs-site/public/openapi
+	cp gen/openapi/workspace/v1/workspace.openapi.yaml docs-site/public/openapi/workspace-v1.yaml
+	@echo "==> OpenAPI regenerated → docs-site/public/openapi/workspace-v1.yaml"
 
 # ---------------------------------------------------------------------------
 # Local services (docker-compose) for the real-backend tests

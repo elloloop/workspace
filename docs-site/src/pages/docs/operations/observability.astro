@@ -1,0 +1,112 @@
+---
+import DocsLayout from "../../../layouts/DocsLayout.astro";
+import { Code } from "astro-expressive-code/components";
+
+const base = import.meta.env.BASE_URL;
+---
+
+<DocsLayout title="Health & Metrics">
+  <h1>Health &amp; Metrics</h1>
+  <p>
+    This page covers everything you need to keep workspaces healthy in
+    production: the liveness and readiness probes, the Prometheus metrics
+    endpoint, the structured logs, and what to alert on.
+  </p>
+
+  <h2>Health probes</h2>
+  <p>
+    The service exposes two HTTP health endpoints. Both are unauthenticated —
+    they bypass the service-auth check so an orchestrator can poll them without
+    a token — and both return <strong>200 OK</strong> when the process is
+    serving.
+  </p>
+  <table>
+    <thead>
+      <tr><th>Probe</th><th>Endpoint</th><th>Use</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>Liveness</td><td><code>GET /healthz</code></td><td>Is the process up? A failing probe means restart the container.</td></tr>
+      <tr><td>Readiness</td><td><code>GET /readyz</code></td><td>Is the process ready to take traffic? Gate routing on this.</td></tr>
+    </tbody>
+  </table>
+  <Code
+    code={`curl -i http://localhost:8080/healthz   # liveness
+curl -i http://localhost:8080/readyz    # readiness`}
+    lang="bash"
+  />
+  <p>
+    The probes are served on both the Connect port (<code>8080</code>) and the
+    metrics port (<code>9090</code>), so a Kubernetes <code>livenessProbe</code>
+    and <code>readinessProbe</code> can target either.
+  </p>
+
+  <h2>Prometheus metrics</h2>
+  <p>
+    Metrics are exposed in Prometheus format at <code>/metrics</code> on the
+    metrics port, <code>9090</code> by default
+    (<code>GATEWAY_METRICS_PORT</code>). This port is separate from the RPC
+    port so you can keep it on a private interface, away from application
+    traffic.
+  </p>
+  <Code code={`curl http://localhost:9090/metrics`} lang="bash" />
+  <p>A scrape config that targets the metrics port:</p>
+  <Code
+    code={`scrape_configs:
+  - job_name: workspaces
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["workspaces:9090"]`}
+    lang="yaml"
+    title="prometheus.yml"
+  />
+
+  <h2>Structured logs</h2>
+  <p>
+    Workspaces logs with <a href="https://github.com/uber-go/zap">zap</a> as
+    structured JSON — each line is a discrete event with typed fields, ready to
+    index in Loki, Elasticsearch, or any log pipeline. One startup line to watch
+    for:
+  </p>
+  <Code code={`{"level":"warn","msg":"service_auth_disabled","reason":"no GATEWAY_SERVICE_AUTH_TOKENS configured","impact":"all callers trusted — deploy behind a private network/mesh or set the tokens"}`} lang="json" />
+  <p>
+    The <code>service_auth_disabled</code> warning is logged once at startup when
+    <code>GATEWAY_SERVICE_AUTH_TOKENS</code> is empty: the bearer-token
+    requirement is off and every caller is trusted. That is intentional behind a
+    service mesh or mTLS, but in any other deployment it means the service is
+    open — treat the warning as a misconfiguration signal and set the tokens
+    (see <a href={`${base}docs/installation/configuration`}>Configuration</a>).
+  </p>
+
+  <h2>What to alert on</h2>
+  <ul>
+    <li>
+      <strong>Readiness failing</strong> — <code>/readyz</code> returning
+      non-200, or the target down in Prometheus. Page on it; the service is not
+      taking traffic.
+    </li>
+    <li>
+      <strong>Liveness flapping</strong> — repeated <code>/healthz</code>
+      failures and restarts indicate a crash loop rather than a transient blip.
+    </li>
+    <li>
+      <strong>Scrape target down</strong> — Prometheus losing the
+      <code>workspaces</code> target means you are flying blind; alert
+      independently of the app's own metrics.
+    </li>
+    <li>
+      <strong><code>service_auth_disabled</code> in production</strong> — alert
+      on this log event anywhere that is not an mTLS/mesh deployment; it means
+      the API is unauthenticated.
+    </li>
+    <li>
+      <strong>Sustained RPC errors</strong> — a rising rate of
+      <code>unauthenticated</code> (bad or rotated service tokens) or
+      <code>permission_denied</code> responses points at a broken caller or a
+      misconfigured credential.
+    </li>
+  </ul>
+  <p>
+    For the full list of error codes and their meaning, see
+    <a href={`${base}docs/api-reference/overview`}>Using the API</a>.
+  </p>
+</DocsLayout>

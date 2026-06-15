@@ -5,9 +5,9 @@ import (
 	"os"
 	"testing"
 
-	"github.com/elloloop/workspaces/internal/repo/conformance"
-	"github.com/elloloop/workspaces/internal/repo/postgres"
-	"github.com/elloloop/workspaces/internal/service"
+	"github.com/elloloop/workspace/internal/repo/conformance"
+	"github.com/elloloop/workspace/internal/repo/postgres"
+	"github.com/elloloop/workspace/internal/service"
 )
 
 // TestPostgresConformance runs the shared suite against a real Postgres.

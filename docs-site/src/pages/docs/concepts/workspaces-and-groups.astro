@@ -1,0 +1,164 @@
+---
+import DocsLayout from "../../../layouts/DocsLayout.astro";
+import { Code } from "astro-expressive-code/components";
+
+const BASE = import.meta.env.BASE_URL;
+---
+
+<DocsLayout title="Workspaces & Groups">
+  <h1>Workspaces &amp; Groups</h1>
+  <p>
+    This page explains the two membership primitives this service exposes and why
+    they are deliberately separate. A <strong>workspace</strong> is a
+    tenancy / ownership boundary that people belong to at a role; a
+    <strong>group</strong> is a reusable, nestable set of subjects you grant
+    access <em>with</em>. <code>WorkspaceService</code> manages the
+    <code>workspace</code> namespace; <code>GroupService</code> manages the
+    <code>group</code> namespace (see
+    <a href={`${BASE}docs/concepts/authorization-model`}>Authorization Model</a>).
+  </p>
+  <p>
+    Every management call carries <strong><code>acting_user_id</code></strong>
+    (the user the action is authorized as — required; omitting it returns
+    <code>InvalidArgument</code>) and an optional <code>project_id</code> (empty =
+    the default project). The caller is a trusted product backend, not the end
+    user — see <a href={`${BASE}docs/concepts/security`}>Security &amp; Service Auth</a>.
+  </p>
+
+  <h2>Personal vs. team workspaces</h2>
+  <p>
+    The product models the full B2C↔B2B spectrum with two workspace kinds, the
+    way Claude and ChatGPT do (see
+    <a href={`${BASE}docs/adr/0002-personal-and-team-workspaces`}>ADR-0002</a>).
+  </p>
+  <table>
+    <tr><th></th><th><code>PERSONAL</code></th><th><code>TEAM</code></th></tr>
+    <tr><td>How it appears</td><td>Auto-provisioned by <code>ListWorkspaces</code> on first call</td><td>Created by <code>CreateWorkspace</code></td></tr>
+    <tr><td>Membership</td><td>Exactly one member — the owner</td><td>Many members, each at a role</td></tr>
+    <tr><td>Add members</td><td>No — <code>AddMember</code> / <code>CreateInvitation</code> rejected</td><td>Yes</td></tr>
+    <tr><td>Deletable</td><td>No — <code>DeleteWorkspace</code> rejected</td><td>Yes, by its owner</td></tr>
+  </table>
+  <p>
+    Every user owns exactly one <code>PERSONAL</code> workspace, created lazily
+    the first time they call <code>ListWorkspaces</code>, so a user never has a
+    "no workspace" state. A personal workspace is <strong>closed</strong>:
+    single-member and undeletable, enforced structurally by the
+    <code>WorkspaceType</code> enum rather than by counting members. Team
+    workspaces are user-created for collaboration — a family or a whole company.
+  </p>
+  <Code code={`curl -X POST http://localhost:8080/workspace.v1.WorkspaceService/ListWorkspaces \\
+  -H "Authorization: Bearer $WS_SERVICE_TOKEN" -H "Content-Type: application/json" \\
+  -d '{"acting_user_id":"alice"}'
+# On alice's first call this auto-provisions and returns her PERSONAL workspace.`} lang="bash" />
+
+  <h2>Roles</h2>
+  <p>
+    Every team membership carries a <code>Role</code>, ordered
+    <strong>owner ⊃ admin ⊃ member ⊃ guest</strong>. Each grade includes the
+    powers of every grade below it.
+  </p>
+  <table>
+    <tr><th>Role</th><th>Can do</th></tr>
+    <tr><td><code>ROLE_OWNER</code></td><td>Everything an admin can, plus delete the workspace and transfer ownership. Set at creation; never granted afterward.</td></tr>
+    <tr><td><code>ROLE_ADMIN</code></td><td>Add / remove members, change member roles (not owner), create / revoke invitations, update the workspace.</td></tr>
+    <tr><td><code>ROLE_MEMBER</code></td><td>Belong to the workspace; gains <code>viewer</code> on resources in it through inheritance.</td></tr>
+    <tr><td><code>ROLE_GUEST</code></td><td>The weakest grade — present in the workspace for narrowly scoped, explicitly shared access.</td></tr>
+  </table>
+  <div class="rounded-md border border-border bg-muted/40 px-4 py-3">
+    <p class="my-0">
+      <strong>Gotcha — owner is not grantable.</strong>
+      <code>AddMember</code>, <code>UpdateMemberRole</code>, and
+      <code>CreateInvitation</code> reject <code>ROLE_OWNER</code> with
+      <code>InvalidArgument</code>. Ownership is set when the workspace is
+      created and transferred explicitly — there is never a second owner. The
+      owner's role cannot be changed and the owner cannot be removed.
+    </p>
+  </div>
+
+  <h3>Membership maps to tuples</h3>
+  <p>
+    Each membership is mirrored as a
+    <code>workspace:&lt;id&gt;#&lt;role&gt;@user:&lt;id&gt;</code> tuple, so a
+    <code>Check</code> against the <code>workspace</code> namespace honours it
+    immediately and resource inheritance treats personal and team workspaces
+    identically.
+  </p>
+  <Code code={`workspace:acme#owner@user:ceo
+workspace:acme#admin@user:eng-lead
+workspace:acme#member@user:alice`} lang="text" />
+  <p>
+    Adding eng-lead as an admin writes the second tuple:
+  </p>
+  <Code code={`curl -X POST http://localhost:8080/workspace.v1.WorkspaceService/AddMember \\
+  -H "Authorization: Bearer $WS_SERVICE_TOKEN" -H "Content-Type: application/json" \\
+  -d '{"workspace_id":"acme","user_id":"eng-lead","role":"ROLE_ADMIN","acting_user_id":"ceo"}'`} lang="bash" />
+
+  <h2>Invitations</h2>
+  <p>
+    Invitations bring a person into a team workspace by email when you do not yet
+    know their user id.
+  </p>
+  <ul>
+    <li><strong><code>CreateInvitation(workspace_id, email, role)</code></strong> returns a <strong>one-time</strong> plaintext <code>token</code>, echoed <em>only</em> on creation, for out-of-band delivery (your product emails it). Like <code>AddMember</code>, it rejects <code>ROLE_OWNER</code>.</li>
+    <li>The token has a <strong>7-day TTL</strong>. After it expires the invite moves to <code>EXPIRED</code> and can no longer be accepted.</li>
+    <li><strong><code>AcceptInvitation(token, acting_user_id)</code></strong> consumes the token — it is single-use — and adds <code>acting_user_id</code> to the workspace at the invited role. If they are already a member, the invite is consumed and the existing role is kept.</li>
+    <li><strong><code>ListInvitations</code></strong> returns pending invites but <strong>never echoes tokens</strong>. <strong><code>RevokeInvitation</code></strong> cancels a pending one.</li>
+  </ul>
+  <Code code={`curl -X POST http://localhost:8080/workspace.v1.WorkspaceService/CreateInvitation \\
+  -H "Authorization: Bearer $WS_SERVICE_TOKEN" -H "Content-Type: application/json" \\
+  -d '{"workspace_id":"acme","email":"new@example.com","role":"ROLE_MEMBER","acting_user_id":"ceo"}'
+# => {"invitation":{ ... ,"token":"<one-time-token>"}}  ← only place the token appears`} lang="bash" />
+
+  <h2>Groups — a separate, nestable primitive</h2>
+  <p>
+    A group is a reusable set of subjects — an email distribution list, a chat
+    group, an on-call rotation, a B2C user's "family" list. It is deliberately
+    <strong>not</strong> a workspace (see
+    <a href={`${BASE}docs/adr/0003-groups-separate-from-workspaces`}>ADR-0003</a>).
+    Groups map to the <code>group</code> namespace, relation <code>member</code>,
+    whose rewrite is <code>this</code> — just stored tuples.
+  </p>
+  <p>
+    Because a tuple's subject can be a userset, granting a group access to
+    anything is a single tuple, and <strong>groups nest</strong> (a
+    <code>GroupMember</code> is a <code>oneof</code> of a <code>user_id</code> or
+    a nested <code>group_id</code>):
+  </p>
+  <Code code={`group:all-eng#member@group:backend#member          # all-eng contains backend (nesting)
+workspace:acme#member@group:all-eng#member         # all engineers are acme members
+resource:incident-7#editor@group:sre#member        # on-call can edit the incident
+resource:task-buy-milk#viewer@group:family#member  # a B2C user's reusable "family" list`} lang="text" />
+  <p>
+    A group is <strong>reusable</strong>: the same group is referenced by id from
+    any number of workspace or resource tuples. It may be
+    <strong>project-level</strong> (empty <code>workspace_id</code> — a B2C
+    user's standalone "family" list) or <strong>scoped to a workspace</strong>
+    (a company's internal groups). Scoping is an organisational convenience for
+    listing and ownership, not a reuse boundary — a workspace-scoped group can
+    still be granted access on any resource in the same project.
+  </p>
+
+  <h2>Workspace or group?</h2>
+  <table>
+    <tr><th></th><th>Workspace</th><th>Group</th></tr>
+    <tr><td>What it is</td><td>A tenancy / ownership boundary people belong to</td><td>A named set of subjects you grant access with</td></tr>
+    <tr><td>Owner</td><td>Exactly one owner</td><td>No role hierarchy — flat membership</td></tr>
+    <tr><td>Roles</td><td>owner ⊃ admin ⊃ member ⊃ guest</td><td>Just <code>member</code></td></tr>
+    <tr><td>Nests?</td><td>No</td><td>Yes — groups contain groups</td></tr>
+    <tr><td>Reuse</td><td>Owns its resources; not referenced elsewhere</td><td>Referenced from many workspaces &amp; resources</td></tr>
+    <tr><td>Resource inheritance</td><td>Resources inherit from their parent workspace</td><td>None — a group is only ever a subject</td></tr>
+    <tr><td>Use it when</td><td>It owns resources and is a billing / tenancy unit</td><td>It is a set of people you reuse across grants</td></tr>
+  </table>
+  <p>
+    Rule of thumb: if it owns resources and bills, it is a
+    <strong>workspace</strong>; if it is a named set of people you grant access
+    <em>with</em>, it is a <strong>group</strong>.
+  </p>
+
+  <h2>Where to next</h2>
+  <ul>
+    <li><a href={`${BASE}docs/guides/roles-and-rbac`}>Roles &amp; RBAC</a> — modeling membership in depth.</li>
+    <li><a href={`${BASE}docs/guides/groups-and-nesting`}>Groups &amp; Nesting</a> — building reusable, nested sets.</li>
+    <li><a href={`${BASE}docs/concepts/projects`}>Projects &amp; Multi-Tenancy</a> — how everything is sharded.</li>
+  </ul>
+</DocsLayout>

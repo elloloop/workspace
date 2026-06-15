@@ -1,0 +1,125 @@
+---
+// Right-column TOC. Walks the page DOM after load to discover h2/h3 with IDs,
+// renders a sticky list, highlights the currently-visible heading via
+// IntersectionObserver, and smooth-scrolls on click.
+---
+
+<aside
+  id="docs-toc"
+  class="hidden xl:sticky xl:top-20 xl:block xl:self-start"
+  aria-label="On this page"
+>
+  <div
+    class="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground"
+  >
+    On this page
+  </div>
+  <nav id="docs-toc-nav" class="mt-3 max-h-[70vh] overflow-y-auto">
+    <ul class="border-l border-border text-[13px]">
+      {/* Populated by client-side script. */}
+    </ul>
+  </nav>
+  <slot />
+</aside>
+
+<script>
+  function buildToc() {
+    const aside = document.getElementById("docs-toc");
+    const nav = document.getElementById("docs-toc-nav");
+    if (!aside || !nav) return;
+    const article = document.querySelector("article.prose");
+    if (!article) return;
+
+    const headings = Array.from(
+      article.querySelectorAll<HTMLElement>("h2[id], h3[id]"),
+    );
+    const list = nav.querySelector("ul");
+    if (!list) return;
+    list.innerHTML = "";
+
+    if (headings.length === 0) {
+      aside.style.display = "none";
+      return;
+    }
+
+    headings.forEach((h) => {
+      const li = document.createElement("li");
+      const a = document.createElement("a");
+      a.href = `#${h.id}`;
+      a.textContent = h.textContent ?? "";
+      a.dataset.tocLink = h.id;
+      const indent = h.tagName === "H3" ? "pl-7" : "pl-4";
+      a.className = `${indent} -ml-px block border-l border-transparent py-1.5 pr-2 text-muted-foreground transition-colors hover:text-foreground`;
+      a.addEventListener("click", (e) => {
+        e.preventDefault();
+        h.scrollIntoView({ behavior: "smooth", block: "start" });
+        history.replaceState(null, "", `#${h.id}`);
+      });
+      li.appendChild(a);
+      list.appendChild(li);
+    });
+
+    const links = new Map<string, HTMLAnchorElement>();
+    nav
+      .querySelectorAll<HTMLAnchorElement>("a[data-toc-link]")
+      .forEach((a) => links.set(a.dataset.tocLink!, a));
+
+    let currentId: string | null = null;
+    const setActive = (id: string | null) => {
+      if (id === currentId) return;
+      if (currentId) {
+        const prev = links.get(currentId);
+        if (prev) {
+          prev.classList.add("text-muted-foreground", "border-transparent");
+          prev.classList.remove("text-foreground", "border-primary", "font-medium");
+        }
+      }
+      currentId = id;
+      if (id) {
+        const next = links.get(id);
+        if (next) {
+          next.classList.remove("text-muted-foreground", "border-transparent");
+          next.classList.add("text-foreground", "border-primary", "font-medium");
+        }
+      }
+    };
+
+    const visible = new Set<string>();
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          const id = (entry.target as HTMLElement).id;
+          if (entry.isIntersecting) {
+            visible.add(id);
+          } else {
+            visible.delete(id);
+          }
+        });
+        // Pick the first heading in document order that's visible.
+        const firstVisible = headings.find((h) => visible.has(h.id));
+        if (firstVisible) {
+          setActive(firstVisible.id);
+        } else if (headings.length) {
+          // No heading currently visible — keep the most recently scrolled past.
+          let lastBefore: HTMLElement | undefined;
+          for (const h of headings) {
+            if (h.getBoundingClientRect().top < 100) lastBefore = h;
+          }
+          if (lastBefore) setActive(lastBefore.id);
+        }
+      },
+      { rootMargin: "-80px 0px -70% 0px" },
+    );
+    headings.forEach((h) => observer.observe(h));
+  }
+
+  // Defer one tick so HeadingAnchors has a chance to assign IDs first.
+  function deferred() {
+    requestAnimationFrame(buildToc);
+  }
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", deferred);
+  } else {
+    deferred();
+  }
+</script>

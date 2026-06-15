@@ -1,0 +1,180 @@
+---
+// Cmd-K / "/" search modal powered by Pagefind.
+// The button (in the header) toggles `data-search-open` on the wrapper.
+import "@pagefind/default-ui/css/ui.css";
+
+const bundlePath = `${import.meta.env.BASE_URL.replace(/\/$/, "")}/pagefind/`;
+---
+
+<div
+  id="docs-search"
+  class="fixed inset-0 z-50 hidden bg-background/70 backdrop-blur-sm"
+  data-bundle-path={bundlePath}
+  aria-hidden="true"
+  role="dialog"
+  aria-modal="true"
+  aria-label="Search documentation"
+>
+  <div
+    class="mx-auto mt-0 flex h-full w-full max-w-2xl flex-col overflow-hidden bg-background shadow-2xl sm:mt-[10vh] sm:h-auto sm:max-h-[80vh] sm:rounded-xl sm:border sm:border-border"
+  >
+    <div
+      class="flex items-center justify-between border-b border-border px-4 py-3 text-xs text-muted-foreground"
+    >
+      <span class="font-medium">Search documentation</span>
+      <button
+        type="button"
+        data-search-close
+        class="rounded-md border border-border bg-muted/40 px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+      >
+        Esc
+      </button>
+    </div>
+    <div id="docs-search-ui" class="pagefind-ui flex-1 overflow-y-auto p-4">
+    </div>
+  </div>
+</div>
+
+<script>
+  let pagefindInitialized = false;
+
+  async function initPagefind() {
+    if (pagefindInitialized) return;
+    const wrapper = document.getElementById("docs-search");
+    if (!wrapper) return;
+    const bundlePath = wrapper.getAttribute("data-bundle-path") ?? "/pagefind/";
+    try {
+      // @ts-expect-error — bundled css
+      const { PagefindUI } = await import("@pagefind/default-ui");
+      new PagefindUI({
+        element: "#docs-search-ui",
+        bundlePath,
+        showImages: false,
+        showSubResults: true,
+        resetStyles: false,
+        autofocus: true,
+      });
+      pagefindInitialized = true;
+    } catch (err) {
+      const ui = document.getElementById("docs-search-ui");
+      if (ui) {
+        ui.innerHTML =
+          '<p class="px-4 py-8 text-center text-sm text-muted-foreground">Search index unavailable. Please try again after the next deployment.</p>';
+      }
+      console.error("Pagefind failed to load", err);
+    }
+  }
+
+  function openSearch() {
+    const wrapper = document.getElementById("docs-search");
+    if (!wrapper) return;
+    wrapper.classList.remove("hidden");
+    wrapper.setAttribute("aria-hidden", "false");
+    document.body.style.overflow = "hidden";
+    void initPagefind().then(() => {
+      // Focus the input once Pagefind has rendered it.
+      requestAnimationFrame(() => {
+        const input = wrapper.querySelector<HTMLInputElement>(
+          'input[type="text"], input[type="search"]',
+        );
+        input?.focus();
+      });
+    });
+  }
+
+  function closeSearch() {
+    const wrapper = document.getElementById("docs-search");
+    if (!wrapper) return;
+    wrapper.classList.add("hidden");
+    wrapper.setAttribute("aria-hidden", "true");
+    document.body.style.overflow = "";
+  }
+
+  // Wire up triggers and global hotkeys.
+  function bindSearch() {
+    document
+      .querySelectorAll<HTMLElement>("[data-search-trigger]")
+      .forEach((el) => {
+        el.addEventListener("click", openSearch);
+      });
+    document
+      .querySelectorAll<HTMLElement>("[data-search-close]")
+      .forEach((el) => {
+        el.addEventListener("click", closeSearch);
+      });
+    document.addEventListener("click", (e) => {
+      const wrapper = document.getElementById("docs-search");
+      if (!wrapper || wrapper.classList.contains("hidden")) return;
+      // Click on the dimmed backdrop (the wrapper itself) closes the modal.
+      if (e.target === wrapper) closeSearch();
+    });
+    document.addEventListener("keydown", (e) => {
+      const wrapper = document.getElementById("docs-search");
+      const isOpen = wrapper && !wrapper.classList.contains("hidden");
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        if (isOpen) closeSearch();
+        else openSearch();
+        return;
+      }
+      if (e.key === "/" && !isOpen) {
+        const tag = (document.activeElement?.tagName ?? "").toLowerCase();
+        if (tag === "input" || tag === "textarea") return;
+        e.preventDefault();
+        openSearch();
+        return;
+      }
+      if (e.key === "Escape" && isOpen) {
+        e.preventDefault();
+        closeSearch();
+      }
+    });
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", bindSearch);
+  } else {
+    bindSearch();
+  }
+</script>
+
+<style is:global>
+  /* Tighten Pagefind's default UI to feel native. */
+  #docs-search-ui .pagefind-ui__form {
+    margin: 0;
+  }
+  #docs-search-ui .pagefind-ui__search-input {
+    background: hsl(var(--muted) / 0.4);
+    border: 1px solid hsl(var(--border));
+    border-radius: 0.5rem;
+    color: hsl(var(--foreground));
+    font-family: var(--font-sans);
+    font-size: 15px;
+  }
+  #docs-search-ui .pagefind-ui__search-input::placeholder {
+    color: hsl(var(--muted-foreground));
+  }
+  #docs-search-ui .pagefind-ui__result {
+    border-bottom: 1px solid hsl(var(--border));
+    padding: 0.75rem 0;
+  }
+  #docs-search-ui .pagefind-ui__result-title,
+  #docs-search-ui .pagefind-ui__result-link {
+    color: hsl(var(--foreground));
+    font-weight: 600;
+  }
+  #docs-search-ui .pagefind-ui__result-excerpt {
+    color: hsl(var(--muted-foreground));
+    font-size: 13px;
+  }
+  #docs-search-ui mark {
+    background: hsl(var(--primary) / 0.18);
+    color: hsl(var(--foreground));
+    padding: 0 0.15em;
+    border-radius: 2px;
+  }
+  #docs-search-ui .pagefind-ui__message {
+    color: hsl(var(--muted-foreground));
+    font-size: 13px;
+  }
+</style>

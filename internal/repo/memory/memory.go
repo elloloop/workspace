@@ -8,8 +8,8 @@ import (
 	"sort"
 	"sync"
 
-	"github.com/elloloop/workspaces/internal/service"
-	"github.com/elloloop/workspaces/pkg/authz"
+	"github.com/elloloop/workspace/internal/service"
+	"github.com/elloloop/workspace/pkg/authz"
 )
 
 // Store is a goroutine-safe in-memory Repository.

@@ -3,7 +3,7 @@ package service
 import (
 	"context"
 
-	"github.com/elloloop/workspaces/pkg/authz"
+	"github.com/elloloop/workspace/pkg/authz"
 )
 
 // Repository is the storage boundary. Every method is scoped to a project

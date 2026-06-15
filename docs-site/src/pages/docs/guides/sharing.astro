@@ -1,0 +1,140 @@
+---
+import DocsLayout from "../../../layouts/DocsLayout.astro";
+import { Code } from "astro-expressive-code/components";
+---
+
+<DocsLayout title="Sharing Resources">
+  <h1>Sharing Resources</h1>
+  <p>
+    This guide models <strong>direct per-object sharing</strong> — "share this
+    task with dad" — and shows how a single resource combines direct shares, group
+    shares, and parent inheritance into one effective access set.
+  </p>
+  <p>
+    <strong>What you'll learn:</strong> how to grant and revoke access on an
+    individual resource with one tuple each, how the three sources of access
+    union together, and which <code>WriteRelationTuples</code> /
+    <code>ReadRelationTuples</code> calls back them.
+  </p>
+
+  <h2>Direct sharing: one tuple per grant</h2>
+  <p>
+    A directly-shared resource has no parent workspace — access is whatever was
+    granted on the object itself. This is the personal-assistant pattern: a task
+    a user shares with specific people.
+  </p>
+  <Code code={`resource:task#viewer@user:dad        # dad can view
+resource:task#editor@user:partner    # partner can edit`} lang="text" />
+  <p>
+    Subjects here are concrete users, so these are plain <code>this()</code> leaf
+    tuples — no rewrite needed for the grant to take effect. Write them with
+    <code>AuthzService.WriteRelationTuples</code>:
+  </p>
+  <Code code={`curl -X POST http://localhost:8080/workspace.v1.AuthzService/WriteRelationTuples \\
+  -H "Authorization: Bearer $WS_SERVICE_TOKEN" \\
+  -H "Content-Type: application/json" \\
+  -d '{"updates":[
+        {"op":"INSERT","tuple":{
+          "namespace":"resource","object_id":"task","relation":"viewer",
+          "subject":{"user_id":"dad"}}}
+      ]}'`} lang="bash" />
+  <p>Then "can dad view this task?" is a single <code>Check</code>:</p>
+  <Code code={`curl -X POST http://localhost:8080/workspace.v1.AuthzService/Check \\
+  -H "Authorization: Bearer $WS_SERVICE_TOKEN" \\
+  -H "Content-Type: application/json" \\
+  -d '{"namespace":"resource","object_id":"task","relation":"viewer","subject_user_id":"dad"}'`} lang="bash" />
+  <Code code={`{ "allowed": true }`} lang="json" />
+
+  <h2>Three sources, one union</h2>
+  <p>
+    The <code>viewer</code> relation on a resource is a union of everything that
+    can confer view access:
+  </p>
+  <Code code={`viewer := union(this(), computed("editor"), tupleToUserset("parent", "member"))`} lang="go" />
+  <p>So a single document can draw viewers from all three at once:</p>
+  <Code code={`resource:doc#viewer@user:dad                 # 1. direct share with a person
+resource:doc#viewer@group:family#member      # 2. share with a whole group
+resource:doc#parent@workspace:W#member        # 3. inherit from a parent workspace`} lang="text" />
+  <table>
+    <thead>
+      <tr>
+        <th>Source</th>
+        <th>Tuple</th>
+        <th>Resolved by</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Direct (person)</td>
+        <td><code>resource:doc#viewer@user:dad</code></td>
+        <td><code>this()</code> leaf</td>
+      </tr>
+      <tr>
+        <td>Group</td>
+        <td><code>resource:doc#viewer@group:family#member</code></td>
+        <td><code>this()</code> leaf → recurse into the group</td>
+      </tr>
+      <tr>
+        <td>Inherited</td>
+        <td><code>resource:doc#parent@workspace:W#member</code></td>
+        <td><code>tupleToUserset("parent","member")</code></td>
+      </tr>
+    </tbody>
+  </table>
+  <p>
+    <code>Check(resource, doc, viewer, &lt;user&gt;)</code> returns
+    <code>allowed</code> if <em>any</em> source grants it: the user is shared
+    directly, or is a member of <code>family</code> (resolved transitively through
+    the group), or is a member of workspace <code>W</code>. You don't choose a
+    strategy per resource — mix them freely on the same object.
+  </p>
+
+  <h2>Revoking access</h2>
+  <p>
+    Revoke is the inverse of share: delete the exact tuple. A
+    <code>DELETE</code> op removes a single grant; access from the other two
+    sources is unaffected.
+  </p>
+  <Code code={`curl -X POST http://localhost:8080/workspace.v1.AuthzService/WriteRelationTuples \\
+  -H "Authorization: Bearer $WS_SERVICE_TOKEN" \\
+  -H "Content-Type: application/json" \\
+  -d '{"updates":[
+        {"op":"DELETE","tuple":{
+          "namespace":"resource","object_id":"task","relation":"viewer",
+          "subject":{"user_id":"dad"}}}
+      ]}'`} lang="bash" />
+  <p>
+    Insert and delete can be batched in one call — the <code>updates</code> array
+    is applied together — so re-sharing (revoke from one user, grant to another)
+    is a single atomic request.
+  </p>
+
+  <h2>Seeing what is shared</h2>
+  <p>
+    To list the raw grants <strong>directly stored</strong> on a resource — for a
+    share-management UI — use <code>ReadRelationTuples</code>. It returns the
+    stored tuples matching an exact filter, with <strong>no</strong> rewrite
+    evaluation: it shows the direct viewers and any group/parent subjects you
+    wrote, but not the users those usersets expand to.
+  </p>
+  <Code code={`curl -X POST http://localhost:8080/workspace.v1.AuthzService/ReadRelationTuples \\
+  -H "Authorization: Bearer $WS_SERVICE_TOKEN" \\
+  -H "Content-Type: application/json" \\
+  -d '{"namespace":"resource","object_id":"task","relation":"viewer"}'`} lang="bash" />
+
+  <div class="not-prose my-6 rounded-lg border border-border bg-muted/40 p-4 text-sm">
+    <strong>Read shows storage; Check shows access.</strong>
+    <code>ReadRelationTuples</code> is a raw store read — use it to render "who is
+    this shared with" exactly as written. To decide whether a specific user may
+    act, always use <code>Check</code>, which expands groups and inheritance. To
+    see the fully-expanded set of who has access, use <code>Expand</code> (see
+    <a href="/workspace/docs/guides/check-and-expand">Check &amp; Expand</a>).
+  </div>
+
+  <h2>Where to next</h2>
+  <ul>
+    <li><a href="/workspace/docs/guides/check-and-expand">Check &amp; Expand</a> — evaluate, debug, and batch writes</li>
+    <li><a href="/workspace/docs/guides/groups-and-nesting">Groups &amp; Nesting</a> — the group shares used above</li>
+    <li><a href="/workspace/docs/examples/personal-assistant">Personal-Assistant App</a> — the full worked share scenario</li>
+  </ul>
+</DocsLayout>

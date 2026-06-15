@@ -1,0 +1,53 @@
+---
+import { findPrevNext } from "../data/nav";
+
+interface Props {
+  currentPath: string;
+}
+
+const { currentPath } = Astro.props;
+const { prev, next } = findPrevNext(currentPath);
+const hasAny = !!prev || !!next;
+---
+
+{
+  hasAny && (
+    <nav
+      aria-label="Previous and next page"
+      class="mt-16 grid gap-4 border-t border-border pt-8 sm:grid-cols-2"
+    >
+      {prev ? (
+        <a
+          href={prev.href}
+          class="group flex flex-col rounded-lg border border-border bg-card p-4 no-underline transition-colors hover:border-primary/40 hover:bg-muted/40"
+          style="text-decoration:none;"
+        >
+          <span class="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+            ← Previous
+          </span>
+          <span class="mt-1 text-sm font-semibold text-foreground no-underline transition-colors group-hover:text-primary">
+            {prev.label}
+          </span>
+        </a>
+      ) : (
+        <div />
+      )}
+      {next ? (
+        <a
+          href={next.href}
+          class="group flex flex-col rounded-lg border border-border bg-card p-4 text-right no-underline transition-colors hover:border-primary/40 hover:bg-muted/40 sm:items-end"
+          style="text-decoration:none;"
+        >
+          <span class="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+            Next →
+          </span>
+          <span class="mt-1 text-sm font-semibold text-foreground no-underline transition-colors group-hover:text-primary">
+            {next.label}
+          </span>
+        </a>
+      ) : (
+        <div />
+      )}
+    </nav>
+  )
+}

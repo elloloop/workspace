@@ -1,37 +1,60 @@
 // Package connect adapts the transport-agnostic service.Service to the
-// generated Connect-RPC handler interfaces: it pulls the authenticated
-// principal from context, translates proto ⇄ domain types, and maps service
-// sentinel errors to wire status codes.
+// generated Connect-RPC handler interfaces: it reads the acting user and
+// project from the request body (the calling service is already
+// authenticated by the ServiceAuth middleware), translates proto ⇄ domain
+// types, and maps service sentinel errors to wire status codes.
 package connect
 
 import (
-	"context"
 	"errors"
 
 	"connectrpc.com/connect"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	workspacev1 "github.com/elloloop/workspaces/gen/go/workspace"
-	"github.com/elloloop/workspaces/internal/middleware"
-	"github.com/elloloop/workspaces/internal/service"
+	workspacev1 "github.com/elloloop/workspace/gen/go/workspace/v1"
+	"github.com/elloloop/workspace/internal/service"
 )
 
 // Handler implements WorkspaceServiceHandler, GroupServiceHandler, and
-// AuthzServiceHandler over a single Service.
+// AuthzServiceHandler over a single Service. The calling service is already
+// authenticated by the ServiceAuth middleware; these handlers read the
+// acting user and project from the request body (Zanzibar-style, user as
+// data) rather than from a caller token.
 type Handler struct {
-	svc *service.Service
+	svc              *service.Service
+	defaultProjectID string
 }
 
-// NewHandler builds the Connect handler for svc.
-func NewHandler(svc *service.Service) *Handler { return &Handler{svc: svc} }
-
-// principal extracts the authenticated caller; absence is Unauthenticated.
-func principal(ctx context.Context) (service.Principal, error) {
-	p, ok := middleware.PrincipalFrom(ctx)
-	if !ok {
-		return service.Principal{}, connect.NewError(connect.CodeUnauthenticated, errors.New("missing or invalid credentials"))
+// NewHandler builds the Connect handler for svc. defaultProjectID is applied
+// when a request omits project_id (single-project deployments).
+func NewHandler(svc *service.Service, defaultProjectID string) *Handler {
+	if defaultProjectID == "" {
+		defaultProjectID = "default"
 	}
-	return p, nil
+	return &Handler{svc: svc, defaultProjectID: defaultProjectID}
+}
+
+// acting builds the Principal a management RPC acts as. acting_user_id is
+// required (the action must be authorized against a known user); project_id
+// falls back to the deployment default when empty.
+func (h *Handler) acting(actingUserID, projectID string) (service.Principal, error) {
+	if actingUserID == "" {
+		return service.Principal{}, connect.NewError(connect.CodeInvalidArgument, errors.New("acting_user_id is required"))
+	}
+	return service.Principal{UserID: actingUserID, ProjectID: h.projectOr(projectID)}, nil
+}
+
+// scope is the Principal for an authz RPC: only the project matters; the
+// subject is a request argument, not the caller.
+func (h *Handler) scope(projectID string) service.Principal {
+	return service.Principal{ProjectID: h.projectOr(projectID)}
+}
+
+func (h *Handler) projectOr(projectID string) string {
+	if projectID == "" {
+		return h.defaultProjectID
+	}
+	return projectID
 }
 
 // errToConnect maps service sentinel errors to Connect status codes.

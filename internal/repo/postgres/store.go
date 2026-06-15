@@ -9,8 +9,8 @@ import (
 	"context"
 	"errors"
 
-	"github.com/elloloop/workspaces/internal/service"
-	"github.com/elloloop/workspaces/pkg/authz"
+	"github.com/elloloop/workspace/internal/service"
+	"github.com/elloloop/workspace/pkg/authz"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"

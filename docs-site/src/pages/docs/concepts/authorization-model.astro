@@ -1,0 +1,247 @@
+---
+import DocsLayout from "../../../layouts/DocsLayout.astro";
+import { Code } from "astro-expressive-code/components";
+
+const BASE = import.meta.env.BASE_URL;
+---
+
+<DocsLayout title="Authorization Model">
+  <h1>Authorization Model</h1>
+  <p>
+    This is the deep reference for the relation-tuple engine that backs the
+    workspaces service. It covers the tuple format, every built-in namespace and
+    its exact rewrite rules, how <code>Check</code> evaluates transitively (and
+    why it cannot loop), what <code>Expand</code> returns, and how to add a
+    namespace. The source of truth for the wire API is
+    <a href="https://github.com/elloloop/workspace/tree/main/proto/workspace/v1"><code>proto/workspace/v1/workspace.proto</code></a>;
+    the source of truth for the built-in model is
+    <a href="https://github.com/elloloop/workspace/blob/main/pkg/authz/model.go"><code>pkg/authz/model.go</code></a>.
+  </p>
+  <p>
+    The engine is Zanzibar-inspired: one uniform store of relation tuples plus
+    per-namespace userset-rewrite rules (see
+    <a href={`${BASE}docs/adr/0001-relation-tuples-as-the-authz-primitive`}>ADR-0001</a>).
+    The end user is never the caller — they are <em>data</em> in the request
+    (<code>subject_user_id</code>). Service-to-service authentication is covered
+    in <a href={`${BASE}docs/concepts/security`}>Security &amp; Service Auth</a>.
+  </p>
+
+  <h2>The relation tuple</h2>
+  <p>A relation tuple is:</p>
+  <Code code={`namespace:object_id#relation@subject`} lang="text" />
+  <ul>
+    <li><strong>namespace</strong> — the kind of object: <code>workspace</code>, <code>group</code>, <code>resource</code>, or a product's own namespace.</li>
+    <li><strong>object_id</strong> — the specific object, e.g. <code>acme</code>.</li>
+    <li><strong>relation</strong> — the relationship being granted: <code>owner</code>, <code>member</code>, <code>viewer</code>, …</li>
+    <li>
+      <strong>subject</strong> — the right-hand side. Exactly one of:
+      <ul>
+        <li>a <strong>concrete user</strong> — <code>@user:alice</code> — a leaf identity; or</li>
+        <li>a <strong>userset</strong> — another <code>namespace:object_id#relation</code>, meaning "every subject that holds <em>that</em> relation on <em>that</em> object", e.g. <code>@group:family#member</code> or <code>@workspace:acme#member</code>.</li>
+      </ul>
+    </li>
+  </ul>
+  <Code code={`workspace:acme#admin@user:bob              # bob is a direct admin of workspace acme
+resource:doc1#viewer@group:family#member   # everyone in the family group may view doc1`} lang="text" />
+  <p>
+    In the proto these are <code>RelationTuple</code>, <code>Subject</code> (a
+    <code>oneof</code> of <code>user_id</code> / <code>SubjectSet</code>), and
+    <code>SubjectSet</code> (<code>namespace</code> / <code>object_id</code> /
+    <code>relation</code>). Every tuple is scoped to a
+    <strong><code>project_id</code></strong> — the isolation shard (see
+    <a href={`${BASE}docs/concepts/projects`}>Projects &amp; Multi-Tenancy</a>);
+    tuples in different projects never see each other.
+  </p>
+
+  <h2>Userset rewrites</h2>
+  <p>
+    A <strong>namespace</strong> maps each relation to a <strong><code>Rewrite</code></strong>
+    — the rule for computing the set of subjects that hold that relation. A
+    <code>Rewrite</code> is built from four primitives:
+  </p>
+  <table>
+    <tr><th>Primitive</th><th>Zanzibar name</th><th>Meaning</th></tr>
+    <tr>
+      <td><code>this()</code></td>
+      <td><code>_this</code></td>
+      <td>The relation's own directly stored tuples. The leaf. A zero <code>Rewrite</code> means <code>this</code>.</td>
+    </tr>
+    <tr>
+      <td><code>computed("rel")</code></td>
+      <td><code>computed_userset</code></td>
+      <td>Evaluate another relation <code>rel</code> on the <strong>same</strong> object. Powers role hierarchy: <code>admin</code> includes <code>owner</code>.</td>
+    </tr>
+    <tr>
+      <td><code>tupleToUserset("ts", "rel")</code></td>
+      <td><code>tuple_to_userset</code></td>
+      <td>For every userset stored under relation <code>ts</code> on this object, evaluate <code>rel</code> on each referenced object. Powers <strong>inheritance</strong> from a parent object.</td>
+    </tr>
+    <tr>
+      <td><code>union(...)</code></td>
+      <td>union</td>
+      <td>Grant access if <strong>any</strong> child rewrite grants it.</td>
+    </tr>
+  </table>
+  <p>
+    Unknown namespaces and unknown relations default to <code>this</code> — so a
+    product can store ad-hoc relations without first registering a namespace;
+    they behave as plain stored tuples with no inheritance.
+  </p>
+
+  <h2>The built-in namespaces</h2>
+  <p>
+    Transcribed verbatim from <code>DefaultModel()</code> in
+    <code>pkg/authz/model.go</code>. <code>this</code> = the directly stored
+    tuples; <code>computed(rel)</code> = relation <code>rel</code> on the same
+    object; <code>tupleToUserset(ts, rel)</code> = walk the usersets stored
+    under <code>ts</code> and check <code>rel</code> on each referenced object.
+  </p>
+
+  <h3>workspace</h3>
+  <p>
+    The membership grades, ordered <strong>owner ⊃ admin ⊃ member ⊃ guest</strong>.
+    Each grade unions its own direct tuples with the grade above it, so an owner
+    is implicitly an admin, a member, and a guest.
+  </p>
+  <table>
+    <tr><th>Relation</th><th>Rewrite</th><th>Reads as</th></tr>
+    <tr><td><code>owner</code></td><td><code>this()</code></td><td>Directly stored owners only.</td></tr>
+    <tr><td><code>admin</code></td><td><code>union(this(), computed("owner"))</code></td><td>Direct admins ∪ owners.</td></tr>
+    <tr><td><code>member</code></td><td><code>union(this(), computed("admin"))</code></td><td>Direct members ∪ admins (∪ owners).</td></tr>
+    <tr><td><code>guest</code></td><td><code>union(this(), computed("member"))</code></td><td>Direct guests ∪ members (∪ admins ∪ owners).</td></tr>
+  </table>
+  <p>
+    <code>Role</code> in the proto maps 1:1 onto these relations.
+    <code>WorkspaceService.AddMember</code> and friends write
+    <code>workspace:&lt;id&gt;#&lt;role&gt;@user:&lt;id&gt;</code> tuples.
+  </p>
+
+  <h3>group</h3>
+  <table>
+    <tr><th>Relation</th><th>Rewrite</th><th>Reads as</th></tr>
+    <tr><td><code>member</code></td><td><code>this()</code></td><td>Directly stored members only.</td></tr>
+  </table>
+  <p>
+    Just stored tuples — but because a subject may itself be a userset, a group
+    member can be another group, and <code>Check</code> resolves the nesting
+    transitively (see <a href={`${BASE}docs/adr/0003-groups-separate-from-workspaces`}>ADR-0003</a>):
+  </p>
+  <Code code={`group:all-eng#member@group:backend#member   # all-eng contains everyone in backend`} lang="text" />
+
+  <h3>resource</h3>
+  <p>
+    A generic product object that <strong>inherits</strong> access from a parent
+    workspace and also supports <strong>direct</strong> per-object sharing.
+  </p>
+  <table>
+    <tr><th>Relation</th><th>Rewrite</th><th>Reads as</th></tr>
+    <tr><td><code>parent</code></td><td><code>this()</code></td><td>The workspace this resource belongs to (a stored userset).</td></tr>
+    <tr><td><code>owner</code></td><td><code>this()</code></td><td>Directly stored resource owners.</td></tr>
+    <tr><td><code>editor</code></td><td><code>union(this(), computed("owner"), tupleToUserset("parent", "admin"))</code></td><td>Direct editors ∪ the resource owner ∪ every <strong>admin</strong> of the parent workspace.</td></tr>
+    <tr><td><code>viewer</code></td><td><code>union(this(), computed("editor"), tupleToUserset("parent", "member"))</code></td><td>Direct viewers ∪ every editor ∪ every <strong>member</strong> of the parent workspace.</td></tr>
+  </table>
+  <p>
+    So workspace admins can edit anything in the workspace and members can view
+    it with <strong>zero</strong> per-resource tuples — while individual users or
+    groups can still be granted <code>editor</code> / <code>viewer</code>
+    directly on a single resource.
+  </p>
+
+  <h2>How Check evaluates — a worked walk</h2>
+  <p>
+    <code>Check(namespace, object_id, relation, subject_user_id)</code> answers a
+    boolean: does this <strong>concrete user</strong> hold this relation on this
+    object? Consider these stored tuples in one project:
+  </p>
+  <Code code={`workspace:acme#admin@user:bob          # bob is an admin of acme
+resource:doc1#parent@workspace:acme    # doc1 lives in acme`} lang="text" />
+  <p>Now ask whether bob may view <code>doc1</code>:</p>
+  <Code code={`curl -X POST http://localhost:8080/workspace.v1.AuthzService/Check \\
+  -H "Authorization: Bearer $WS_SERVICE_TOKEN" -H "Content-Type: application/json" \\
+  -d '{"namespace":"resource","object_id":"doc1","relation":"viewer","subject_user_id":"bob"}'
+# => {"allowed":true}`} lang="bash" />
+  <p>The engine evaluates the rewrite tree depth-first, short-circuiting on the first match:</p>
+  <ol>
+    <li><code>viewer</code> on <code>resource:doc1</code> is <code>union(this, computed("editor"), tupleToUserset("parent","member"))</code>.</li>
+    <li><strong>this</strong>: no stored <code>resource:doc1#viewer@user:bob</code> — and no userset tuples to recurse into. Miss.</li>
+    <li><strong>computed("editor")</strong>: re-check <code>editor</code> on <code>doc1</code> = <code>union(this, computed("owner"), tupleToUserset("parent","admin"))</code>. <code>this</code> and <code>owner</code> miss; <code>tupleToUserset("parent","admin")</code> reads the parent userset <code>workspace:acme</code> and checks <code>admin</code> on it for bob…</li>
+    <li><code>admin</code> on <code>workspace:acme</code> = <code>union(this, computed("owner"))</code>. <strong>this</strong> finds the stored tuple <code>workspace:acme#admin@user:bob</code>. <strong>Match.</strong></li>
+    <li>The match bubbles up through every <code>union</code> — <code>editor</code> is true, therefore <code>viewer</code> is true. Result: <code>allowed: true</code>.</li>
+  </ol>
+  <p>
+    When a <code>this</code> leaf finds a stored tuple whose subject is a
+    <em>userset</em> (e.g. <code>resource:doc1#viewer@group:family#member</code>),
+    the engine recurses into <code>Check(group, family, member, subject)</code>.
+    That single mechanism resolves group grants and nested groups.
+  </p>
+
+  <h3>Cycle-safety</h3>
+  <p>
+    Traversal carries a <strong>visited set</strong> keyed by
+    <code>(namespace, object, relation)</code> and a <strong>max-depth bound</strong>.
+    Re-entering a node already on the current path contributes nothing
+    (the branch returns false) instead of looping, so cyclic group nesting —
+    <code>group:a#member@group:b#member</code> together with
+    <code>group:b#member@group:a#member</code> — terminates safely rather than
+    recursing forever. Exceeding the depth bound is a runaway backstop and
+    returns an error.
+  </p>
+
+  <h2>What Expand returns</h2>
+  <p>
+    <code>Expand(namespace, object_id, relation)</code> is the set-valued sibling
+    of <code>Check</code>: instead of testing one user, it returns the effective
+    <strong><code>UsersetTree</code></strong> for the relation. The tree mirrors
+    the rewrite: <code>UNION</code> nodes hold child subtrees, and
+    <code>LEAF</code> nodes carry concrete <code>user_ids</code> and nested
+    <code>sets</code> (usersets). Use it to answer "who has access?" and for
+    audit and debugging.
+  </p>
+  <Code code={`curl -X POST http://localhost:8080/workspace.v1.AuthzService/Expand \\
+  -H "Authorization: Bearer $WS_SERVICE_TOKEN" -H "Content-Type: application/json" \\
+  -d '{"namespace":"workspace","object_id":"acme","relation":"member"}'`} lang="bash" />
+  <p>
+    <code>ReadRelationTuples</code> is <strong>not</strong> a permission check
+    and <strong>not</strong> an expansion — it returns the raw stored tuples
+    matching an exact filter, with no rewrite evaluation. Use <code>Check</code>
+    for decisions and <code>Expand</code> to enumerate effective access.
+  </p>
+
+  <h2>Adding a new namespace</h2>
+  <p>A consuming product can use the engine two ways:</p>
+  <ol>
+    <li><strong>Ad-hoc, no registration.</strong> Just write tuples under a new namespace. Unknown namespaces and relations default to <code>this</code>, so they behave as plain stored grants with no inheritance.</li>
+    <li><strong>With rewrite rules.</strong> To get hierarchy, inheritance, or group expansion, add a <code>Namespace</code> to <code>DefaultModel()</code> in <a href="https://github.com/elloloop/workspace/blob/main/pkg/authz/model.go"><code>pkg/authz/model.go</code></a>, mapping each relation to a <code>Rewrite</code> built from <code>this()</code>, <code>union()</code>, <code>computed()</code>, and <code>tupleToUserset()</code>. Mirror the <code>resource</code> namespace: pick a tupleset relation that points at the parent object, then <code>tupleToUserset("parent", "relationOnParent")</code> to inherit.</li>
+  </ol>
+  <p>Design checklist for a new namespace:</p>
+  <ul>
+    <li>Which relations are <strong>directly grantable</strong> (<code>this</code>)?</li>
+    <li>Which are <strong>implied</strong> by a stronger relation on the same object (<code>computed</code>)?</li>
+    <li>Does the object <strong>inherit</strong> from a parent — and via which relation (<code>tupleToUserset</code>)?</li>
+    <li>Will subjects ever be <strong>groups / usersets</strong>? (They always may.)</li>
+  </ul>
+
+  <h2>Zanzibar terminology</h2>
+  <table>
+    <tr><th>This service</th><th>Zanzibar paper</th></tr>
+    <tr><td>relation tuple <code>namespace:object#relation@subject</code></td><td>relation tuple <code>⟨object#relation@user⟩</code></td></tr>
+    <tr><td>userset subject <code>group:eng#member</code></td><td>userset <code>group:eng#member</code></td></tr>
+    <tr><td>namespace rewrite rules</td><td>namespace configuration / userset rewrites</td></tr>
+    <tr><td><code>this()</code></td><td><code>_this</code></td></tr>
+    <tr><td><code>computed()</code></td><td><code>computed_userset</code></td></tr>
+    <tr><td><code>tupleToUserset()</code></td><td><code>tuple_to_userset</code></td></tr>
+    <tr><td><code>Check</code> / <code>Expand</code></td><td><code>Check</code> / <code>Expand</code></td></tr>
+  </table>
+  <p>
+    The end user being <em>data</em>, not the caller, is also straight from
+    Zanzibar: Check takes the user as an argument and the calling service
+    authenticates as itself.
+  </p>
+
+  <h2>Where to next</h2>
+  <ul>
+    <li><a href={`${BASE}docs/concepts/workspaces-and-groups`}>Workspaces &amp; Groups</a> — the product surface over these namespaces.</li>
+    <li><a href={`${BASE}docs/guides/check-and-expand`}>Check &amp; Expand</a> — querying the engine in depth.</li>
+    <li><a href={`${BASE}docs/concepts/security`}>Security &amp; Service Auth</a> — how callers authenticate.</li>
+  </ul>
+</DocsLayout>

@@ -1,0 +1,279 @@
+---
+import DocsLayout from "../../../layouts/DocsLayout.astro";
+import { Code } from "astro-expressive-code/components";
+
+const base = import.meta.env.BASE_URL;
+---
+
+<DocsLayout title="Using the API">
+  <h1>Using the API</h1>
+  <p>
+    This page is the conceptual guide to <em>calling</em> the workspaces API:
+    the transport, the service credential, the request fields every RPC shares,
+    and the error model. For the exhaustive, per-RPC reference — every request
+    and response message, generated live from the proto — use the
+    <a href={`${base}api`}>Live API Reference</a> linked below.
+  </p>
+
+  <div
+    style="border:1px solid var(--border, #2a2a35);border-radius:0.5rem;padding:1rem 1.25rem;margin:1.5rem 0;background:var(--muted, rgba(127,127,127,0.06));"
+    data-pagefind-ignore
+  >
+    <strong>Live, auto-generated reference.</strong> Browse and try every RPC at
+    <a href={`${base}api`}><strong>{base}api</strong></a> (rendered by Scalar),
+    backed by the OpenAPI spec at
+    <a href={`${base}openapi/workspace-v1.yaml`}><code>{base}openapi/workspace-v1.yaml</code></a>.
+    The spec is generated from the proto by <code>make openapi</code>, so it is
+    always in sync with the running service.
+  </div>
+
+  <h2>Transport</h2>
+  <p>
+    Every endpoint is a <a href="https://connectrpc.com/">Connect</a> RPC. The
+    simplest way to call it is plain <strong>HTTP POST with a JSON body</strong>
+    — no client library required, just <code>curl</code>. The same handlers also
+    speak <strong>gRPC</strong> and <strong>gRPC-Web</strong>, so generated
+    Connect or gRPC clients work unchanged against the same port.
+  </p>
+  <p>The URL path is fixed by the proto package and is the same for every protocol:</p>
+  <Code code={`/workspace.v1.<Service>/<Method>`} lang="text" />
+  <p>
+    The proto package is <code>workspace.v1</code>, so a call to
+    <code>ListWorkspaces</code> on <code>WorkspaceService</code> is a POST to
+    <code>/workspace.v1.WorkspaceService/ListWorkspaces</code>. By default the
+    service listens on port <strong>8080</strong>
+    (<code>GATEWAY_CONNECT_PORT</code>).
+  </p>
+
+  <h2>Authentication: the service credential</h2>
+  <p>
+    Workspaces is an <strong>internal service-to-service</strong> API. The
+    caller is a trusted product backend, not a browser and not an end user. It
+    authenticates with a shared <strong>service token</strong> sent as a bearer
+    header:
+  </p>
+  <Code code={`Authorization: Bearer <service-token>`} lang="http" />
+  <p>
+    Valid tokens come from the <code>GATEWAY_SERVICE_AUTH_TOKENS</code>
+    environment variable (comma-separated). A missing or wrong credential is
+    rejected with HTTP <strong>401</strong>, which Connect surfaces to clients as
+    code <code>Unauthenticated</code>. If <code>GATEWAY_SERVICE_AUTH_TOKENS</code>
+    is empty the requirement is <strong>disabled</strong> and every caller is
+    trusted — only appropriate behind a service mesh, mTLS, or a private network
+    (see <a href={`${base}docs/concepts/security`}>Security &amp; Service Auth</a>).
+  </p>
+
+  <div
+    style="border-left:3px solid var(--primary, #8b5cf6);border-radius:0.25rem;padding:0.75rem 1rem;margin:1.5rem 0;background:var(--muted, rgba(139,92,246,0.06));"
+  >
+    <strong>The end user is data, not the caller.</strong> Like Zanzibar, this
+    service never sees an end-user login. The bearer token identifies the
+    <em>calling service</em>; the human the action is performed for is passed
+    explicitly in the request body. End-user authentication happens at the
+    product edge, before this service is called.
+  </div>
+
+  <h2>Shared request fields</h2>
+  <p>
+    Three fields recur across the API. They carry the user identities and the
+    isolation shard — the service trusts them because it already trusted the
+    caller's service token.
+  </p>
+  <table>
+    <thead>
+      <tr>
+        <th>Field</th>
+        <th>On</th>
+        <th>Meaning</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>acting_user_id</code></td>
+        <td>Management RPCs (workspace, group, invitation writes/reads)</td>
+        <td>
+          <strong>Required.</strong> The user the action is authorized as.
+          Omitting it returns <code>InvalidArgument</code>.
+        </td>
+      </tr>
+      <tr>
+        <td><code>subject_user_id</code></td>
+        <td><code>Check</code>, <code>ReadRelationTuples</code></td>
+        <td>
+          The user being <em>tested</em> — pure data, independent of the caller
+          or the acting user.
+        </td>
+      </tr>
+      <tr>
+        <td><code>project_id</code></td>
+        <td>Every RPC</td>
+        <td>
+          Optional isolation shard. Empty falls back to
+          <code>GATEWAY_DEFAULT_PROJECT_ID</code> (default <code>"default"</code>).
+          See <a href={`${base}docs/concepts/projects`}>Projects &amp; Multi-Tenancy</a>.
+        </td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>Two worked calls</h2>
+  <p>List the workspaces Alice belongs to (auto-provisions her personal workspace on first call):</p>
+  <Code
+    code={`curl -X POST http://localhost:8080/workspace.v1.WorkspaceService/ListWorkspaces \\
+  -H "Authorization: Bearer $WS_SERVICE_TOKEN" \\
+  -H "Content-Type: application/json" \\
+  -d '{"acting_user_id":"alice"}'`}
+    lang="bash"
+  />
+  <p>Ask whether Bob is an admin of workspace <code>W</code>:</p>
+  <Code
+    code={`curl -X POST http://localhost:8080/workspace.v1.AuthzService/Check \\
+  -H "Authorization: Bearer $WS_SERVICE_TOKEN" \\
+  -H "Content-Type: application/json" \\
+  -d '{"namespace":"workspace","object_id":"W","relation":"admin","subject_user_id":"bob"}'`}
+    lang="bash"
+  />
+  <p>
+    The response is JSON shaped like the proto response message — for
+    <code>Check</code>, <code>{`{"allowed": true}`}</code>.
+  </p>
+
+  <h2>Error model</h2>
+  <p>
+    Errors use standard
+    <a href="https://connectrpc.com/docs/protocol/#error-codes">Connect error codes</a>.
+    Over HTTP/JSON each maps to an HTTP status and a body with a
+    <code>code</code> and <code>message</code>. The ones you will see:
+  </p>
+  <table>
+    <thead>
+      <tr>
+        <th>Connect code</th>
+        <th>HTTP</th>
+        <th>When</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>unauthenticated</code></td>
+        <td>401</td>
+        <td>Missing or wrong service token in the <code>Authorization</code> header.</td>
+      </tr>
+      <tr>
+        <td><code>invalid_argument</code></td>
+        <td>400</td>
+        <td>
+          A required field is missing or malformed — e.g. no
+          <code>acting_user_id</code>, an empty <code>display_name</code>, or a
+          <code>role</code> of <code>ROLE_OWNER</code> on <code>AddMember</code>.
+        </td>
+      </tr>
+      <tr>
+        <td><code>permission_denied</code></td>
+        <td>403</td>
+        <td>The acting user is not authorized to perform the action on the target.</td>
+      </tr>
+      <tr>
+        <td><code>not_found</code></td>
+        <td>404</td>
+        <td>The referenced workspace, group, member, or invitation does not exist in the project.</td>
+      </tr>
+      <tr>
+        <td><code>failed_precondition</code></td>
+        <td>412</td>
+        <td>
+          The request conflicts with the resource's state — e.g. adding a member
+          to a personal workspace, or accepting an already-consumed invitation.
+        </td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>The three services</h2>
+  <p>
+    Workspaces exposes three Connect services. The
+    <a href={`${base}api`}>Live API Reference</a> documents each request and
+    response field; this table is the map.
+  </p>
+  <table>
+    <thead>
+      <tr>
+        <th>Service</th>
+        <th>Owns</th>
+        <th>RPCs</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>WorkspaceService</code></td>
+        <td>Workspaces, members, invitations</td>
+        <td>
+          <code>CreateWorkspace</code>, <code>GetWorkspace</code>,
+          <code>ListWorkspaces</code>, <code>UpdateWorkspace</code>,
+          <code>DeleteWorkspace</code>, <code>AddMember</code>,
+          <code>UpdateMemberRole</code>, <code>RemoveMember</code>,
+          <code>ListMembers</code>, <code>CreateInvitation</code>,
+          <code>AcceptInvitation</code>, <code>ListInvitations</code>,
+          <code>RevokeInvitation</code>
+        </td>
+      </tr>
+      <tr>
+        <td><code>GroupService</code></td>
+        <td>Reusable, nestable membership sets</td>
+        <td>
+          <code>CreateGroup</code>, <code>GetGroup</code>,
+          <code>ListGroups</code>, <code>DeleteGroup</code>,
+          <code>AddGroupMember</code>, <code>RemoveGroupMember</code>,
+          <code>ListGroupMembers</code>
+        </td>
+      </tr>
+      <tr>
+        <td><code>AuthzService</code></td>
+        <td>The relation-tuple engine</td>
+        <td>
+          <code>WriteRelationTuples</code>, <code>ReadRelationTuples</code>,
+          <code>Check</code>, <code>Expand</code>
+        </td>
+      </tr>
+    </tbody>
+  </table>
+  <p>
+    <code>ListWorkspaces</code> auto-provisions the caller's personal workspace
+    on first call. <code>CreateInvitation</code> returns a one-time token;
+    <code>ListInvitations</code> never echoes it. <code>ReadRelationTuples</code>
+    is a raw store read with no rewrite evaluation — use <code>Check</code> for
+    an authorization decision and <code>Expand</code> for the resolved userset
+    tree (see <a href={`${base}docs/guides/check-and-expand`}>Check &amp; Expand</a>).
+  </p>
+
+  <h2>Generated clients</h2>
+  <p>
+    Go services should not hand-write requests. The repository ships generated
+    Connect-Go clients under
+    <a href="https://github.com/elloloop/workspace/tree/main/gen/go"><code>gen/go</code></a>
+    — the message types in
+    <code>gen/go/workspace/v1</code> and the client/handler interfaces in
+    <code>gen/go/workspace/v1/workspacev1connect</code>. Import them from the
+    module <code>github.com/elloloop/workspace</code> and call typed methods
+    instead of building JSON by hand; the bearer header is set the same way:
+  </p>
+  <Code
+    code={`import (
+    workspacev1 "github.com/elloloop/workspace/gen/go/workspace/v1"
+    "github.com/elloloop/workspace/gen/go/workspace/v1/workspacev1connect"
+)
+
+client := workspacev1connect.NewWorkspaceServiceClient(
+    http.DefaultClient, "http://localhost:8080",
+)
+
+req := connect.NewRequest(&workspacev1.ListWorkspacesRequest{ActingUserId: "alice"})
+req.Header().Set("Authorization", "Bearer "+serviceToken)
+res, err := client.ListWorkspaces(ctx, req)`}
+    lang="go"
+  />
+  <p>
+    For other languages, generate a Connect or gRPC client from the same
+    OpenAPI/proto and point it at the same URL and header.
+  </p>
+</DocsLayout>

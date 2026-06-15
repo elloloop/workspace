@@ -1,0 +1,173 @@
+---
+import DocsLayout from "../../../layouts/DocsLayout.astro";
+import { Code } from "astro-expressive-code/components";
+
+const BASE = import.meta.env.BASE_URL;
+---
+
+<DocsLayout title="Learning Platform">
+  <h1>Learning Platform</h1>
+  <p>
+    This page models a learning platform that serves both B2C learners who buy a
+    single course and companies who buy seats that grant a whole roster access.
+    One engine, one set of namespaces: a course, cohort, or lesson is a
+    <code>resource</code>; a company is a <strong>TEAM workspace</strong>; a
+    class or cohort is a <code>group</code>; instructors are
+    <code>editor</code>s and learners are <code>viewer</code>s. You will see the
+    exact tuples and <code>Check</code> answers for enrolling, instructor
+    grading access, and company-admin oversight.
+  </p>
+
+  <h2>The model</h2>
+  <ul>
+    <li>
+      <strong>Course / lesson → <code>resource</code>.</strong> A lesson is
+      <code>parent</code>ed to its course, so course-level grants cascade to
+      every lesson.
+    </li>
+    <li>
+      <strong>Instructor → <code>editor</code>; learner → <code>viewer</code>.</strong>
+      <code>resource.viewer</code> unions <code>computed(editor)</code>, so every
+      instructor is automatically a viewer too.
+    </li>
+    <li>
+      <strong>Company → <code>workspace</code> (TEAM); class / cohort →
+      <code>group</code>.</strong> Seat-holders are workspace members; a cohort
+      is a reusable membership set granted on a course in one tuple.
+    </li>
+  </ul>
+
+  <h2>B2C · a solo learner enrolls</h2>
+  <p>
+    An individual buyer needs no organization. On first
+    <code>ListWorkspaces</code> the service auto-provisions their
+    <code>PERSONAL</code> workspace; it is closed and never used to share course
+    content. Enrollment is a single direct grant —
+    <code>resource:course#viewer@user</code> — the <code>this</code> leaf of the
+    <code>viewer</code> rule, with no parent workspace.
+  </p>
+  <Code code={`curl -X POST http://localhost:8080/workspace.v1.AuthzService/WriteRelationTuples \\
+  -H "Authorization: Bearer $WS_SERVICE_TOKEN" -H "Content-Type: application/json" \\
+  -d '{
+    "updates": [
+      {"op":"OP_INSERT","tuple":{"namespace":"resource","object_id":"course-go","relation":"viewer","subject":{"user_id":"jo"}}}
+    ]
+  }'`} lang="bash" title="enroll a B2C learner" />
+  <Code code={`resource:course-go#viewer@user:jo              # jo bought it personally`} lang="text" title="enrollment tuple" />
+  <p>
+    The gate the product checks before streaming a lesson — lessons inherit
+    course access via <code>parent</code>:
+  </p>
+  <Code code={`resource:lesson-1#parent@resource:course-go    # lesson belongs to the course`} lang="text" title="lesson inherits from course" />
+  <Code code={`curl -X POST http://localhost:8080/workspace.v1.AuthzService/Check \\
+  -H "Authorization: Bearer $WS_SERVICE_TOKEN" -H "Content-Type: application/json" \\
+  -d '{"namespace":"resource","object_id":"lesson-1","relation":"viewer","subject_user_id":"jo"}'`} lang="bash" title="can jo watch lesson 1?" />
+  <Code code={`{"allowed": true}`} lang="json" />
+  <p>
+    The <code>viewer</code> rule's <code>tupleToUserset(parent, member)</code>
+    does not match here (the course's parent is another resource, not a
+    workspace), but <code>computed(editor)</code> and the course's own
+    <code>viewer</code> grant flow through course → lesson, so jo is allowed.
+  </p>
+
+  <h2>B2B · a company buys seats</h2>
+  <p>
+    A company is a <code>TEAM</code> workspace. The platform backend creates it
+    and adds each seat-holder as a <code>member</code> —
+    <code>acting_user_id</code> is required on every management call.
+  </p>
+  <Code code={`# create the company workspace
+curl -X POST http://localhost:8080/workspace.v1.WorkspaceService/CreateWorkspace \\
+  -H "Authorization: Bearer $WS_SERVICE_TOKEN" -H "Content-Type: application/json" \\
+  -d '{"display_name":"BigCo","slug":"bigco","acting_user_id":"bigco-admin"}'
+
+# fill a seat (ROLE_OWNER is rejected here; owner is fixed at creation)
+curl -X POST http://localhost:8080/workspace.v1.WorkspaceService/AddMember \\
+  -H "Authorization: Bearer $WS_SERVICE_TOKEN" -H "Content-Type: application/json" \\
+  -d '{"workspace_id":"bigco","user_id":"employee-1","role":"ROLE_MEMBER","acting_user_id":"bigco-admin"}'`} lang="bash" title="provision the company and a seat" />
+  <p>
+    Grant the catalogue to the company by <code>parent</code>ing each course to
+    the workspace. Now <strong>every seat-holder is a <code>viewer</code> by
+    inheritance</strong> — adding a seat is one <code>AddMember</code> call and
+    it grants the whole catalogue at once.
+  </p>
+  <Code code={`workspace:bigco#owner@user:bigco-admin
+workspace:bigco#member@user:employee-1
+workspace:bigco#member@user:employee-2
+resource:course-go#parent@workspace:bigco      # bigco's seats can view it`} lang="text" title="company + catalogue tuples" />
+  <Code code={`curl -X POST http://localhost:8080/workspace.v1.AuthzService/Check \\
+  -H "Authorization: Bearer $WS_SERVICE_TOKEN" -H "Content-Type: application/json" \\
+  -d '{"namespace":"resource","object_id":"course-go","relation":"viewer","subject_user_id":"employee-1"}'`} lang="bash" title="can the seat-holder view the course?" />
+  <Code code={`{"allowed": true}`} lang="json" />
+  <p>
+    The <code>viewer</code> rule's <code>tupleToUserset(parent, member)</code>
+    walks the course's <code>parent</code> to <code>workspace:bigco</code>,
+    evaluates <code>member</code>, and allows. The same course object thus
+    serves both a seat-based company and a one-off B2C buyer: inheritance for the
+    roster, a direct grant for the individual.
+  </p>
+
+  <h2>Cohorts and instructor grading access</h2>
+  <p>
+    A class or cohort is a <code>group</code> — reusable across the courses it
+    touches. The instructor is granted <code>editor</code> directly (which makes
+    them a <code>viewer</code> too); the cohort group is granted
+    <code>viewer</code> so the whole roster sees the material.
+  </p>
+  <Code code={`# the cohort, and a member of it
+group:cohort-2026#member@user:learner-pat
+# instructor edits (grades) the course; cohort views it
+resource:course-go#editor@user:instructor-sam
+resource:course-go#viewer@group:cohort-2026#member`} lang="text" title="instructor + cohort tuples" />
+  <p>
+    Grading writes need <code>editor</code>; the product checks it before
+    accepting a grade. Because <code>editor</code> unions
+    <code>computed(owner)</code> and the direct <code>this</code> grant,
+    instructor-sam is allowed:
+  </p>
+  <Code code={`curl -X POST http://localhost:8080/workspace.v1.AuthzService/Check \\
+  -H "Authorization: Bearer $WS_SERVICE_TOKEN" -H "Content-Type: application/json" \\
+  -d '{"namespace":"resource","object_id":"course-go","relation":"editor","subject_user_id":"instructor-sam"}'`} lang="bash" title="may the instructor grade?" />
+  <Code code={`{"allowed": true}`} lang="json" />
+  <p>
+    A cohort learner, by contrast, returns
+    <code>{`{"allowed": false}`}</code> for <code>editor</code> but
+    <code>{`{"allowed": true}`}</code> for <code>viewer</code> — they can watch,
+    not grade.
+  </p>
+
+  <h2>Company-admin oversight</h2>
+  <p>
+    Company admins need to see what their seats can access without an explicit
+    per-course grant. Because <code>resource.editor</code> unions
+    <code>tupleToUserset(parent, admin)</code>, any
+    <code>workspace:bigco#admin</code> can edit every course parented to the
+    company — oversight is inherited from the workspace role, not granted course
+    by course.
+  </p>
+  <Code code={`workspace:bigco#admin@user:program-manager     # an L&D admin`} lang="text" title="company admin tuple" />
+  <Code code={`curl -X POST http://localhost:8080/workspace.v1.AuthzService/Check \\
+  -H "Authorization: Bearer $WS_SERVICE_TOKEN" -H "Content-Type: application/json" \\
+  -d '{"namespace":"resource","object_id":"course-go","relation":"editor","subject_user_id":"program-manager"}'`} lang="bash" title="can the L&D admin oversee the course?" />
+  <Code code={`{"allowed": true}`} lang="json" />
+  <p>
+    To audit a course's full reach, call
+    <code>Expand(resource, course-go, viewer)</code> — the tree unions the direct
+    grants, the <code>editor</code> subtree (instructors), the cohort group's
+    <code>member</code> userset, and the <code>parent</code> workspace's
+    <code>member</code> set. See
+    <a href={`${BASE}/docs/guides/check-and-expand`}>Check &amp; Expand</a>.
+  </p>
+
+  <h2>One model, both audiences</h2>
+  <p>
+    The decision is always
+    <code>Check(resource, &lt;course&gt;, viewer, &lt;user&gt;)</code> — the
+    product never branches on B2C versus B2B. To isolate one large customer's
+    data, give them their own <code>project_id</code> shard (see
+    <a href={`${BASE}/docs/concepts/projects`}>Projects &amp; Multi-Tenancy</a>);
+    otherwise one B2C product is one project with many personal workspaces. For
+    personal-vs-team semantics, see
+    <a href={`${BASE}/docs/concepts/workspaces-and-groups`}>Workspaces &amp; Groups</a>.
+  </p>
+</DocsLayout>

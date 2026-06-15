@@ -1,0 +1,95 @@
+---
+import DocsLayout from "../../../layouts/DocsLayout.astro";
+import { Code } from "astro-expressive-code/components";
+
+const BASE = import.meta.env.BASE_URL;
+---
+
+<DocsLayout title="Projects & Multi-Tenancy">
+  <h1>Projects &amp; Multi-Tenancy</h1>
+  <p>
+    This page explains how the service isolates tenants. The
+    <strong><code>project_id</code></strong> is the isolation shard (identity
+    <a href="https://github.com/elloloop/identity/blob/main/docs/adr/0002-project-as-isolation-shard.md">ADR-0002</a>):
+    every workspace, group, invitation, and relation tuple is scoped to a
+    project, and data in different projects never sees each other.
+  </p>
+
+  <h2>Everything is project-scoped</h2>
+  <p>
+    <code>project_id</code> is not a field you check against — it is the boundary
+    the whole store is partitioned by. A <code>Check</code> in one project can
+    never match a tuple in another, even with identical object ids.
+  </p>
+  <Code code={`# Two projects, same object id — fully isolated
+project=acme   → workspace:team1#member@user:alice
+project=globex → workspace:team1#member@user:bob
+
+# Check(workspace, team1, member, alice) in project=globex → allowed:false`} lang="text" />
+  <p>
+    An empty <code>project_id</code> on a request means the
+    <strong>default project</strong>, configured by
+    <code>GATEWAY_DEFAULT_PROJECT_ID</code> (built-in fallback
+    <code>"default"</code>). The default project is a real project like any
+    other — it is just the one you land in when you send nothing.
+  </p>
+
+  <h2>How project_id flows on a request</h2>
+  <p>
+    <code>project_id</code> is an explicit, optional field on every RPC — it is
+    <strong>data</strong>, set by the calling product backend, not inferred from
+    a token (end-user auth happens at the product edge; see
+    <a href={`${BASE}docs/concepts/security`}>Security &amp; Service Auth</a>).
+    Management RPCs carry it alongside <code>acting_user_id</code>; authz RPCs
+    carry it alongside the tuple fields.
+  </p>
+  <table>
+    <tr><th>Request sends</th><th>Project used</th></tr>
+    <tr><td><code>project_id: "acme"</code></td><td><code>acme</code></td></tr>
+    <tr><td><code>project_id</code> empty / omitted</td><td><code>GATEWAY_DEFAULT_PROJECT_ID</code></td></tr>
+    <tr><td>(env unset too)</td><td><code>default</code> (built-in fallback)</td></tr>
+  </table>
+  <Code code={`curl -X POST http://localhost:8080/workspace.v1.AuthzService/Check \\
+  -H "Authorization: Bearer $WS_SERVICE_TOKEN" -H "Content-Type: application/json" \\
+  -d '{"project_id":"acme","namespace":"workspace","object_id":"W","relation":"admin","subject_user_id":"bob"}'`} lang="bash" />
+
+  <h2>Two deployment shapes</h2>
+  <h3>B2C — one project, many personal workspaces</h3>
+  <p>
+    A consumer product (a personal-assistant app, a note-taker) runs as a
+    <strong>single project</strong>. Every end user gets their own auto-provisioned
+    personal workspace within it, and the few who collaborate create team
+    workspaces. You typically leave <code>project_id</code> empty everywhere and
+    let it resolve to the default project. Isolation between users comes from
+    workspace membership tuples, not from project sharding.
+  </p>
+  <h3>B2B — a project shard per customer</h3>
+  <p>
+    A B2B platform shards <strong>per customer</strong>: each customer
+    organization is its own <code>project_id</code>. One workspaces deployment
+    (and one Postgres) serves them all, but a tuple, workspace, or group created
+    for <code>acme</code> is invisible to <code>globex</code>. The product backend
+    sets <code>project_id</code> on every call from the authenticated tenant it
+    resolved at its own edge. This gives hard, row-level tenant isolation without
+    a database per customer.
+  </p>
+
+  <h2>Storage implications</h2>
+  <p>
+    <code>project_id</code> leads every index. The relation-tuple store is keyed
+    <code>(project_id, namespace, object_id, relation)</code>, and the same
+    leading-key discipline applies to workspaces, groups, and invitations. Both
+    storage drivers behind <code>service.Repository</code> — the in-memory
+    reference store and the Postgres driver — enforce this identically, and a
+    conformance suite pins them to the same semantics. Because the shard is the
+    leading key, a <code>Check</code> is always scoped to a single project and
+    never scans across the boundary.
+  </p>
+
+  <h2>Where to next</h2>
+  <ul>
+    <li><a href={`${BASE}docs/concepts/security`}>Security &amp; Service Auth</a> — who sets <code>project_id</code> and how callers authenticate.</li>
+    <li><a href={`${BASE}docs/installation/configuration`}>Configuration</a> — <code>GATEWAY_DEFAULT_PROJECT_ID</code> and the Postgres DSN.</li>
+    <li><a href={`${BASE}docs/concepts/authorization-model`}>Authorization Model</a> — the tuple store the shard partitions.</li>
+  </ul>
+</DocsLayout>

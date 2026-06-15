@@ -1,0 +1,161 @@
+---
+import DocsLayout from "../../../layouts/DocsLayout.astro";
+import { Code } from "astro-expressive-code/components";
+
+const BASE = import.meta.env.BASE_URL;
+---
+
+<DocsLayout title="Personal-Assistant App">
+  <h1>Personal-Assistant App</h1>
+  <p>
+    This page models a consumer task app where end users share individual tasks
+    and lists with specific people — a partner, a parent, the whole family —
+    with no enclosing organization. Each user lives in their auto-provisioned
+    <strong>personal workspace</strong>, which is closed; sharing happens at the
+    <strong>resource</strong> level, not by adding members to that workspace. You
+    will see the tuples for creating a task, sharing it with a person, sharing it
+    with a family group, and revoking access.
+  </p>
+
+  <h2>The personal workspace is closed</h2>
+  <p>
+    There is no "create org" step. On the user's first
+    <code>ListWorkspaces</code> call the service auto-provisions their single
+    <code>PERSONAL</code> workspace (see
+    <a href={`${BASE}/docs/adr/0002-personal-and-team-workspaces`}>ADR-0002</a>).
+    It is undeletable and admits exactly one member — the owner. You
+    <em>cannot</em> add a friend to it, and the API rejects attempts to.
+  </p>
+  <Code code={`curl -X POST http://localhost:8080/workspace.v1.WorkspaceService/ListWorkspaces \\
+  -H "Authorization: Bearer $WS_SERVICE_TOKEN" -H "Content-Type: application/json" \\
+  -d '{"acting_user_id":"alice"}'`} lang="bash" title="auto-provision alice's personal workspace" />
+  <Code code={`{
+  "workspaces": [
+    {"id":"ws_personal_alice","slug":"alice","display_name":"Alice","type":"WORKSPACE_TYPE_PERSONAL","owner_user_id":"alice"}
+  ]
+}`} lang="json" />
+  <p>
+    <strong>Key point:</strong> the personal workspace is a private home, not a
+    sharing surface. Collaboration is expressed by granting another user a
+    relation on a specific <code>resource</code> — never by widening workspace
+    membership.
+  </p>
+
+  <h2>1 · Create a task</h2>
+  <p>
+    A task or list is a <code>resource</code> the user owns. Creating it is a
+    single tuple: <code>resource:&lt;task&gt;#owner@user</code>. The owner gets
+    edit and view for free, because <code>editor</code> unions
+    <code>computed(owner)</code> and <code>viewer</code> unions
+    <code>computed(editor)</code>.
+  </p>
+  <Code code={`curl -X POST http://localhost:8080/workspace.v1.AuthzService/WriteRelationTuples \\
+  -H "Authorization: Bearer $WS_SERVICE_TOKEN" -H "Content-Type: application/json" \\
+  -d '{
+    "updates": [
+      {"op":"OP_INSERT","tuple":{"namespace":"resource","object_id":"task-buy-milk","relation":"owner","subject":{"user_id":"alice"}}}
+    ]
+  }'`} lang="bash" title="alice creates a task" />
+  <Code code={`resource:task-buy-milk#owner@user:alice`} lang="text" title="task tuple" />
+  <p>
+    Because the task has no <code>parent</code> tuple, there is no inheritance —
+    access is exactly what is granted directly on it. This is the deliberate
+    contrast with the workplace and learning examples, where a
+    <code>parent</code> workspace drives access.
+  </p>
+
+  <h2>2 · Share with a person</h2>
+  <p>
+    Sharing with one individual is one direct tuple — the <code>this</code> leaf
+    of the <code>editor</code> (or <code>viewer</code>) rule. Give dad edit
+    rights so he can tick the task off:
+  </p>
+  <Code code={`curl -X POST http://localhost:8080/workspace.v1.AuthzService/WriteRelationTuples \\
+  -H "Authorization: Bearer $WS_SERVICE_TOKEN" -H "Content-Type: application/json" \\
+  -d '{
+    "updates": [
+      {"op":"OP_INSERT","tuple":{"namespace":"resource","object_id":"task-buy-milk","relation":"editor","subject":{"user_id":"dad"}}}
+    ]
+  }'`} lang="bash" title="share the task with dad as editor" />
+  <Code code={`resource:task-buy-milk#editor@user:dad`} lang="text" title="direct share tuple" />
+  <Code code={`curl -X POST http://localhost:8080/workspace.v1.AuthzService/Check \\
+  -H "Authorization: Bearer $WS_SERVICE_TOKEN" -H "Content-Type: application/json" \\
+  -d '{"namespace":"resource","object_id":"task-buy-milk","relation":"editor","subject_user_id":"dad"}'`} lang="bash" title="can dad edit the task?" />
+  <Code code={`{"allowed": true}`} lang="json" />
+  <p>
+    A friend who was never shared the task returns
+    <code>{`{"allowed": false}`}</code> — there is no organization-wide default,
+    so unshared means no access.
+  </p>
+
+  <h2>3 · Share with the family group</h2>
+  <p>
+    For people the user shares with repeatedly, a standalone, project-level
+    <code>group</code> (empty <code>workspace_id</code>) is reusable across every
+    task. Create it once, then grant it <code>viewer</code> on a task in a single
+    tuple whose subject is the <code>group:family#member</code> userset.
+  </p>
+  <Code code={`# create the standalone family group (no owning workspace)
+curl -X POST http://localhost:8080/workspace.v1.GroupService/CreateGroup \\
+  -H "Authorization: Bearer $WS_SERVICE_TOKEN" -H "Content-Type: application/json" \\
+  -d '{"display_name":"Family","slug":"family","acting_user_id":"alice"}'
+
+# add a relative to the group
+curl -X POST http://localhost:8080/workspace.v1.GroupService/AddGroupMember \\
+  -H "Authorization: Bearer $WS_SERVICE_TOKEN" -H "Content-Type: application/json" \\
+  -d '{"group_id":"family","member":{"user_id":"gran"},"acting_user_id":"alice"}'
+
+# grant the whole family viewer on the task in one tuple
+curl -X POST http://localhost:8080/workspace.v1.AuthzService/WriteRelationTuples \\
+  -H "Authorization: Bearer $WS_SERVICE_TOKEN" -H "Content-Type: application/json" \\
+  -d '{
+    "updates": [
+      {"op":"OP_INSERT","tuple":{"namespace":"resource","object_id":"task-buy-milk","relation":"viewer","subject":{"set":{"namespace":"group","object_id":"family","relation":"member"}}}}
+    ]
+  }'`} lang="bash" title="reusable family group + one grant" />
+  <Code code={`group:family#member@user:gran
+resource:task-buy-milk#viewer@group:family#member`} lang="text" title="group membership + group grant" />
+  <p>
+    <code>Check(resource, task-buy-milk, viewer, gran)</code> resolves the
+    <code>group:family#member</code> userset transitively to gran and returns
+    <strong>allowed</strong>. Add or remove a relative once — by editing group
+    membership — and it propagates to every task the family group is granted on.
+  </p>
+
+  <h2>4 · Revoke</h2>
+  <p>
+    Revoking is the inverse operation: delete the tuple. Removing dad's direct
+    grant is an <code>OP_DELETE</code> of the exact tuple; removing a relative
+    from everything at once is an <code>OP_DELETE</code> of their
+    <code>group:family#member</code> tuple.
+  </p>
+  <Code code={`curl -X POST http://localhost:8080/workspace.v1.AuthzService/WriteRelationTuples \\
+  -H "Authorization: Bearer $WS_SERVICE_TOKEN" -H "Content-Type: application/json" \\
+  -d '{
+    "updates": [
+      {"op":"OP_DELETE","tuple":{"namespace":"resource","object_id":"task-buy-milk","relation":"editor","subject":{"user_id":"dad"}}}
+    ]
+  }'`} lang="bash" title="revoke dad's access" />
+  <p>
+    An immediate re-<code>Check</code> for dad now returns
+    <code>{`{"allowed": false}`}</code>. Note that removing the group grant
+    (<code>resource:task-buy-milk#viewer@group:family#member</code>) revokes the
+    whole family from <em>that</em> task, while removing
+    <code>group:family#member@user:gran</code> revokes gran from
+    <em>every</em> task shared with the family — choose the tuple that matches
+    the scope you mean.
+  </p>
+
+  <h2>The whole product, in tuples</h2>
+  <p>
+    A closed personal workspace per user, tasks as directly-shared resources, and
+    a reusable family group — no per-app collaborator table, no membership in
+    anyone's private workspace. The same engine that backs a company
+    collaboration tool backs a single-user task sharer; only the tuples differ.
+    See the
+    <a href={`${BASE}/docs/concepts/authorization-model`}>Authorization Model</a>
+    for how the <code>this</code> leaf and userset subjects combine, and
+    <a href={`${BASE}/docs/guides/sharing`}>Sharing Resources</a> for the general
+    pattern.
+  </p>
+</DocsLayout>

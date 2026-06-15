@@ -1,0 +1,46 @@
+---
+// Adds id="kebab-case" to every h2/h3 inside article.prose that doesn't already
+// have one. Runs at page load so the on-page TOC and deep-linking work even
+// for hand-written .astro pages with no IDs in the source.
+---
+
+<script>
+  function slugify(text: string): string {
+    return text
+      .toLowerCase()
+      .trim()
+      .replace(/&/g, " and ")
+      .replace(/[^a-z0-9\s-]/g, "")
+      .replace(/\s+/g, "-")
+      .replace(/-+/g, "-")
+      .replace(/^-+|-+$/g, "");
+  }
+
+  function ensureHeadingIds() {
+    const article = document.querySelector("article.prose");
+    if (!article) return;
+    const seen = new Set<string>();
+    article
+      .querySelectorAll<HTMLElement>("h2, h3")
+      .forEach((h) => {
+        let id = h.id;
+        if (!id) {
+          const base = slugify(h.textContent ?? "");
+          if (!base) return;
+          id = base;
+          let i = 2;
+          while (seen.has(id) || document.getElementById(id)) {
+            id = `${base}-${i++}`;
+          }
+          h.id = id;
+        }
+        seen.add(id);
+      });
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", ensureHeadingIds);
+  } else {
+    ensureHeadingIds();
+  }
+</script>

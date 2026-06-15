@@ -3,9 +3,9 @@ package memory_test
 import (
 	"testing"
 
-	"github.com/elloloop/workspaces/internal/repo/conformance"
-	"github.com/elloloop/workspaces/internal/repo/memory"
-	"github.com/elloloop/workspaces/internal/service"
+	"github.com/elloloop/workspace/internal/repo/conformance"
+	"github.com/elloloop/workspace/internal/repo/memory"
+	"github.com/elloloop/workspace/internal/service"
 )
 
 func TestMemoryConformance(t *testing.T) {
