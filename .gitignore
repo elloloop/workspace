@@ -30,3 +30,6 @@ tests/load/results/
 
 # locally-installed codegen plugins
 .bin/
+
+# stray protoc-gen-doc output (not used; proto reference renders the raw .proto)
+gen/protodoc/
