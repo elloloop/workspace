@@ -184,11 +184,12 @@ proto: ## Regenerate Go stubs + OpenAPI + proto reference from proto
 	$(MAKE) protodoc
 
 .PHONY: protodoc
-protodoc: ## Sync the proto source into the docs site (Proto Reference page)
-	mkdir -p docs-site/src/data docs-site/public/proto
-	cp proto/workspace/v1/workspace.proto docs-site/src/data/workspace-v1.proto
+protodoc: ## Generate the HTML proto reference + raw .proto for the docs site
+	mkdir -p docs-site/public/proto
+	$(BUF) generate --template buf.gen.protodoc.yaml
+	python3 scripts/protodoc-postprocess.py docs-site/public/proto/index.html
 	cp proto/workspace/v1/workspace.proto docs-site/public/proto/workspace-v1.proto
-	@echo "==> proto synced → docs-site (src/data + public/proto)"
+	@echo "==> proto reference generated → docs-site/public/proto (index.html + raw .proto)"
 
 .PHONY: buf-lint
 buf-lint: ## Lint the proto sources
