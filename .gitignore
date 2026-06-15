@@ -1,0 +1,29 @@
+# Build artifacts
+/bin/
+/workspace
+*.test
+*.out
+cover.out
+# `go build ./examples/embedded` drops a binary named after the package dir
+# into the working directory; keep it out of the repo root.
+/embedded
+/dwtest
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+# Local Claude state (worktrees, settings) is ignored, but shared agent
+# workflows checked into the repo are tracked. Re-including a path under
+# an ignored dir requires un-ignoring each parent first.
+/.claude/*
+!/.claude/workflows/
+/.claude/workflows/*
+!/.claude/workflows/*.js
+!/.claude/workflows/*.mjs
+
+# Load-test run artifacts
+tests/load/results/

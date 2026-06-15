@@ -1,0 +1,428 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+  GO_VERSION: '1.26.3'
+  GOLANGCI_LINT_VERSION: 'v2.12.1'
+  GOVULNCHECK_VERSION: 'v1.1.4'
+
+permissions:
+  contents: read
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Re-run every gate `ci.yml` runs on PRs. A broken build must NOT publish.
+  # ---------------------------------------------------------------------------
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: ${{ env.GOLANGCI_LINT_VERSION }}
+          only-new-issues: true
+          args: --config=.golangci.yml
+
+  vuln:
+    name: Vulnerability scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+      - name: Install govulncheck
+        run: go install golang.org/x/vuln/cmd/govulncheck@${{ env.GOVULNCHECK_VERSION }}
+      - name: govulncheck
+        run: govulncheck ./...
+
+  test:
+    name: Build + Test + Coverage
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:16.13-alpine3.23
+        env:
+          POSTGRES_USER: workspaces
+          POSTGRES_PASSWORD: workspaces
+          POSTGRES_DB: workspaces
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U workspaces"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+      - name: go build
+        run: go build ./...
+      - name: Wait for coverage backends
+        run: |
+          for i in $(seq 1 30); do
+            if (echo > /dev/tcp/localhost/5432) >/dev/null 2>&1; then echo "postgres up"; break; fi
+            sleep 1
+            if [[ $i -eq 30 ]]; then echo "postgres did not come up"; exit 1; fi
+          done
+      - name: go test (race + merged coverage)
+        env:
+          RUN_INTEGRATION_COVERAGE: "1"
+          GATEWAY_POSTGRES_DSN: postgres://workspaces:workspaces@localhost:5432/workspaces?sslmode=disable
+          GATEWAY_TEST_POSTGRES_DSN: postgres://workspaces:workspaces@localhost:5432/workspaces?sslmode=disable
+        run: bash scripts/run-coverage.sh
+      - name: Coverage gate (internal/ >= 84%)
+        run: bash scripts/coverage-gate.sh cover.out 84 internal/
+      - name: Coverage gate (pkg/ >= 88%)
+        run: bash scripts/coverage-gate.sh cover.out 88 pkg/
+      - name: Coverage gate (per-package)
+        run: bash scripts/coverage-gate.sh cover.out --config .coverage-gates.yml
+
+  smoke:
+    name: Boot smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+      - name: go test -tags=smoke
+        run: |
+          if compgen -G "tests/smoke/*.go" > /dev/null; then
+            go test -tags=smoke -timeout=120s ./tests/smoke/...
+          else
+            echo "no smoke tests under tests/smoke — skipping"
+          fi
+
+  integration:
+    name: Integration tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    services:
+      postgres:
+        image: postgres:16.13-alpine3.23
+        env:
+          POSTGRES_USER: workspaces
+          POSTGRES_PASSWORD: workspaces
+          POSTGRES_DB: workspaces
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U workspaces"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+      - name: Wait for postgres
+        run: |
+          for i in $(seq 1 30); do
+            if (echo > /dev/tcp/localhost/5432) >/dev/null 2>&1; then echo "postgres up"; break; fi
+            sleep 1
+            if [[ $i -eq 30 ]]; then echo "postgres did not come up"; exit 1; fi
+          done
+      - name: go test -tags=integration
+        env:
+          GATEWAY_POSTGRES_DSN: postgres://workspaces:workspaces@localhost:5432/workspaces?sslmode=disable
+          GATEWAY_TEST_POSTGRES_DSN: postgres://workspaces:workspaces@localhost:5432/workspaces?sslmode=disable
+        run: |
+          if compgen -G "tests/integration/*.go" > /dev/null; then
+            go test -tags=integration -race -timeout=180s ./tests/integration/...
+          else
+            echo "no integration tests under tests/integration — skipping"
+          fi
+
+  # Replay the committed seed corpus deterministically as ordinary tests
+  # (no `-fuzz`). A regression of any known crash fails the release
+  # reproducibly. Live fuzzing (`-fuzz`) is non-deterministic — a time-boxed
+  # run on a shared runner fails with "context deadline exceeded" when a worker
+  # is mid-execution as the budget expires, a flake that depends on runner load
+  # rather than on any input. Live exploration is left to the nightly job,
+  # which has a generous per-target budget and uploads any crashers as
+  # artifacts.
+  fuzz:
+    name: Fuzz smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+      - name: Replay fuzz seed corpus
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t pkgs < <(
+            grep -rEl --include='*_test.go' '^func Fuzz[A-Za-z0-9_]+\(' . \
+              | sed -E 's|/[^/]+$||' \
+              | sort -u
+          )
+          if [[ ${#pkgs[@]} -eq 0 ]]; then
+            echo "no fuzz targets — skipping"
+            exit 0
+          fi
+          go test -race -timeout=120s "${pkgs[@]}"
+
+  docker:
+    name: Container build smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: docker build --target server
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: server
+          push: false
+          load: true
+          tags: workspaces:release-smoke
+          cache-from: type=gha,scope=release-docker
+          cache-to: type=gha,mode=max,scope=release-docker
+
+      - name: docker run smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          cid="$(
+            docker run -d \
+              -e GATEWAY_CONNECT_PORT=8080 \
+              -e GATEWAY_METRICS_PORT=9090 \
+              -e GATEWAY_DEFAULT_PROJECT_ID=docker-smoke \
+              -e GATEWAY_JWT_JWKS_URL= \
+              -p 127.0.0.1:18080:8080 \
+              workspaces:release-smoke
+          )"
+          trap 'docker rm -f "$cid" >/dev/null 2>&1 || true' EXIT
+
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:18080/health > /tmp/workspaces-health.json; then
+              grep -q '"status":"ok"' /tmp/workspaces-health.json
+              exit 0
+            fi
+            if [[ "$(docker inspect -f '{{.State.Running}}' "$cid")" != "true" ]]; then
+              docker logs "$cid"
+              exit 1
+            fi
+            sleep 1
+          done
+          docker logs "$cid"
+          exit 1
+
+  # ---------------------------------------------------------------------------
+  # Build, push, sign, and scan the published image.
+  # ---------------------------------------------------------------------------
+  build-and-push:
+    name: Build and Push Image
+    runs-on: ubuntu-latest
+    needs: [lint, vuln, test, smoke, integration, fuzz, docker]
+    permissions:
+      contents: read
+      packages: write
+      id-token: write   # cosign keyless OIDC
+    outputs:
+      digest: ${{ steps.build.outputs.digest }}
+      tags: ${{ steps.meta.outputs.tags }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Inject version from git tag
+        run: |
+          VER="${GITHUB_REF_NAME#v}"
+          echo "$VER" > VERSION
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+            type=raw,value=latest,enable=${{ !contains(github.ref, '-') }}
+            type=sha,prefix=sha-
+
+      - name: Build and push
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          target: server
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          sbom: true
+          provenance: mode=max
+          build-args: |
+            VERSION=${{ github.ref_name }}
+            COMMIT=${{ github.sha }}
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+        with:
+          cosign-release: 'v2.4.1'
+
+      - name: Sign published image (keyless OIDC)
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+          TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          # Sign each tag's specific digest. cosign records the signature in the same registry.
+          for tag in $TAGS; do
+            cosign sign --yes "${tag}@${DIGEST}"
+          done
+
+  # ---------------------------------------------------------------------------
+  # Post-publish vulnerability scan. Tag is already published; this fails the
+  # release run if HIGH/CRITICAL CVEs are found in the image, so the operator
+  # is alerted before users pull it.
+  # ---------------------------------------------------------------------------
+  scan-image:
+    name: Scan published image (Trivy)
+    runs-on: ubuntu-latest
+    needs: [build-and-push]
+    permissions:
+      contents: read
+      packages: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Pick first tag for scanning
+        id: tag
+        env:
+          TAGS: ${{ needs.build-and-push.outputs.tags }}
+        run: |
+          # All tags point to the same digest; pick the first.
+          first_tag="$(echo "$TAGS" | head -n1)"
+          echo "image=${first_tag}" >> "$GITHUB_OUTPUT"
+
+      - name: Run Trivy vulnerability scanner
+        # v0.36.0 (2026-04-22), pinned by commit SHA. Tags 0.0.1–0.34.2
+        # are flagged as compromised by the Trivy March 2026 advisory.
+        # SHA pin defends against future tag retargeting.
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ${{ steps.tag.outputs.image }}
+          format: sarif
+          output: trivy-results.sarif
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: '1'
+
+      - name: Upload Trivy SARIF to GitHub Security
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-results.sarif
+          category: trivy-image
+
+  # ---------------------------------------------------------------------------
+  # Publish the proto sources as versioned archives on the GitHub Release,
+  # alongside a reference to the just-published container image. Consumers
+  # who want to codegen against a specific workspaces version can download
+  # `workspaces-protos-<version>.tar.gz` instead of vendoring a git ref.
+  # ---------------------------------------------------------------------------
+  release-protos:
+    name: Publish proto bundle to GitHub Release
+    runs-on: ubuntu-latest
+    needs: [build-and-push]
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build proto archives
+        env:
+          VERSION: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          VER="${VERSION#v}"
+          mkdir -p dist
+          tar -czf "dist/workspaces-protos-${VER}.tar.gz" proto buf.yaml buf.gen.yaml
+          (cd "$GITHUB_WORKSPACE" && zip -r "dist/workspaces-protos-${VER}.zip" proto buf.yaml buf.gen.yaml)
+          (cd dist && sha256sum \
+            "workspaces-protos-${VER}.tar.gz" \
+            "workspaces-protos-${VER}.zip" \
+            > "workspaces-protos-${VER}.sha256")
+          ls -la dist/
+
+      - name: Create GitHub Release with proto bundle
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ github.ref_name }}
+          IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          DIGEST: ${{ needs.build-and-push.outputs.digest }}
+        run: |
+          set -euo pipefail
+          VER="${VERSION#v}"
+          notes_file="$(mktemp)"
+          {
+            echo "## Container image"
+            echo
+            echo "\`${IMAGE}:${VER}\`"
+            echo
+            echo "Digest: \`${DIGEST}\`"
+            echo
+            echo "Signed via cosign keyless OIDC and scanned with Trivy (HIGH/CRITICAL gate)."
+            echo
+            echo "## Proto bundle"
+            echo
+            echo "The \`workspaces-protos-${VER}.{tar.gz,zip}\` archives contain the \`proto/\` tree, \`buf.yaml\`, and \`buf.gen.yaml\` from this tag. Consumers can vendor or codegen against this exact version without depending on a git ref."
+            echo
+            echo "Verify integrity using the accompanying \`workspaces-protos-${VER}.sha256\` file."
+          } > "$notes_file"
+
+          gh release create "$VERSION" \
+            --title "$VERSION" \
+            --notes-file "$notes_file" \
+            "dist/workspaces-protos-${VER}.tar.gz" \
+            "dist/workspaces-protos-${VER}.zip" \
+            "dist/workspaces-protos-${VER}.sha256"

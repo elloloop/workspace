@@ -1,0 +1,52 @@
+name: Buf
+
+on:
+  pull_request:
+    branches: [main]
+  merge_group:
+    types: [checks_requested]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  buf-breaking:
+    name: buf-breaking
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up buf
+        uses: bufbuild/buf-setup-action@v1
+        with:
+          version: '1.66.0'
+
+      - name: buf lint
+        run: buf lint
+
+      # On a PR / merge-queue run, compare the proposed proto against the
+      # current main so a breaking change is caught before it lands.
+      - name: buf breaking (vs main)
+        if: github.event_name != 'push'
+        run: buf breaking --against '.git#branch=origin/main' --against-config buf.yaml
+
+      # On push to main, comparing against origin/main is a no-op (the commit
+      # IS main). Compare against the latest release tag instead, so any
+      # breaking change accumulated since the last release is surfaced — both
+      # as a direct-push backstop and as a "the next release must be a major
+      # bump" signal. No tags yet → nothing to compare → pass.
+      - name: buf breaking (vs last release)
+        if: github.event_name == 'push'
+        run: |
+          last_tag="$(git tag --list 'v*' --sort=-creatordate | head -n1)"
+          if [ -z "$last_tag" ]; then
+            echo "No release tag found; skipping breaking check vs last release."
+            exit 0
+          fi
+          echo "Comparing proto against last release tag: $last_tag"
+          buf breaking --against ".git#tag=$last_tag" --against-config buf.yaml

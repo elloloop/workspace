@@ -1,0 +1,372 @@
+syntax = "proto3";
+
+package workspace;
+
+option go_package = "github.com/elloloop/workspaces/gen/go/workspace;workspace";
+
+import "google/protobuf/timestamp.proto";
+
+// ═══════════════════════════════════════════════════════════════════════
+// Workspaces — the authorization layer
+// ═══════════════════════════════════════════════════════════════════════
+//
+// Two services live here, meeting only at the access token:
+//
+//   * WorkspaceService — the product surface. Every authenticated user
+//     owns a default PERSONAL workspace; they may create TEAM workspaces
+//     and add other people (family or colleagues) with a role. This serves
+//     both B2C (a personal-assistant user sharing tasks with relatives) and
+//     B2B SaaS (a company's employees collaborating), the way Claude and
+//     ChatGPT model personal vs. team plans.
+//
+//   * AuthzService — a Zanzibar-style relation-tuple engine. It is generic
+//     over namespaces: WorkspaceService writes tuples under the `workspace`
+//     namespace, and consuming products write tuples under their own
+//     namespaces (a Linear-like issue, a learning-platform course, a shared
+//     task) that inherit access from a parent workspace via userset
+//     rewrites, or are shared directly with an individual user.
+//
+// Identity (github.com/elloloop/identity) authenticates the user and mints
+// the JWT this service verifies. The two services never share a table.
+
+// ─── Common enums ──────────────────────────────────────────────────────
+
+enum WorkspaceType {
+  WORKSPACE_TYPE_UNSPECIFIED = 0;
+  // PERSONAL is the single auto-provisioned workspace every user owns. It
+  // cannot be deleted and admits exactly one member (the owner).
+  WORKSPACE_TYPE_PERSONAL = 1;
+  // TEAM is any workspace a user creates to collaborate with others —
+  // a family, a project group, or a whole company.
+  WORKSPACE_TYPE_TEAM = 2;
+}
+
+// Role is the coarse membership grade. It maps 1:1 onto a relation in the
+// `workspace` authz namespace, ordered owner ⊃ admin ⊃ member ⊃ guest.
+enum Role {
+  ROLE_UNSPECIFIED = 0;
+  ROLE_OWNER = 1;
+  ROLE_ADMIN = 2;
+  ROLE_MEMBER = 3;
+  ROLE_GUEST = 4;
+}
+
+enum MembershipStatus {
+  MEMBERSHIP_STATUS_UNSPECIFIED = 0;
+  MEMBERSHIP_STATUS_ACTIVE = 1;
+  MEMBERSHIP_STATUS_INVITED = 2;
+  MEMBERSHIP_STATUS_SUSPENDED = 3;
+}
+
+enum InvitationStatus {
+  INVITATION_STATUS_UNSPECIFIED = 0;
+  INVITATION_STATUS_PENDING = 1;
+  INVITATION_STATUS_ACCEPTED = 2;
+  INVITATION_STATUS_REVOKED = 3;
+  INVITATION_STATUS_EXPIRED = 4;
+}
+
+// ─── Product messages ──────────────────────────────────────────────────
+
+message Workspace {
+  string id = 1;
+  // project_id is the isolation shard (identity ADR-0002): every row and
+  // every relation tuple is scoped to it. Resolved from the caller's token
+  // or the configured default project.
+  string project_id = 2;
+  string slug = 3;
+  string display_name = 4;
+  WorkspaceType type = 5;
+  string owner_user_id = 6;
+  google.protobuf.Timestamp created_at = 7;
+  google.protobuf.Timestamp updated_at = 8;
+}
+
+message Membership {
+  string workspace_id = 1;
+  string user_id = 2;
+  Role role = 3;
+  MembershipStatus status = 4;
+  google.protobuf.Timestamp created_at = 5;
+  google.protobuf.Timestamp updated_at = 6;
+}
+
+message Invitation {
+  string id = 1;
+  string workspace_id = 2;
+  string email = 3;
+  Role role = 4;
+  InvitationStatus status = 5;
+  string invited_by_user_id = 6;
+  google.protobuf.Timestamp created_at = 7;
+  google.protobuf.Timestamp expires_at = 8;
+  // token is returned ONLY from CreateInvitation so the caller can deliver
+  // it out of band; it is never echoed by ListInvitations.
+  string token = 9;
+}
+
+// ─── WorkspaceService requests/responses ───────────────────────────────
+
+message CreateWorkspaceRequest {
+  string display_name = 1;
+  // slug is optional; the server derives one from display_name when empty.
+  string slug = 2;
+}
+message CreateWorkspaceResponse { Workspace workspace = 1; }
+
+message GetWorkspaceRequest { string workspace_id = 1; }
+message GetWorkspaceResponse { Workspace workspace = 1; }
+
+// ListWorkspaces returns every workspace the caller is an active member of,
+// auto-provisioning their PERSONAL workspace on first call.
+message ListWorkspacesRequest {}
+message ListWorkspacesResponse { repeated Workspace workspaces = 1; }
+
+message UpdateWorkspaceRequest {
+  string workspace_id = 1;
+  string display_name = 2;
+}
+message UpdateWorkspaceResponse { Workspace workspace = 1; }
+
+message DeleteWorkspaceRequest { string workspace_id = 1; }
+message DeleteWorkspaceResponse {}
+
+message AddMemberRequest {
+  string workspace_id = 1;
+  string user_id = 2;
+  Role role = 3;
+}
+message AddMemberResponse { Membership membership = 1; }
+
+message UpdateMemberRoleRequest {
+  string workspace_id = 1;
+  string user_id = 2;
+  Role role = 3;
+}
+message UpdateMemberRoleResponse { Membership membership = 1; }
+
+message RemoveMemberRequest {
+  string workspace_id = 1;
+  string user_id = 2;
+}
+message RemoveMemberResponse {}
+
+message ListMembersRequest { string workspace_id = 1; }
+message ListMembersResponse { repeated Membership members = 1; }
+
+message CreateInvitationRequest {
+  string workspace_id = 1;
+  string email = 2;
+  Role role = 3;
+}
+message CreateInvitationResponse { Invitation invitation = 1; }
+
+message AcceptInvitationRequest { string token = 1; }
+message AcceptInvitationResponse { Membership membership = 1; }
+
+message ListInvitationsRequest { string workspace_id = 1; }
+message ListInvitationsResponse { repeated Invitation invitations = 1; }
+
+message RevokeInvitationRequest { string invitation_id = 1; }
+message RevokeInvitationResponse {}
+
+service WorkspaceService {
+  rpc CreateWorkspace(CreateWorkspaceRequest) returns (CreateWorkspaceResponse);
+  rpc GetWorkspace(GetWorkspaceRequest) returns (GetWorkspaceResponse);
+  rpc ListWorkspaces(ListWorkspacesRequest) returns (ListWorkspacesResponse);
+  rpc UpdateWorkspace(UpdateWorkspaceRequest) returns (UpdateWorkspaceResponse);
+  rpc DeleteWorkspace(DeleteWorkspaceRequest) returns (DeleteWorkspaceResponse);
+
+  rpc AddMember(AddMemberRequest) returns (AddMemberResponse);
+  rpc UpdateMemberRole(UpdateMemberRoleRequest) returns (UpdateMemberRoleResponse);
+  rpc RemoveMember(RemoveMemberRequest) returns (RemoveMemberResponse);
+  rpc ListMembers(ListMembersRequest) returns (ListMembersResponse);
+
+  rpc CreateInvitation(CreateInvitationRequest) returns (CreateInvitationResponse);
+  rpc AcceptInvitation(AcceptInvitationRequest) returns (AcceptInvitationResponse);
+  rpc ListInvitations(ListInvitationsRequest) returns (ListInvitationsResponse);
+  rpc RevokeInvitation(RevokeInvitationRequest) returns (RevokeInvitationResponse);
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// GroupService — groups, separate from workspaces
+// ═══════════════════════════════════════════════════════════════════════
+//
+// A group is a reusable, nestable set of subjects — an email distribution
+// list, a chat group, an on-call rotation. It is deliberately NOT a
+// workspace: a workspace is a tenancy/billing boundary with one owner,
+// whereas a group is a membership set that can be referenced from many
+// workspaces and resources. Groups nest (a group can be a member of another
+// group), so "all-engineering" can contain "backend" and "frontend".
+//
+// Groups map to the `group` authz namespace, relation `member`. Granting a
+// group access to anything is just a tuple whose subject is the userset
+// `group:<id>#member` — e.g. workspace:acme#member@group:all-eng#member, or
+// resource:doc1#viewer@group:family#member.
+
+message Group {
+  string id = 1;
+  string project_id = 2;
+  // workspace_id optionally scopes the group to a workspace (a company's
+  // internal groups). Empty for project-level / standalone groups (a B2C
+  // user's "family" list).
+  string workspace_id = 3;
+  string slug = 4;
+  string display_name = 5;
+  string created_by_user_id = 6;
+  google.protobuf.Timestamp created_at = 7;
+  google.protobuf.Timestamp updated_at = 8;
+}
+
+// GroupMember is either a user or a nested group.
+message GroupMember {
+  oneof member {
+    string user_id = 1;
+    string group_id = 2;
+  }
+}
+
+message CreateGroupRequest {
+  string display_name = 1;
+  string slug = 2;
+  // optional owning workspace; empty for a standalone group.
+  string workspace_id = 3;
+}
+message CreateGroupResponse { Group group = 1; }
+
+message GetGroupRequest { string group_id = 1; }
+message GetGroupResponse { Group group = 1; }
+
+message ListGroupsRequest {
+  // optional: restrict to groups owned by this workspace.
+  string workspace_id = 1;
+}
+message ListGroupsResponse { repeated Group groups = 1; }
+
+message DeleteGroupRequest { string group_id = 1; }
+message DeleteGroupResponse {}
+
+message AddGroupMemberRequest {
+  string group_id = 1;
+  GroupMember member = 2;
+}
+message AddGroupMemberResponse {}
+
+message RemoveGroupMemberRequest {
+  string group_id = 1;
+  GroupMember member = 2;
+}
+message RemoveGroupMemberResponse {}
+
+message ListGroupMembersRequest { string group_id = 1; }
+message ListGroupMembersResponse { repeated GroupMember members = 1; }
+
+service GroupService {
+  rpc CreateGroup(CreateGroupRequest) returns (CreateGroupResponse);
+  rpc GetGroup(GetGroupRequest) returns (GetGroupResponse);
+  rpc ListGroups(ListGroupsRequest) returns (ListGroupsResponse);
+  rpc DeleteGroup(DeleteGroupRequest) returns (DeleteGroupResponse);
+  rpc AddGroupMember(AddGroupMemberRequest) returns (AddGroupMemberResponse);
+  rpc RemoveGroupMember(RemoveGroupMemberRequest) returns (RemoveGroupMemberResponse);
+  rpc ListGroupMembers(ListGroupMembersRequest) returns (ListGroupMembersResponse);
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// AuthzService — Zanzibar-style relation tuples
+// ═══════════════════════════════════════════════════════════════════════
+//
+// A relation tuple reads `namespace:object_id#relation@subject`, where the
+// subject is either a concrete user or a userset (another object#relation).
+// Consuming products express their access model as tuples and ask Check.
+
+// SubjectSet references the set of subjects related to another object — the
+// userset `namespace:object_id#relation`. When relation is empty it denotes
+// the object itself (rarely needed).
+message SubjectSet {
+  string namespace = 1;
+  string object_id = 2;
+  string relation = 3;
+}
+
+// Subject is the right-hand side of a tuple: a concrete user OR a userset.
+message Subject {
+  oneof kind {
+    string user_id = 1;
+    SubjectSet set = 2;
+  }
+}
+
+message RelationTuple {
+  string project_id = 1;
+  string namespace = 2;
+  string object_id = 3;
+  string relation = 4;
+  Subject subject = 5;
+}
+
+message TupleUpdate {
+  enum Op {
+    OP_UNSPECIFIED = 0;
+    OP_INSERT = 1;
+    OP_DELETE = 2;
+  }
+  Op op = 1;
+  RelationTuple tuple = 2;
+}
+
+message WriteRelationTuplesRequest { repeated TupleUpdate updates = 1; }
+message WriteRelationTuplesResponse {}
+
+// ReadRelationTuples returns stored tuples matching the non-empty filter
+// fields (exact match). It does NOT evaluate userset rewrites — it is the
+// raw store read. Use Check for permission decisions.
+message ReadRelationTuplesRequest {
+  string namespace = 1;
+  string object_id = 2;
+  string relation = 3;
+  // optional: restrict to tuples whose subject is this concrete user.
+  string subject_user_id = 4;
+}
+message ReadRelationTuplesResponse { repeated RelationTuple tuples = 1; }
+
+// Check answers "does subject have relation on namespace:object_id?",
+// evaluating the namespace's userset rewrite rules transitively.
+message CheckRequest {
+  string namespace = 1;
+  string object_id = 2;
+  string relation = 3;
+  string subject_user_id = 4;
+}
+message CheckResponse { bool allowed = 1; }
+
+// Expand returns the effective userset tree for namespace:object_id#relation.
+message ExpandRequest {
+  string namespace = 1;
+  string object_id = 2;
+  string relation = 3;
+}
+
+message UsersetTree {
+  enum NodeType {
+    NODE_TYPE_UNSPECIFIED = 0;
+    NODE_TYPE_UNION = 1;
+    NODE_TYPE_LEAF = 2;
+  }
+  NodeType type = 1;
+  // For LEAF nodes: the concrete subjects and usersets at this node.
+  repeated string user_ids = 2;
+  repeated SubjectSet sets = 3;
+  // For UNION nodes: the child subtrees.
+  repeated UsersetTree children = 4;
+  // The userset this node expands.
+  SubjectSet expanded = 5;
+}
+
+message ExpandResponse { UsersetTree tree = 1; }
+
+service AuthzService {
+  rpc WriteRelationTuples(WriteRelationTuplesRequest) returns (WriteRelationTuplesResponse);
+  rpc ReadRelationTuples(ReadRelationTuplesRequest) returns (ReadRelationTuplesResponse);
+  rpc Check(CheckRequest) returns (CheckResponse);
+  rpc Expand(ExpandRequest) returns (ExpandResponse);
+}

@@ -1,0 +1,236 @@
+# Workspaces
+
+Workspace and authorization service. Deploys as a single container; points at
+Postgres, verifies identity's JWT, exposes Connect-RPC over HTTP/JSON.
+
+This is the **workspace/authz service** that identity's
+[ADR-0001](https://github.com/elloloop/identity/blob/main/docs/adr/0001-two-service-split-identity-vs-workspace.md)
+said would be built separately. Identity owns authentication and tenancy and
+mints an access token; workspaces consumes that token and owns workspace
+membership and fine-grained, ReBAC-style authorization. The two services
+**never share a table** — token issuance is the entire contract between them.
+
+## What it provides
+
+- **A relation-tuple authorization engine** (`AuthzService`) — a Zanzibar-style
+  ReBAC core. Write tuples, then ask `Check` "may this user do this?" and
+  `Expand` "who can?". Generic over namespaces, so any consuming product
+  expresses its own access model as tuples.
+- **Workspaces** (`WorkspaceService`) — every authenticated user automatically
+  owns one **personal** workspace; they may create **team** workspaces and add
+  members with a role (`owner` ⊃ `admin` ⊃ `member` ⊃ `guest`). This serves
+  both B2C (a personal-assistant user sharing tasks with relatives) and B2B
+  SaaS (a company's employees collaborating), the way Claude and ChatGPT model
+  personal vs. team plans.
+- **Groups** (`GroupService`) — reusable, nestable membership sets (an email
+  distribution list, a chat group, an on-call rotation), separate from
+  workspaces and referenceable from many of them.
+- **Invitations** — token-based invites to a workspace at a given role,
+  delivered out of band and redeemed by the invitee.
+
+Workspaces authorizes; it does not authenticate. It trusts the `sub`,
+`project_id`, and issuer of a JWT minted by identity and applies its own
+authorization model on top.
+
+## The authorization model
+
+The core is a **relation-tuple store**. A tuple reads:
+
+```
+namespace:object_id#relation@subject
+```
+
+where the **subject** is either a concrete user (`user_id`) or a **userset** —
+another `namespace:object_id#relation`, i.e. "everyone who has `relation` on
+that object". For example:
+
+```
+workspace:acme#member@user:alice          # alice is a member of workspace acme
+workspace:acme#member@group:all-eng#member # every member of group all-eng is a member of acme
+resource:doc1#viewer@user:bob              # doc1 is shared with bob directly
+```
+
+Each **namespace** maps every relation to a **userset-rewrite rule** — a union
+of three primitives:
+
+- **this** — the relation's own directly stored tuples.
+- **computed_userset** — another relation on the *same* object (this is how
+  `owner` grants `admin` grants `member`).
+- **tuple_to_userset** — walk a relation on this object to *related* objects,
+  then check a relation there (this is how a resource inherits access from its
+  parent workspace).
+
+`Check(namespace, object, relation, user)` evaluates that rule **transitively**
+and answers `allowed`. `Expand(...)` returns the effective userset tree (the
+union of leaves and child usersets) for auditing "who has access".
+`ReadRelationTuples` is the raw store read — it does **not** evaluate rewrites;
+use `Check` for decisions.
+
+The built-in namespaces (`pkg/authz/model.go`):
+
+| Namespace | Relations | Rewrite shape |
+|---|---|---|
+| `workspace` | `owner`, `admin`, `member`, `guest` | each grade includes the one above it (`admin` = this ∪ `owner`, `member` = this ∪ `admin`, …) |
+| `group` | `member` | `this` only — subjects may themselves be group usersets, so groups nest |
+| `resource` | `parent`, `owner`, `editor`, `viewer` | `editor` = this ∪ `owner` ∪ (parent workspace's `admin`); `viewer` = this ∪ `editor` ∪ (parent workspace's `member`) |
+
+See [`docs/authorization-model.md`](docs/authorization-model.md) for the full
+reference. Three motivating products, each mapped onto the model:
+
+### Worked example — a workplace collaboration tool
+
+A Slack-plus-Linear-plus-incident.io workplace app. The company is a **team
+workspace**; an internal Linear-style issue is a `resource` whose `parent` is
+that workspace.
+
+```
+workspace:acme#owner@user:ceo
+workspace:acme#member@user:alice
+resource:issue-42#parent@workspace:acme       # issue-42 lives in acme
+resource:issue-42#owner@user:alice            # alice filed it
+```
+
+`Check(resource, issue-42, viewer, bob)` where bob is an `acme` member: the
+`viewer` rule's `tuple_to_userset("parent", "member")` walks `issue-42`'s
+parent to `workspace:acme`, checks `member` there, and returns **allowed** —
+without ever writing a per-issue tuple for bob. An on-call group gets edit
+access in one tuple: `resource:incident-7#editor@group:sre#member`.
+
+### Worked example — a learning platform
+
+B2C learners and companies buying seats. A company is a **team workspace**; a
+course is a `resource` parented to it, so every seat-holder is a `viewer` by
+inheritance. A B2C learner works in their **personal workspace**; a course they
+buy is shared directly:
+
+```
+resource:course-go#parent@workspace:bigco     # bigco's seats can view it
+resource:course-go#viewer@user:individual-jo  # jo bought it personally
+```
+
+### Worked example — a personal-assistant app
+
+End users share tasks with other people. Each user lives in their **personal
+workspace**; a shared task is a `resource` shared **directly** (no parent
+workspace), which is exactly the `this` leaf of the `viewer`/`editor` rules:
+
+```
+resource:task-buy-milk#owner@user:parent
+resource:task-buy-milk#editor@user:teen        # shared with a family member
+resource:task-buy-milk#viewer@group:family#member
+```
+
+`group:family` is a standalone group the user maintains and reuses across many
+tasks.
+
+## Workspaces, groups, and invitations
+
+`WorkspaceService` is the product surface over the `workspace` namespace.
+
+- **Personal workspace.** `ListWorkspaces` auto-provisions the caller's single
+  `PERSONAL` workspace on first call. It is undeletable and admits exactly one
+  member — the owner (see [ADR-0002](docs/adr/0002-personal-and-team-workspaces.md)).
+- **Team workspaces.** `CreateWorkspace` makes a `TEAM` workspace the caller
+  owns. `AddMember` / `UpdateMemberRole` / `RemoveMember` / `ListMembers`
+  manage membership; each membership is mirrored as a `workspace:<id>#<role>`
+  tuple, so a `Check` against the workspace namespace honours it immediately.
+- **Invitations.** `CreateInvitation` returns a one-time `token` (echoed only
+  on creation, never by `ListInvitations`) for out-of-band delivery;
+  `AcceptInvitation` redeems it into a membership; `RevokeInvitation` cancels a
+  pending one.
+
+`GroupService` manages the `group` namespace — reusable, nestable subject sets
+that are deliberately **not** workspaces (a workspace is a tenancy/ownership
+boundary; a group is a membership set referenced from many of them). A group
+may be project-level (a B2C user's "family" list) or scoped to a workspace (a
+company's internal groups), and a group member is either a user or another
+group. See [ADR-0003](docs/adr/0003-groups-separate-from-workspaces.md).
+
+## How it relates to identity
+
+Per identity
+[ADR-0001](https://github.com/elloloop/identity/blob/main/docs/adr/0001-two-service-split-identity-vs-workspace.md),
+the AuthN/authz seam is a hard line:
+
+- **identity** owns authentication, the `User` pool, `Project`, `Tenant`,
+  `Domain`, and tenant-level membership. It issues the access token.
+- **workspaces** (this service) owns workspaces, workspace membership, groups,
+  and all fine-grained ReBAC. It reads the token and applies its own model.
+
+The contract is **token-only**: no shared schema, no cross-service table, no
+synchronous callback from workspaces into identity. Workspaces verifies the JWT
+against identity's JWKS (`GATEWAY_JWT_JWKS_URL`) or a shared HS256 secret
+(`GATEWAY_JWT_HS256_SECRET`), checks the issuer, and takes the user from `sub`.
+The `project_id` claim is the **isolation shard** (identity
+[ADR-0002](https://github.com/elloloop/identity/blob/main/docs/adr/0002-project-the-isolation-shard.md)):
+every workspace row, group, and relation tuple is scoped to it.
+
+## Configuration
+
+All config is via environment variables.
+
+| Var | Purpose | Default |
+|---|---|---|
+| `GATEWAY_CONNECT_PORT` | Connect/HTTP (JSON + gRPC) listen port | `8080` |
+| `GATEWAY_METRICS_PORT` | Prometheus metrics listen port | `9090` |
+| `GATEWAY_POSTGRES_DSN` | Postgres connection string; selects the postgres storage driver | — (memory driver if unset) |
+| `GATEWAY_DEFAULT_PROJECT_ID` | Project shard pinned for requests whose token carries no `project_id` | — |
+| `GATEWAY_JWT_JWKS_URL` | Identity's JWKS endpoint for token signature verification | — |
+| `GATEWAY_JWT_ISSUER` | Expected token issuer; tokens with a different `iss` are rejected | — |
+| `GATEWAY_JWT_HS256_SECRET` | Shared HS256 secret — an alternative to JWKS for symmetric verification | — |
+| `GATEWAY_ALLOWED_ORIGINS` | CORS origins for browser callers | — |
+
+## Deployment
+
+The repo ships a `docker-compose.yml` that brings up Postgres and the
+workspaces service together:
+
+```bash
+docker compose up -d --build
+curl http://localhost:8080/health
+docker compose logs -f workspaces
+docker compose down -v          # stop and wipe the postgres volume
+```
+
+Compose seeds `GATEWAY_DEFAULT_PROJECT_ID=local` and points
+`GATEWAY_JWT_JWKS_URL` at a local identity deployment — override it to match
+yours. Pending migrations apply automatically on first connect when
+`GATEWAY_POSTGRES_AUTO_MIGRATE=true` (the default).
+
+Run standalone against an existing Postgres:
+
+```bash
+docker run -p 8080:8080 -p 9090:9090 \
+  -e GATEWAY_POSTGRES_DSN='postgres://workspaces:password@db:5432/workspaces?sslmode=disable' \
+  -e GATEWAY_DEFAULT_PROJECT_ID=my-product \
+  -e GATEWAY_JWT_JWKS_URL=https://identity.my-product.com/.well-known/jwks.json \
+  -e GATEWAY_JWT_ISSUER=https://identity.my-product.com \
+  ghcr.io/elloloop/workspaces:0.1.0
+```
+
+## Storage
+
+Workspaces persists behind a single `service.Repository` interface with two
+drivers:
+
+- **memory** — the default when `GATEWAY_POSTGRES_DSN` is unset; for tests and
+  zero-dependency local runs.
+- **postgres** — the production driver; the relation-tuple store, workspaces,
+  memberships, groups, and invitations all live here, keyed by `project_id`.
+
+A **conformance suite** asserts both drivers behave identically across every
+`Repository` method — same uniqueness, ordering, and error-translation
+semantics — so `Check` returns the same answer regardless of backend. Run it
+with `make conformance-all`.
+
+## Development
+
+```bash
+make ci         # lint, tidy-check, vuln, build, test, smoke, integration, fuzz
+make test       # unit tests with the race detector
+make proto      # regenerate Go stubs from proto (buf generate)
+```
+
+`make help` lists every target. The proto under `proto/workspace/workspace.proto`
+is the source of truth for the API; regenerate stubs with `make proto` after
+editing it.

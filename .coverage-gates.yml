@@ -1,0 +1,18 @@
+default: 70
+
+include:
+  - internal/
+  - pkg/
+
+packages:
+  internal/app: 70
+  internal/config: 70
+  internal/connect: 70
+  internal/middleware: 70
+  internal/repo: 70
+  internal/repo/conformance: 70
+  internal/repo/memory: 70
+  internal/repo/postgres: 70
+  internal/service: 70
+  pkg/authz: 70
+  pkg/jwt: 70

@@ -1,0 +1,31 @@
+# CODEOWNERS — required reviewers for protected paths.
+#
+# Order matters. Later patterns override earlier ones.
+# See https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-security/customizing-your-repository/about-code-owners
+
+# Default owner for everything in the repo.
+*                               @iarunsaragadam
+
+# CI / release / repo hygiene — touching these can break the publish gate.
+/.github/                       @iarunsaragadam
+/.github/workflows/             @iarunsaragadam
+/scripts/coverage-gate.sh       @iarunsaragadam
+/Dockerfile                     @iarunsaragadam
+/go.mod                         @iarunsaragadam
+/go.sum                         @iarunsaragadam
+
+# Authz-critical paths — security-sensitive code.
+/internal/service/check*.go     @iarunsaragadam
+/internal/service/expand*.go    @iarunsaragadam
+/internal/service/workspace*.go @iarunsaragadam
+/internal/service/member*.go    @iarunsaragadam
+/internal/middleware/auth*.go   @iarunsaragadam
+/pkg/authz/                     @iarunsaragadam
+/pkg/jwt/                       @iarunsaragadam
+
+# Repo drivers — storage correctness affects every flow.
+/internal/repo/                 @iarunsaragadam
+
+# Public proto contracts — breaking changes affect every caller.
+/proto/                         @iarunsaragadam
+/gen/                           @iarunsaragadam

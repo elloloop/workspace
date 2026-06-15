@@ -1,0 +1,72 @@
+version: 2
+updates:
+  # Go modules — weekly major+minor+patch updates, batched.
+  - package-ecosystem: gomod
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "08:00"
+      timezone: "Etc/UTC"
+    open-pull-requests-limit: 10
+    labels:
+      - dependencies
+      - go
+    commit-message:
+      prefix: deps
+      include: scope
+    groups:
+      go-deps:
+        patterns:
+          - "*"
+        exclude-patterns:
+          - "google.golang.org/grpc"
+          - "google.golang.org/protobuf"
+          - "connectrpc.com/*"
+        update-types:
+          - minor
+          - patch
+      grpc-stack:
+        patterns:
+          - "google.golang.org/grpc"
+          - "google.golang.org/protobuf"
+          - "connectrpc.com/*"
+        update-types:
+          - minor
+          - patch
+
+  # GitHub Actions — pin updates so workflows don't silently float.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "08:00"
+      timezone: "Etc/UTC"
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+      - github-actions
+    commit-message:
+      prefix: ci
+      include: scope
+    groups:
+      actions:
+        patterns:
+          - "*"
+
+  # Docker base image — keep server image base current.
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "08:00"
+      timezone: "Etc/UTC"
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+      - docker
+    commit-message:
+      prefix: docker
+      include: scope

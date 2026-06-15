@@ -1,0 +1,84 @@
+version: "2"
+
+run:
+  timeout: 5m
+
+linters:
+  default: standard
+  enable:
+    - bodyclose
+    - contextcheck
+    - copyloopvar
+    - cyclop
+    - errname
+    - errorlint
+    - gocritic
+    - gosec
+    - nilerr
+    - nilnil
+    - perfsprint
+    - revive
+    - thelper
+    - unconvert
+  settings:
+    cyclop:
+      max-complexity: 35
+      package-average: 15
+    revive:
+      severity: warning
+      rules:
+        - name: blank-imports
+        - name: context-as-argument
+        - name: dot-imports
+        - name: error-naming
+        - name: error-return
+        - name: error-strings
+        - name: errorf
+        - name: exported
+          disabled: true
+        - name: increment-decrement
+        - name: var-naming
+        - name: var-declaration
+  exclusions:
+    paths:
+      # Generated code is the upstream's responsibility; we don't own
+      # its cyclomatic complexity or unsafe pointer usage.
+      - gen/
+    rules:
+      - path: _test\.go
+        linters:
+          - gosec
+        text: "G404:"
+      - path: _test\.go
+        linters:
+          - cyclop
+      # Test fakes mirror repository not-found semantics.
+      - path: _test\.go
+        linters:
+          - nilnil
+      # The conformance package is a driver-agnostic test harness — its
+      # files are organised as one t.Run per scenario, which naturally
+      # pushes the per-function cyclomatic complexity high (and the
+      # package average with it). The actual logic inside each scenario
+      # is small; complexity is just an artifact of the table-driven
+      # shape.
+      - path: internal/repo/conformance/.*\.go
+        linters:
+          - cyclop
+      # Repository lookups intentionally return nil, nil for not-found.
+      - path: internal/repo/memory/repo\.go
+        linters:
+          - nilnil
+      - path: internal/repo/postgres/.*\.go
+        linters:
+          - nilnil
+
+# Considered but intentionally disabled:
+# - exportloopref: obsolete for Go 1.22+; copyloopvar covers loop-variable captures.
+
+formatters:
+  enable:
+    - gofumpt
+  exclusions:
+    paths:
+      - gen/

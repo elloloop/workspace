@@ -1,0 +1,59 @@
+# Local development stack for the workspaces service.
+#
+# Brings up two services:
+#   - postgres   : authz/workspace persistence (Postgres on :5432). Data is
+#                  held in a named volume so it survives container restarts
+#                  but is wiped by `docker compose down -v`.
+#   - workspaces : the workspace authz service itself, built from this repo.
+#                  Connect/HTTP on :8080, Prometheus metrics on :9090.
+#
+# Quick start:
+#   docker compose up -d --build
+#   curl http://localhost:8080/health
+#   docker compose logs -f workspaces
+#   docker compose down -v        # stop and wipe the postgres volume
+#
+# Notes:
+#   - GATEWAY_JWT_JWKS_URL points at identity's JWKS endpoint for token
+#     verification. Override it to match your local identity deployment.
+#   - Pending migrations are applied automatically on first connect when
+#     GATEWAY_POSTGRES_AUTO_MIGRATE=true (the default).
+
+services:
+  postgres:
+    image: postgres:16.13-alpine3.23
+    environment:
+      POSTGRES_USER: workspaces
+      POSTGRES_PASSWORD: workspaces
+      POSTGRES_DB: workspaces
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U workspaces"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  workspaces:
+    build:
+      context: .
+      target: server
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      GATEWAY_CONNECT_PORT: "8080"
+      GATEWAY_METRICS_PORT: "9090"
+      GATEWAY_POSTGRES_DSN: postgres://workspaces:workspaces@postgres:5432/workspaces?sslmode=disable
+      GATEWAY_DEFAULT_PROJECT_ID: local
+      GATEWAY_JWT_JWKS_URL: http://localhost:8081/.well-known/jwks.json
+      GATEWAY_JWT_ISSUER: http://localhost:8081
+      GATEWAY_ALLOWED_ORIGINS: http://localhost:3000
+    ports:
+      - "8080:8080"
+      - "9090:9090"
+
+volumes:
+  postgres-data:

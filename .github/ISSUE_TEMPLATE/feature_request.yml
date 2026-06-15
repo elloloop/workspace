@@ -1,0 +1,54 @@
+name: Feature request
+description: Propose a new capability or enhancement.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What user-facing or operational problem does this solve? Be concrete.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: API, behavior, configuration. Sketch the contract.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: What else did you consider? Why not those?
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope
+      description: |
+        Itemize what lands in the PR:
+        - Schema / proto changes
+        - Service-layer changes
+        - Handler / wire changes
+        - Tests (unit, integration, real-DB)
+        - Docs
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: How do we know it's done? Bullet list of checkable items.
+    validations:
+      required: true
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      options:
+        - P0 — launch blocker
+        - P1 — high impact, soon
+        - P2 — important, not urgent
+        - P3 — nice to have
+    validations:
+      required: true

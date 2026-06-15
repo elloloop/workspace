@@ -1,0 +1,68 @@
+name: Bug report
+description: Something is broken or behaving unexpectedly.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for filing a bug. The more concrete the repro, the faster the fix.
+        **Do not file security vulnerabilities as public issues** — use the security advisory link instead.
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: One paragraph. What did you expect, what actually happened?
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Repro steps
+      description: Concrete steps. Include commands, RPC calls, request bodies.
+      placeholder: |
+        1. Start the service with `...`
+        2. Call `WorkspaceService.Check` with `...`
+        3. Observe `...`
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: Include exact error message, status code, log output if any.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version / commit
+      description: Image tag, git commit, or `workspace --version` output.
+    validations:
+      required: true
+  - type: dropdown
+    id: storage
+    attributes:
+      label: Storage backend
+      options:
+        - memory
+        - postgres
+        - other (describe in summary)
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Deployment environment
+      description: Single-replica vs multi-replica, container vs binary, OS, anything relevant.
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs / traces
+      description: Paste relevant log lines. Trim secrets.
+      render: shell
