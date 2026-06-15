@@ -2,7 +2,7 @@
 import DocsLayout from "../../../layouts/DocsLayout.astro";
 import { Code } from "astro-expressive-code/components";
 
-const BASE = import.meta.env.BASE_URL;
+const BASE = import.meta.env.BASE_URL.replace(/\/$/, "") + "/";
 ---
 
 <DocsLayout title="Workplace Collaboration Tool">
@@ -20,7 +20,7 @@ const BASE = import.meta.env.BASE_URL;
   <p>
     Everything maps onto three namespaces and their userset-rewrite rules from
     the
-    <a href={`${BASE}/docs/concepts/authorization-model`}>Authorization Model</a>:
+    <a href={`${BASE}docs/concepts/authorization-model`}>Authorization Model</a>:
   </p>
   <ul>
     <li>
@@ -189,7 +189,7 @@ resource:incident-7#editor@group:sre-oncall#member   # on-call can edit it`} lan
     <code>tupleToUserset(parent, member)</code> subtree resolving to
     <code>workspace:acme#member</code>. Use it to render a "shared with" panel
     or to debug why a <code>Check</code> resolved the way it did. See
-    <a href={`${BASE}/docs/guides/check-and-expand`}>Check &amp; Expand</a>.
+    <a href={`${BASE}docs/guides/check-and-expand`}>Check &amp; Expand</a>.
   </p>
 
   <h2>Why this scales</h2>
@@ -199,6 +199,6 @@ resource:incident-7#editor@group:sre-oncall#member   # on-call can edit it`} lan
     inherit company access through the same two rewrite rules. New features add
     no permission tables and no new <code>Check</code> code — only new tuples.
     For the personal-vs-team boundary and standalone groups, see
-    <a href={`${BASE}/docs/concepts/workspaces-and-groups`}>Workspaces &amp; Groups</a>.
+    <a href={`${BASE}docs/concepts/workspaces-and-groups`}>Workspaces &amp; Groups</a>.
   </p>
 </DocsLayout>
