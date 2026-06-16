@@ -137,11 +137,15 @@ CREATE TABLE IF NOT EXISTS relation_tuples (
 	subject_object_id text NOT NULL DEFAULT '',
 	subject_relation  text NOT NULL DEFAULT '',
 	expires_at        timestamptz,
+	condition_name    text NOT NULL DEFAULT '',
+	condition_params  jsonb NOT NULL DEFAULT '{}'::jsonb,
 	PRIMARY KEY (project_id, tenant_id, namespace, object_id, relation, subject_kind,
 		subject_user_id, subject_namespace, subject_object_id, subject_relation)
 );
 ALTER TABLE relation_tuples ADD COLUMN IF NOT EXISTS tenant_id text NOT NULL DEFAULT '';
 ALTER TABLE relation_tuples ADD COLUMN IF NOT EXISTS expires_at timestamptz;
+ALTER TABLE relation_tuples ADD COLUMN IF NOT EXISTS condition_name text NOT NULL DEFAULT '';
+ALTER TABLE relation_tuples ADD COLUMN IF NOT EXISTS condition_params jsonb NOT NULL DEFAULT '{}'::jsonb;
 
 -- ── Upgrade-path key migrations ──────────────────────────────────────────
 -- The composite (project_id, tenant_id, …) primary keys above only take effect
@@ -407,15 +411,20 @@ func (s *Store) WriteTuples(ctx context.Context, projectID, tenantID string, ins
 	}
 	for _, t := range inserts {
 		kind, uid, sns, soid, srel := tupleCols(t)
+		condName, condParams := conditionCols(t)
 		_, err := tx.Exec(ctx,
 			`INSERT INTO relation_tuples
 			   (project_id, tenant_id, namespace, object_id, relation, subject_kind,
-			    subject_user_id, subject_namespace, subject_object_id, subject_relation, expires_at)
-			 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+			    subject_user_id, subject_namespace, subject_object_id, subject_relation,
+			    expires_at, condition_name, condition_params)
+			 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
 			 ON CONFLICT (project_id, tenant_id, namespace, object_id, relation, subject_kind,
 			    subject_user_id, subject_namespace, subject_object_id, subject_relation)
-			 DO UPDATE SET expires_at = EXCLUDED.expires_at`,
-			projectID, tenantID, t.Namespace, t.ObjectID, t.Relation, kind, uid, sns, soid, srel, t.ExpiresAt)
+			 DO UPDATE SET expires_at = EXCLUDED.expires_at,
+			               condition_name = EXCLUDED.condition_name,
+			               condition_params = EXCLUDED.condition_params`,
+			projectID, tenantID, t.Namespace, t.ObjectID, t.Relation, kind, uid, sns, soid, srel,
+			t.ExpiresAt, condName, condParams)
 		if err != nil {
 			return err
 		}
@@ -423,11 +432,30 @@ func (s *Store) WriteTuples(ctx context.Context, projectID, tenantID string, ins
 	return tx.Commit(ctx)
 }
 
+// conditionCols renders a tuple's optional condition into the stored columns:
+// an empty name with an empty JSON object means "unconditional".
+func conditionCols(t authz.Tuple) (name string, params []byte) {
+	c := t.Subject.Condition
+	if c == nil || c.Name == "" {
+		return "", []byte("{}")
+	}
+	p := c.Params
+	if p == nil {
+		p = map[string]any{}
+	}
+	b, err := json.Marshal(p)
+	if err != nil {
+		return c.Name, []byte("{}")
+	}
+	return c.Name, b
+}
+
 func scanTuple(row pgx.Row) (authz.Tuple, error) {
 	var t authz.Tuple
-	var kind, uid, sns, soid, srel string
+	var kind, uid, sns, soid, srel, condName string
+	var condParams []byte
 	var expires *time.Time
-	if err := row.Scan(&t.Namespace, &t.ObjectID, &t.Relation, &kind, &uid, &sns, &soid, &srel, &expires); err != nil {
+	if err := row.Scan(&t.Namespace, &t.ObjectID, &t.Relation, &kind, &uid, &sns, &soid, &srel, &expires, &condName, &condParams); err != nil {
 		return t, err
 	}
 	t.ExpiresAt = expires
@@ -439,13 +467,22 @@ func scanTuple(row pgx.Row) (authz.Tuple, error) {
 	default:
 		t.Subject.UserID = uid
 	}
+	if condName != "" {
+		var params map[string]any
+		if len(condParams) > 0 {
+			if err := json.Unmarshal(condParams, &params); err != nil {
+				return t, err
+			}
+		}
+		t.Subject.Condition = &authz.Condition{Name: condName, Params: params}
+	}
 	return t, nil
 }
 
 func (s *Store) ListSubjects(ctx context.Context, projectID, tenantID, namespace, objectID, relation string) ([]authz.Subject, error) {
 	rows, err := s.pool.Query(ctx,
 		`SELECT namespace, object_id, relation, subject_kind, subject_user_id,
-		        subject_namespace, subject_object_id, subject_relation, expires_at
+		        subject_namespace, subject_object_id, subject_relation, expires_at, condition_name, condition_params
 		   FROM relation_tuples
 		  WHERE project_id=$1 AND tenant_id=$2 AND namespace=$3 AND object_id=$4 AND relation=$5
 		    AND (expires_at IS NULL OR expires_at > now())`,
@@ -490,7 +527,7 @@ func (s *Store) ListObjectIDs(ctx context.Context, projectID, tenantID, namespac
 func (s *Store) ReadTuples(ctx context.Context, projectID, tenantID string, f service.TupleFilter) ([]authz.Tuple, error) {
 	rows, err := s.pool.Query(ctx,
 		`SELECT namespace, object_id, relation, subject_kind, subject_user_id,
-		        subject_namespace, subject_object_id, subject_relation, expires_at
+		        subject_namespace, subject_object_id, subject_relation, expires_at, condition_name, condition_params
 		   FROM relation_tuples
 		  WHERE project_id=$1 AND tenant_id=$2
 		    AND ($3='' OR namespace=$3)

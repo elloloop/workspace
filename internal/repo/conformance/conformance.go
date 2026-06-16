@@ -25,6 +25,7 @@ func Run(t *testing.T, newRepo func() service.Repository) {
 		{"Tuples", testTuples},
 		{"WildcardTuples", testWildcardTuples},
 		{"TupleExpiry", testTupleExpiry},
+		{"Conditions", testConditions},
 		{"WorkspaceCRUD", testWorkspaceCRUD},
 		{"PersonalUniqueness", testPersonalUniqueness},
 		{"DeleteWorkspaceCascade", testDeleteWorkspaceCascade},

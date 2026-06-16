@@ -970,6 +970,16 @@ userset&#34; — true if the set is structurally included, or if any concrete
 member of the set has the relation. </p></td>
                 </tr>
               
+                <tr>
+                  <td>context</td>
+                  <td><a href="#google.protobuf.Struct">google.protobuf.Struct</a></td>
+                  <td></td>
+                  <td><p>context carries request-time attributes that CONDITIONAL grants are
+evaluated against (e.g. {&#34;age&#34;: 9, &#34;consent&#34;: true, &#34;ip&#34;: &#34;1.2.3.4&#34;,
+&#34;now&#34;: &#34;2026-06-16T00:00:00Z&#34;}). Unset = no context; conditional grants
+then fail closed, while unconditional grants are unaffected. </p></td>
+                </tr>
+              
             </tbody>
           </table>
 
@@ -2726,6 +2736,27 @@ granting access once this instant passes (enforced at read time, so Check
 and tuple-to-userset walks both honor it). Unset = never expires. Expiry
 is mutable metadata, NOT part of tuple identity: re-writing the same tuple
 with a new expires_at updates it; deletes still match by identity. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>condition_name</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>condition_name, when set, makes the grant CONDITIONAL: it applies only if
+the named built-in condition (e.g. consent_granted, age_at_least,
+ip_in_cidrs, not_after) evaluates true against condition_params (bound
+here) and the request-time CheckRequest.context. Unset = unconditional.
+The condition is grant metadata, not part of tuple identity: re-writing the
+tuple replaces it; deletes still match by identity. Unknown name / missing
+input / ill-typed value all DENY (fail closed). </p></td>
+                </tr>
+              
+                <tr>
+                  <td>condition_params</td>
+                  <td><a href="#google.protobuf.Struct">google.protobuf.Struct</a></td>
+                  <td></td>
+                  <td><p>condition_params are the static parameters bound to the condition at write
+time (e.g. {&#34;min_age&#34;: 13} for age_at_least). </p></td>
                 </tr>
               
             </tbody>

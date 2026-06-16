@@ -18,6 +18,16 @@ components:
       scheme: bearer
       description: A service credential from GATEWAY_SERVICE_AUTH_TOKENS.
   schemas:
+    google.protobuf.NullValue:
+      type: string
+      title: NullValue
+      enum:
+        - NULL_VALUE
+      description: |-
+        `NullValue` is a singleton enumeration to represent the null value for the
+         `Value` type union.
+
+         The JSON representation for `NullValue` is JSON `null`.
     workspace.v1.InvitationStatus:
       type: string
       title: InvitationStatus
@@ -77,6 +87,45 @@ components:
         - WORKSPACE_TYPE_UNSPECIFIED
         - WORKSPACE_TYPE_PERSONAL
         - WORKSPACE_TYPE_TEAM
+    google.protobuf.ListValue:
+      type: object
+      properties:
+        values:
+          type: array
+          items:
+            $ref: '#/components/schemas/google.protobuf.Value'
+          title: values
+          description: Repeated field of dynamically typed values.
+      title: ListValue
+      additionalProperties: false
+      description: |-
+        `ListValue` is a wrapper around a repeated field of values.
+
+         The JSON representation for `ListValue` is JSON array.
+    google.protobuf.Struct:
+      type: object
+      additionalProperties:
+        $ref: '#/components/schemas/google.protobuf.Value'
+      description: |-
+        `Struct` represents a structured data value, consisting of fields
+         which map to dynamically typed values. In some languages, `Struct`
+         might be supported by a native representation. For example, in
+         scripting languages like JS a struct is represented as an
+         object. The details of that representation are described together
+         with the proto support for the language.
+
+         The JSON representation for `Struct` is JSON object.
+    google.protobuf.Struct.FieldsEntry:
+      type: object
+      properties:
+        key:
+          type: string
+          title: key
+        value:
+          title: value
+          $ref: '#/components/schemas/google.protobuf.Value'
+      title: FieldsEntry
+      additionalProperties: false
     google.protobuf.Timestamp:
       type: string
       examples:
@@ -173,6 +222,22 @@ components:
          the Joda Time's [`ISODateTimeFormat.dateTime()`](
          http://joda-time.sourceforge.net/apidocs/org/joda/time/format/ISODateTimeFormat.html#dateTime()
          ) to obtain a formatter capable of generating timestamps in this format.
+    google.protobuf.Value:
+      oneOf:
+        - type: "null"
+        - type: number
+        - type: string
+        - type: boolean
+        - type: array
+        - type: object
+          additionalProperties: true
+      description: |-
+        `Value` represents a dynamically typed value which can be either
+         null, a number, a string, a boolean, a recursive struct value, or a
+         list of values. A producer of value is expected to set one of these
+         variants. Absence of any variant indicates an error.
+
+         The JSON representation for `Value` is JSON value.
     workspace.v1.AcceptInvitationRequest:
       type: object
       properties:
@@ -347,6 +412,14 @@ components:
              userset" — true if the set is structurally included, or if any concrete
              member of the set has the relation.
           $ref: '#/components/schemas/workspace.v1.SubjectSet'
+        context:
+          title: context
+          description: |-
+            context carries request-time attributes that CONDITIONAL grants are
+             evaluated against (e.g. {"age": 9, "consent": true, "ip": "1.2.3.4",
+             "now": "2026-06-16T00:00:00Z"}). Unset = no context; conditional grants
+             then fail closed, while unconditional grants are unaffected.
+          $ref: '#/components/schemas/google.protobuf.Struct'
       title: CheckRequest
       additionalProperties: false
       description: |-
@@ -1073,6 +1146,23 @@ components:
              is mutable metadata, NOT part of tuple identity: re-writing the same tuple
              with a new expires_at updates it; deletes still match by identity.
           $ref: '#/components/schemas/google.protobuf.Timestamp'
+        conditionName:
+          type: string
+          title: condition_name
+          description: |-
+            condition_name, when set, makes the grant CONDITIONAL: it applies only if
+             the named built-in condition (e.g. consent_granted, age_at_least,
+             ip_in_cidrs, not_after) evaluates true against condition_params (bound
+             here) and the request-time CheckRequest.context. Unset = unconditional.
+             The condition is grant metadata, not part of tuple identity: re-writing the
+             tuple replaces it; deletes still match by identity. Unknown name / missing
+             input / ill-typed value all DENY (fail closed).
+        conditionParams:
+          title: condition_params
+          description: |-
+            condition_params are the static parameters bound to the condition at write
+             time (e.g. {"min_age": 13} for age_at_least).
+          $ref: '#/components/schemas/google.protobuf.Struct'
       title: RelationTuple
       additionalProperties: false
     workspace.v1.RemoveGroupMemberRequest:

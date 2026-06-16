@@ -28,7 +28,7 @@ func (e *Engine) CheckSet(ctx context.Context, projectID, tenantID, namespace, o
 	}
 
 	// (1) structural inclusion through the monotone fragment, or target-public.
-	ok, err := e.check(ctx, m, projectID, tenantID, namespace, objectID, relation, subjectQuery{set: &set}, false, map[string]bool{}, 0)
+	ok, err := e.check(ctx, m, projectID, tenantID, namespace, objectID, relation, subjectQuery{set: &set}, nil, false, map[string]bool{}, 0)
 	if err != nil || ok {
 		return ok, err
 	}
@@ -39,7 +39,7 @@ func (e *Engine) CheckSet(ctx context.Context, projectID, tenantID, namespace, o
 		return false, err
 	}
 	for u := range members {
-		ok, err := e.check(ctx, m, projectID, tenantID, namespace, objectID, relation, subjectQuery{user: u}, false, map[string]bool{}, 0)
+		ok, err := e.check(ctx, m, projectID, tenantID, namespace, objectID, relation, subjectQuery{user: u}, nil, false, map[string]bool{}, 0)
 		if err != nil {
 			return false, err
 		}

@@ -4,6 +4,7 @@ package workspace.v1;
 
 option go_package = "github.com/elloloop/workspace/gen/go/workspace/v1;workspacev1";
 
+import "google/protobuf/struct.proto";
 import "google/protobuf/timestamp.proto";
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -444,6 +445,17 @@ message RelationTuple {
   // is mutable metadata, NOT part of tuple identity: re-writing the same tuple
   // with a new expires_at updates it; deletes still match by identity.
   google.protobuf.Timestamp expires_at = 7;
+  // condition_name, when set, makes the grant CONDITIONAL: it applies only if
+  // the named built-in condition (e.g. consent_granted, age_at_least,
+  // ip_in_cidrs, not_after) evaluates true against condition_params (bound
+  // here) and the request-time CheckRequest.context. Unset = unconditional.
+  // The condition is grant metadata, not part of tuple identity: re-writing the
+  // tuple replaces it; deletes still match by identity. Unknown name / missing
+  // input / ill-typed value all DENY (fail closed).
+  string condition_name = 8;
+  // condition_params are the static parameters bound to the condition at write
+  // time (e.g. {"min_age": 13} for age_at_least).
+  google.protobuf.Struct condition_params = 9;
 }
 
 message TupleUpdate {
@@ -494,6 +506,11 @@ message CheckRequest {
   // userset" — true if the set is structurally included, or if any concrete
   // member of the set has the relation.
   SubjectSet subject_set = 7;
+  // context carries request-time attributes that CONDITIONAL grants are
+  // evaluated against (e.g. {"age": 9, "consent": true, "ip": "1.2.3.4",
+  // "now": "2026-06-16T00:00:00Z"}). Unset = no context; conditional grants
+  // then fail closed, while unconditional grants are unaffected.
+  google.protobuf.Struct context = 8;
 }
 message CheckResponse { bool allowed = 1; }
 
