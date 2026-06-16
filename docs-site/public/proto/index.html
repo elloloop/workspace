@@ -451,6 +451,14 @@
                 </li>
               
                 <li>
+                  <a href="#workspace.v1.TransferOwnershipRequest"><span class="badge">M</span>TransferOwnershipRequest</a>
+                </li>
+              
+                <li>
+                  <a href="#workspace.v1.TransferOwnershipResponse"><span class="badge">M</span>TransferOwnershipResponse</a>
+                </li>
+              
+                <li>
                   <a href="#workspace.v1.TupleUpdate"><span class="badge">M</span>TupleUpdate</a>
                 </li>
               
@@ -3088,6 +3096,82 @@ time (e.g. {&#34;min_age&#34;: 13} for age_at_least). </p></td>
 
         
       
+        <h3 id="workspace.v1.TransferOwnershipRequest">TransferOwnershipRequest</h3>
+        <p>TransferOwnership hands a TEAM workspace's ownership to another user. Only</p><p>the current owner (acting_user_id) may transfer; the new owner is granted the</p><p>`owner` role (added as a member if needed) and the former owner is demoted to</p><p>`admin` (kept, not orphaned). Personal workspaces cannot be transferred.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>workspace_id</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>new_owner_user_id</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>acting_user_id</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>project_id</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>tenant_id</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="workspace.v1.TransferOwnershipResponse">TransferOwnershipResponse</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>workspace</td>
+                  <td><a href="#workspace.v1.Workspace">Workspace</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
         <h3 id="workspace.v1.TupleUpdate">TupleUpdate</h3>
         <p></p>
 
@@ -3979,6 +4063,13 @@ a family, a project group, or a whole company.</p></td>
                 <td>UpdateWorkspace</td>
                 <td><a href="#workspace.v1.UpdateWorkspaceRequest">UpdateWorkspaceRequest</a></td>
                 <td><a href="#workspace.v1.UpdateWorkspaceResponse">UpdateWorkspaceResponse</a></td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>TransferOwnership</td>
+                <td><a href="#workspace.v1.TransferOwnershipRequest">TransferOwnershipRequest</a></td>
+                <td><a href="#workspace.v1.TransferOwnershipResponse">TransferOwnershipResponse</a></td>
                 <td><p></p></td>
               </tr>
             
