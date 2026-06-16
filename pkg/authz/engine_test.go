@@ -166,6 +166,40 @@ func TestCheckExclusionSuspendedMember(t *testing.T) {
 	}
 }
 
+// TestSelfReferentialExclusionFailsClosed: a relation whose Exclude branch cycles
+// back on itself must DENY (fail closed). Before the negation-polarity fix the
+// cycle guard returned false on the exclude branch (excluded=false), so the grant
+// leaked through — a self-referential block/suspend that fails OPEN.
+func TestSelfReferentialExclusionFailsClosed(t *testing.T) {
+	r := &fakeReader{}
+	r.add("res", "x", "r", user("u1")) // u1 satisfies the Include leg directly
+	m := Model{"res": {
+		// r = (direct tuples) AND NOT r  → the Exclude branch is self-referential.
+		"r": exclusion(this(), computed("r")),
+	}}
+	e := NewEngine(StaticResolver(m), r)
+	if ok, _ := e.Check(context.Background(), "p", "", "res", "x", "r", "u1"); ok {
+		t.Error("self-referential exclusion must fail closed (deny), not fan open")
+	}
+}
+
+// TestNestedExclusionDoubleNegationTerminates: a cycle threaded through two
+// exclusion-Exclude branches returns to positive polarity; it must still
+// terminate (no infinite recursion, no maxDepth error) and never panic.
+func TestNestedExclusionDoubleNegationTerminates(t *testing.T) {
+	r := &fakeReader{}
+	r.add("res", "x", "base", user("u1"))
+	m := Model{"res": {
+		"base":  this(),
+		"inner": exclusion(computed("base"), computed("a")),
+		"a":     exclusion(computed("base"), computed("inner")),
+	}}
+	e := NewEngine(StaticResolver(m), r)
+	if _, err := e.Check(context.Background(), "p", "", "res", "x", "a", "u1"); err != nil {
+		t.Fatalf("nested exclusion must terminate without error, got %v", err)
+	}
+}
+
 func TestCheckIntersection(t *testing.T) {
 	r := &fakeReader{}
 	// enrolled AND paid → can_view.
