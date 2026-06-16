@@ -24,19 +24,20 @@ func (s *Service) AddMember(ctx context.Context, p Principal, workspaceID, userI
 	if w.Type == TypePersonal {
 		return nil, fmt.Errorf("%w: personal workspaces admit only their owner", ErrFailedPrecondition)
 	}
-	if _, err := s.repo.GetMembership(ctx, p.ProjectID, workspaceID, userID); err == nil {
+	if _, err := s.repo.GetMembership(ctx, p.ProjectID, p.TenantID, workspaceID, userID); err == nil {
 		return nil, fmt.Errorf("%w: user is already a member", ErrAlreadyExists)
 	} else if !isNotFound(err) {
 		return nil, err
 	}
-	return s.putMember(ctx, p.ProjectID, workspaceID, userID, role)
+	return s.putMember(ctx, p, workspaceID, userID, role)
 }
 
 // putMember writes the membership row and the backing role tuple.
-func (s *Service) putMember(ctx context.Context, projectID, workspaceID, userID string, role Role) (*Membership, error) {
+func (s *Service) putMember(ctx context.Context, p Principal, workspaceID, userID string, role Role) (*Membership, error) {
 	now := s.now()
 	m := &Membership{
-		ProjectID:   projectID,
+		ProjectID:   p.ProjectID,
+		TenantID:    p.TenantID,
 		WorkspaceID: workspaceID,
 		UserID:      userID,
 		Role:        role,
@@ -47,7 +48,7 @@ func (s *Service) putMember(ctx context.Context, projectID, workspaceID, userID 
 	if err := s.repo.PutMembership(ctx, m); err != nil {
 		return nil, err
 	}
-	if err := s.repo.WriteTuples(ctx, projectID,
+	if err := s.repo.WriteTuples(ctx, p.ProjectID, p.TenantID,
 		[]authz.Tuple{userTuple("workspace", workspaceID, string(role), userID)}, nil); err != nil {
 		return nil, err
 	}
@@ -63,7 +64,7 @@ func (s *Service) UpdateMemberRole(ctx context.Context, p Principal, workspaceID
 	if _, err := s.requireWorkspace(ctx, p, workspaceID, RoleAdmin); err != nil {
 		return nil, err
 	}
-	m, err := s.repo.GetMembership(ctx, p.ProjectID, workspaceID, userID)
+	m, err := s.repo.GetMembership(ctx, p.ProjectID, p.TenantID, workspaceID, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -79,7 +80,7 @@ func (s *Service) UpdateMemberRole(ctx context.Context, p Principal, workspaceID
 	if err := s.repo.PutMembership(ctx, m); err != nil {
 		return nil, err
 	}
-	if err := s.repo.WriteTuples(ctx, p.ProjectID,
+	if err := s.repo.WriteTuples(ctx, p.ProjectID, p.TenantID,
 		[]authz.Tuple{userTuple("workspace", workspaceID, string(role), userID)},
 		[]authz.Tuple{userTuple("workspace", workspaceID, string(old), userID)}); err != nil {
 		return nil, err
@@ -92,17 +93,17 @@ func (s *Service) RemoveMember(ctx context.Context, p Principal, workspaceID, us
 	if _, err := s.requireWorkspace(ctx, p, workspaceID, RoleAdmin); err != nil {
 		return err
 	}
-	m, err := s.repo.GetMembership(ctx, p.ProjectID, workspaceID, userID)
+	m, err := s.repo.GetMembership(ctx, p.ProjectID, p.TenantID, workspaceID, userID)
 	if err != nil {
 		return err
 	}
 	if m.Role == RoleOwner {
 		return fmt.Errorf("%w: the owner cannot be removed", ErrFailedPrecondition)
 	}
-	if err := s.repo.DeleteMembership(ctx, p.ProjectID, workspaceID, userID); err != nil {
+	if err := s.repo.DeleteMembership(ctx, p.ProjectID, p.TenantID, workspaceID, userID); err != nil {
 		return err
 	}
-	return s.repo.WriteTuples(ctx, p.ProjectID, nil,
+	return s.repo.WriteTuples(ctx, p.ProjectID, p.TenantID, nil,
 		[]authz.Tuple{userTuple("workspace", workspaceID, string(m.Role), userID)})
 }
 
@@ -111,5 +112,5 @@ func (s *Service) ListMembers(ctx context.Context, p Principal, workspaceID stri
 	if _, err := s.requireWorkspace(ctx, p, workspaceID, RoleGuest); err != nil {
 		return nil, err
 	}
-	return s.repo.ListMembers(ctx, p.ProjectID, workspaceID)
+	return s.repo.ListMembers(ctx, p.ProjectID, p.TenantID, workspaceID)
 }

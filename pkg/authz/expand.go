@@ -33,15 +33,15 @@ type ExcludeTree struct {
 }
 
 // Expand returns the userset tree for namespace:objectID#relation.
-func (e *Engine) Expand(ctx context.Context, projectID, namespace, objectID, relation string) (Tree, error) {
+func (e *Engine) Expand(ctx context.Context, projectID, tenantID, namespace, objectID, relation string) (Tree, error) {
 	m, err := e.resolver.ModelFor(ctx, projectID)
 	if err != nil {
 		return Tree{}, err
 	}
-	return e.expand(ctx, m, projectID, namespace, objectID, relation, map[string]bool{}, 0)
+	return e.expand(ctx, m, projectID, tenantID, namespace, objectID, relation, map[string]bool{}, 0)
 }
 
-func (e *Engine) expand(ctx context.Context, m Model, projectID, ns, obj, rel string, visited map[string]bool, depth int) (Tree, error) {
+func (e *Engine) expand(ctx context.Context, m Model, projectID, tenantID, ns, obj, rel string, visited map[string]bool, depth int) (Tree, error) {
 	self := SubjectSet{Namespace: ns, ObjectID: obj, Relation: rel}
 	if depth > e.maxDepth {
 		return Tree{Expanded: self}, fmt.Errorf("authz: max recursion depth exceeded at %s", visitKey(ns, obj, rel))
@@ -52,13 +52,13 @@ func (e *Engine) expand(ctx context.Context, m Model, projectID, ns, obj, rel st
 	}
 	visited[key] = true
 	defer delete(visited, key)
-	return e.expandRewrite(ctx, m, projectID, ns, obj, rel, self, m.rewrite(ns, rel), visited, depth)
+	return e.expandRewrite(ctx, m, projectID, tenantID, ns, obj, rel, self, m.rewrite(ns, rel), visited, depth)
 }
 
-func (e *Engine) expandRewrite(ctx context.Context, m Model, projectID, ns, obj, rel string, self SubjectSet, rw Rewrite, visited map[string]bool, depth int) (Tree, error) {
+func (e *Engine) expandRewrite(ctx context.Context, m Model, projectID, tenantID, ns, obj, rel string, self SubjectSet, rw Rewrite, visited map[string]bool, depth int) (Tree, error) {
 	switch {
 	case rw.isThis():
-		subjects, err := e.reader.ListSubjects(ctx, projectID, ns, obj, rel)
+		subjects, err := e.reader.ListSubjects(ctx, projectID, tenantID, ns, obj, rel)
 		if err != nil {
 			return Tree{}, err
 		}
@@ -77,7 +77,7 @@ func (e *Engine) expandRewrite(ctx context.Context, m Model, projectID, ns, obj,
 	case len(rw.Union) > 0:
 		node := Tree{Expanded: self}
 		for _, child := range rw.Union {
-			sub, err := e.expandRewrite(ctx, m, projectID, ns, obj, rel, self, child, visited, depth)
+			sub, err := e.expandRewrite(ctx, m, projectID, tenantID, ns, obj, rel, self, child, visited, depth)
 			if err != nil {
 				return Tree{}, err
 			}
@@ -87,7 +87,7 @@ func (e *Engine) expandRewrite(ctx context.Context, m Model, projectID, ns, obj,
 	case len(rw.Intersection) > 0:
 		node := Tree{Expanded: self}
 		for _, child := range rw.Intersection {
-			sub, err := e.expandRewrite(ctx, m, projectID, ns, obj, rel, self, child, visited, depth)
+			sub, err := e.expandRewrite(ctx, m, projectID, tenantID, ns, obj, rel, self, child, visited, depth)
 			if err != nil {
 				return Tree{}, err
 			}
@@ -95,19 +95,19 @@ func (e *Engine) expandRewrite(ctx context.Context, m Model, projectID, ns, obj,
 		}
 		return node, nil
 	case rw.Exclusion != nil:
-		inc, err := e.expandRewrite(ctx, m, projectID, ns, obj, rel, self, rw.Exclusion.Include, visited, depth)
+		inc, err := e.expandRewrite(ctx, m, projectID, tenantID, ns, obj, rel, self, rw.Exclusion.Include, visited, depth)
 		if err != nil {
 			return Tree{}, err
 		}
-		exc, err := e.expandRewrite(ctx, m, projectID, ns, obj, rel, self, rw.Exclusion.Exclude, visited, depth)
+		exc, err := e.expandRewrite(ctx, m, projectID, tenantID, ns, obj, rel, self, rw.Exclusion.Exclude, visited, depth)
 		if err != nil {
 			return Tree{}, err
 		}
 		return Tree{Expanded: self, Exclude: &ExcludeTree{Include: inc, Exclude: exc}}, nil
 	case rw.Computed != "":
-		return e.expand(ctx, m, projectID, ns, obj, rw.Computed, visited, depth+1)
+		return e.expand(ctx, m, projectID, tenantID, ns, obj, rw.Computed, visited, depth+1)
 	case rw.TuplesetRelation != "":
-		subjects, err := e.reader.ListSubjects(ctx, projectID, ns, obj, rw.TuplesetRelation)
+		subjects, err := e.reader.ListSubjects(ctx, projectID, tenantID, ns, obj, rw.TuplesetRelation)
 		if err != nil {
 			return Tree{}, err
 		}
@@ -116,7 +116,7 @@ func (e *Engine) expandRewrite(ctx context.Context, m Model, projectID, ns, obj,
 			if s.Set == nil {
 				continue
 			}
-			sub, err := e.expand(ctx, m, projectID, s.Set.Namespace, s.Set.ObjectID, rw.ComputedRelation, visited, depth+1)
+			sub, err := e.expand(ctx, m, projectID, tenantID, s.Set.Namespace, s.Set.ObjectID, rw.ComputedRelation, visited, depth+1)
 			if err != nil {
 				return Tree{}, err
 			}
