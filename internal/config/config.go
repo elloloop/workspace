@@ -48,6 +48,9 @@ type Config struct {
 	// MaxExpandNodes caps the size of an Expand result tree, bounding the
 	// response a single cheap request can amplify into.
 	MaxExpandNodes int
+	// MaxBatchCheckItems caps the number of items in a single BatchCheck
+	// request, bounding per-request cost.
+	MaxBatchCheckItems int
 }
 
 // DefaultMaxListObjects bounds a ListObjects request when not overridden.
@@ -55,6 +58,9 @@ const DefaultMaxListObjects = 1000
 
 // DefaultMaxExpandNodes bounds an Expand result tree when not overridden.
 const DefaultMaxExpandNodes = 10000
+
+// DefaultMaxBatchCheckItems bounds a BatchCheck request when not overridden.
+const DefaultMaxBatchCheckItems = 1000
 
 // Load reads configuration from the environment, applying defaults.
 func Load() (*Config, error) {
@@ -71,6 +77,7 @@ func Load() (*Config, error) {
 		HTTPMaxBodyBytes:    int64(envInt("GATEWAY_HTTP_MAX_BODY_BYTES", 1<<20)),
 		MaxListObjects:      envInt("GATEWAY_MAX_LIST_OBJECTS", DefaultMaxListObjects),
 		MaxExpandNodes:      envInt("GATEWAY_MAX_EXPAND_NODES", DefaultMaxExpandNodes),
+		MaxBatchCheckItems:  envInt("GATEWAY_MAX_BATCH_CHECK_ITEMS", DefaultMaxBatchCheckItems),
 	}
 	if err := c.Validate(); err != nil {
 		return nil, err

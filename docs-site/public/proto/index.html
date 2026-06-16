@@ -203,6 +203,22 @@
                 </li>
               
                 <li>
+                  <a href="#workspace.v1.BatchCheckItem"><span class="badge">M</span>BatchCheckItem</a>
+                </li>
+              
+                <li>
+                  <a href="#workspace.v1.BatchCheckRequest"><span class="badge">M</span>BatchCheckRequest</a>
+                </li>
+              
+                <li>
+                  <a href="#workspace.v1.BatchCheckResponse"><span class="badge">M</span>BatchCheckResponse</a>
+                </li>
+              
+                <li>
+                  <a href="#workspace.v1.BatchCheckResult"><span class="badge">M</span>BatchCheckResult</a>
+                </li>
+              
+                <li>
                   <a href="#workspace.v1.CheckRequest"><span class="badge">M</span>CheckRequest</a>
                 </li>
               
@@ -742,6 +758,145 @@
                   <td><a href="#workspace.v1.Membership">Membership</a></td>
                   <td></td>
                   <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="workspace.v1.BatchCheckItem">BatchCheckItem</h3>
+        <p>BatchCheck answers many Check questions in one round-trip — the list/grid hot</p><p>path (filter N documents/lessons to those a user can see). Results are</p><p>index-aligned to items; a per-item validation error is reported in that</p><p>item's result rather than failing the whole batch. Every item shares the</p><p>request's project_id and tenant_id.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>namespace</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>object_id</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>relation</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>subject_user_id</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="workspace.v1.BatchCheckRequest">BatchCheckRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>project_id</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>tenant_id</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>items</td>
+                  <td><a href="#workspace.v1.BatchCheckItem">BatchCheckItem</a></td>
+                  <td>repeated</td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="workspace.v1.BatchCheckResponse">BatchCheckResponse</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>results</td>
+                  <td><a href="#workspace.v1.BatchCheckResult">BatchCheckResult</a></td>
+                  <td>repeated</td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="workspace.v1.BatchCheckResult">BatchCheckResult</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>allowed</td>
+                  <td><a href="#bool">bool</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>error</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>error is non-empty when the item could not be evaluated (e.g. invalid
+arguments); allowed is then false. </p></td>
                 </tr>
               
             </tbody>
@@ -3652,6 +3807,13 @@ a family, a project group, or a whole company.</p></td>
                 <td>Check</td>
                 <td><a href="#workspace.v1.CheckRequest">CheckRequest</a></td>
                 <td><a href="#workspace.v1.CheckResponse">CheckResponse</a></td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>BatchCheck</td>
+                <td><a href="#workspace.v1.BatchCheckRequest">BatchCheckRequest</a></td>
+                <td><a href="#workspace.v1.BatchCheckResponse">BatchCheckResponse</a></td>
                 <td><p></p></td>
               </tr>
             

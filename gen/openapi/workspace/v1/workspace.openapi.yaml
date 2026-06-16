@@ -253,6 +253,69 @@ components:
           $ref: '#/components/schemas/workspace.v1.Membership'
       title: AddMemberResponse
       additionalProperties: false
+    workspace.v1.BatchCheckItem:
+      type: object
+      properties:
+        namespace:
+          type: string
+          title: namespace
+        objectId:
+          type: string
+          title: object_id
+        relation:
+          type: string
+          title: relation
+        subjectUserId:
+          type: string
+          title: subject_user_id
+      title: BatchCheckItem
+      additionalProperties: false
+      description: |-
+        BatchCheck answers many Check questions in one round-trip — the list/grid hot
+         path (filter N documents/lessons to those a user can see). Results are
+         index-aligned to items; a per-item validation error is reported in that
+         item's result rather than failing the whole batch. Every item shares the
+         request's project_id and tenant_id.
+    workspace.v1.BatchCheckRequest:
+      type: object
+      properties:
+        projectId:
+          type: string
+          title: project_id
+        tenantId:
+          type: string
+          title: tenant_id
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/workspace.v1.BatchCheckItem'
+          title: items
+      title: BatchCheckRequest
+      additionalProperties: false
+    workspace.v1.BatchCheckResponse:
+      type: object
+      properties:
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/workspace.v1.BatchCheckResult'
+          title: results
+      title: BatchCheckResponse
+      additionalProperties: false
+    workspace.v1.BatchCheckResult:
+      type: object
+      properties:
+        allowed:
+          type: boolean
+          title: allowed
+        error:
+          type: string
+          title: error
+          description: |-
+            error is non-empty when the item could not be evaluated (e.g. invalid
+             arguments); allowed is then false.
+      title: BatchCheckResult
+      additionalProperties: false
     workspace.v1.CheckRequest:
       type: object
       properties:
@@ -2269,6 +2332,41 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/workspace.v1.CheckResponse'
+  /workspace.v1.AuthzService/BatchCheck:
+    post:
+      tags:
+        - workspace.v1.AuthzService
+      summary: BatchCheck
+      operationId: workspace.v1.AuthzService.BatchCheck
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          required: true
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+        - name: Connect-Timeout-Ms
+          in: header
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/workspace.v1.BatchCheckRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/workspace.v1.BatchCheckResponse'
   /workspace.v1.AuthzService/Expand:
     post:
       tags:

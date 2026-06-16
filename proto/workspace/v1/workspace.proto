@@ -490,6 +490,30 @@ message CheckRequest {
 }
 message CheckResponse { bool allowed = 1; }
 
+// BatchCheck answers many Check questions in one round-trip — the list/grid hot
+// path (filter N documents/lessons to those a user can see). Results are
+// index-aligned to items; a per-item validation error is reported in that
+// item's result rather than failing the whole batch. Every item shares the
+// request's project_id and tenant_id.
+message BatchCheckItem {
+  string namespace = 1;
+  string object_id = 2;
+  string relation = 3;
+  string subject_user_id = 4;
+}
+message BatchCheckRequest {
+  string project_id = 1;
+  string tenant_id = 2;
+  repeated BatchCheckItem items = 3;
+}
+message BatchCheckResult {
+  bool allowed = 1;
+  // error is non-empty when the item could not be evaluated (e.g. invalid
+  // arguments); allowed is then false.
+  string error = 2;
+}
+message BatchCheckResponse { repeated BatchCheckResult results = 1; }
+
 // Expand returns the effective userset tree for namespace:object_id#relation.
 message ExpandRequest {
   string namespace = 1;
@@ -554,6 +578,7 @@ service AuthzService {
   rpc WriteRelationTuples(WriteRelationTuplesRequest) returns (WriteRelationTuplesResponse);
   rpc ReadRelationTuples(ReadRelationTuplesRequest) returns (ReadRelationTuplesResponse);
   rpc Check(CheckRequest) returns (CheckResponse);
+  rpc BatchCheck(BatchCheckRequest) returns (BatchCheckResponse);
   rpc Expand(ExpandRequest) returns (ExpandResponse);
   rpc ListObjects(ListObjectsRequest) returns (ListObjectsResponse);
   rpc DeprovisionUser(DeprovisionUserRequest) returns (DeprovisionUserResponse);

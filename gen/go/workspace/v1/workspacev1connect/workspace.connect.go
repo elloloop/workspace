@@ -111,6 +111,8 @@ const (
 	AuthzServiceReadRelationTuplesProcedure = "/workspace.v1.AuthzService/ReadRelationTuples"
 	// AuthzServiceCheckProcedure is the fully-qualified name of the AuthzService's Check RPC.
 	AuthzServiceCheckProcedure = "/workspace.v1.AuthzService/Check"
+	// AuthzServiceBatchCheckProcedure is the fully-qualified name of the AuthzService's BatchCheck RPC.
+	AuthzServiceBatchCheckProcedure = "/workspace.v1.AuthzService/BatchCheck"
 	// AuthzServiceExpandProcedure is the fully-qualified name of the AuthzService's Expand RPC.
 	AuthzServiceExpandProcedure = "/workspace.v1.AuthzService/Expand"
 	// AuthzServiceListObjectsProcedure is the fully-qualified name of the AuthzService's ListObjects
@@ -797,6 +799,7 @@ type AuthzServiceClient interface {
 	WriteRelationTuples(context.Context, *connect.Request[v1.WriteRelationTuplesRequest]) (*connect.Response[v1.WriteRelationTuplesResponse], error)
 	ReadRelationTuples(context.Context, *connect.Request[v1.ReadRelationTuplesRequest]) (*connect.Response[v1.ReadRelationTuplesResponse], error)
 	Check(context.Context, *connect.Request[v1.CheckRequest]) (*connect.Response[v1.CheckResponse], error)
+	BatchCheck(context.Context, *connect.Request[v1.BatchCheckRequest]) (*connect.Response[v1.BatchCheckResponse], error)
 	Expand(context.Context, *connect.Request[v1.ExpandRequest]) (*connect.Response[v1.ExpandResponse], error)
 	ListObjects(context.Context, *connect.Request[v1.ListObjectsRequest]) (*connect.Response[v1.ListObjectsResponse], error)
 	DeprovisionUser(context.Context, *connect.Request[v1.DeprovisionUserRequest]) (*connect.Response[v1.DeprovisionUserResponse], error)
@@ -831,6 +834,12 @@ func NewAuthzServiceClient(httpClient connect.HTTPClient, baseURL string, opts .
 			connect.WithSchema(authzServiceMethods.ByName("Check")),
 			connect.WithClientOptions(opts...),
 		),
+		batchCheck: connect.NewClient[v1.BatchCheckRequest, v1.BatchCheckResponse](
+			httpClient,
+			baseURL+AuthzServiceBatchCheckProcedure,
+			connect.WithSchema(authzServiceMethods.ByName("BatchCheck")),
+			connect.WithClientOptions(opts...),
+		),
 		expand: connect.NewClient[v1.ExpandRequest, v1.ExpandResponse](
 			httpClient,
 			baseURL+AuthzServiceExpandProcedure,
@@ -857,6 +866,7 @@ type authzServiceClient struct {
 	writeRelationTuples *connect.Client[v1.WriteRelationTuplesRequest, v1.WriteRelationTuplesResponse]
 	readRelationTuples  *connect.Client[v1.ReadRelationTuplesRequest, v1.ReadRelationTuplesResponse]
 	check               *connect.Client[v1.CheckRequest, v1.CheckResponse]
+	batchCheck          *connect.Client[v1.BatchCheckRequest, v1.BatchCheckResponse]
 	expand              *connect.Client[v1.ExpandRequest, v1.ExpandResponse]
 	listObjects         *connect.Client[v1.ListObjectsRequest, v1.ListObjectsResponse]
 	deprovisionUser     *connect.Client[v1.DeprovisionUserRequest, v1.DeprovisionUserResponse]
@@ -875,6 +885,11 @@ func (c *authzServiceClient) ReadRelationTuples(ctx context.Context, req *connec
 // Check calls workspace.v1.AuthzService.Check.
 func (c *authzServiceClient) Check(ctx context.Context, req *connect.Request[v1.CheckRequest]) (*connect.Response[v1.CheckResponse], error) {
 	return c.check.CallUnary(ctx, req)
+}
+
+// BatchCheck calls workspace.v1.AuthzService.BatchCheck.
+func (c *authzServiceClient) BatchCheck(ctx context.Context, req *connect.Request[v1.BatchCheckRequest]) (*connect.Response[v1.BatchCheckResponse], error) {
+	return c.batchCheck.CallUnary(ctx, req)
 }
 
 // Expand calls workspace.v1.AuthzService.Expand.
@@ -897,6 +912,7 @@ type AuthzServiceHandler interface {
 	WriteRelationTuples(context.Context, *connect.Request[v1.WriteRelationTuplesRequest]) (*connect.Response[v1.WriteRelationTuplesResponse], error)
 	ReadRelationTuples(context.Context, *connect.Request[v1.ReadRelationTuplesRequest]) (*connect.Response[v1.ReadRelationTuplesResponse], error)
 	Check(context.Context, *connect.Request[v1.CheckRequest]) (*connect.Response[v1.CheckResponse], error)
+	BatchCheck(context.Context, *connect.Request[v1.BatchCheckRequest]) (*connect.Response[v1.BatchCheckResponse], error)
 	Expand(context.Context, *connect.Request[v1.ExpandRequest]) (*connect.Response[v1.ExpandResponse], error)
 	ListObjects(context.Context, *connect.Request[v1.ListObjectsRequest]) (*connect.Response[v1.ListObjectsResponse], error)
 	DeprovisionUser(context.Context, *connect.Request[v1.DeprovisionUserRequest]) (*connect.Response[v1.DeprovisionUserResponse], error)
@@ -927,6 +943,12 @@ func NewAuthzServiceHandler(svc AuthzServiceHandler, opts ...connect.HandlerOpti
 		connect.WithSchema(authzServiceMethods.ByName("Check")),
 		connect.WithHandlerOptions(opts...),
 	)
+	authzServiceBatchCheckHandler := connect.NewUnaryHandler(
+		AuthzServiceBatchCheckProcedure,
+		svc.BatchCheck,
+		connect.WithSchema(authzServiceMethods.ByName("BatchCheck")),
+		connect.WithHandlerOptions(opts...),
+	)
 	authzServiceExpandHandler := connect.NewUnaryHandler(
 		AuthzServiceExpandProcedure,
 		svc.Expand,
@@ -953,6 +975,8 @@ func NewAuthzServiceHandler(svc AuthzServiceHandler, opts ...connect.HandlerOpti
 			authzServiceReadRelationTuplesHandler.ServeHTTP(w, r)
 		case AuthzServiceCheckProcedure:
 			authzServiceCheckHandler.ServeHTTP(w, r)
+		case AuthzServiceBatchCheckProcedure:
+			authzServiceBatchCheckHandler.ServeHTTP(w, r)
 		case AuthzServiceExpandProcedure:
 			authzServiceExpandHandler.ServeHTTP(w, r)
 		case AuthzServiceListObjectsProcedure:
@@ -978,6 +1002,10 @@ func (UnimplementedAuthzServiceHandler) ReadRelationTuples(context.Context, *con
 
 func (UnimplementedAuthzServiceHandler) Check(context.Context, *connect.Request[v1.CheckRequest]) (*connect.Response[v1.CheckResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("workspace.v1.AuthzService.Check is not implemented"))
+}
+
+func (UnimplementedAuthzServiceHandler) BatchCheck(context.Context, *connect.Request[v1.BatchCheckRequest]) (*connect.Response[v1.BatchCheckResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("workspace.v1.AuthzService.BatchCheck is not implemented"))
 }
 
 func (UnimplementedAuthzServiceHandler) Expand(context.Context, *connect.Request[v1.ExpandRequest]) (*connect.Response[v1.ExpandResponse], error) {
