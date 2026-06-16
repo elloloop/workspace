@@ -63,6 +63,57 @@ func MarshalModel(m Model) ([]byte, error) {
 	return json.Marshal(FromModel(m))
 }
 
+// ValidateModelRefs rejects a model whose rewrites reference relations that are
+// not declared in the same namespace, so an admin's typo surfaces at write time
+// rather than silently denying at eval time (rewrite() falls back to `this`, an
+// empty relation, for an unknown name — a fail-closed footgun). It checks the
+// same-namespace references — `computed` and the tupleset relation — across
+// union/intersection/exclusion children; the tuple-to-userset COMPUTED relation
+// is evaluated on a dynamically-referenced object's namespace and cannot be
+// resolved statically, so it is not checked here.
+func ValidateModelRefs(m Model) error {
+	for ns, rels := range m {
+		declared := make(map[string]bool, len(rels))
+		for rel := range rels {
+			declared[rel] = true
+		}
+		for rel, rw := range rels {
+			if err := checkRefs(ns, rel, rw, declared); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func checkRefs(ns, rel string, rw Rewrite, declared map[string]bool) error {
+	if rw.Computed != "" && !declared[rw.Computed] {
+		return fmt.Errorf("relation %s#%s references undeclared relation %q", ns, rel, rw.Computed)
+	}
+	if rw.TuplesetRelation != "" && !declared[rw.TuplesetRelation] {
+		return fmt.Errorf("relation %s#%s references undeclared tupleset relation %q", ns, rel, rw.TuplesetRelation)
+	}
+	for _, c := range rw.Union {
+		if err := checkRefs(ns, rel, c, declared); err != nil {
+			return err
+		}
+	}
+	for _, c := range rw.Intersection {
+		if err := checkRefs(ns, rel, c, declared); err != nil {
+			return err
+		}
+	}
+	if rw.Exclusion != nil {
+		if err := checkRefs(ns, rel, rw.Exclusion.Include, declared); err != nil {
+			return err
+		}
+		if err := checkRefs(ns, rel, rw.Exclusion.Exclude, declared); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // ToModel converts a document to the in-memory Model, validating each rewrite.
 func (d ModelDoc) ToModel() (Model, error) {
 	m := make(Model, len(d))

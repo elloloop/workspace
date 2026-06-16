@@ -219,6 +219,7 @@ All config is via environment variables (the `GATEWAY_` prefix matches identity)
 | `GATEWAY_SERVICE_AUTH_TOKENS` | Accepted service credentials, comma-separated, presented as `Authorization: Bearer <token>`. **Empty disables the requirement** (trust the network/mesh) and logs a warning. | — |
 | `GATEWAY_ALLOWED_ORIGINS` | CORS origins for browser callers, comma-separated | — |
 | `GATEWAY_HTTP_MAX_BODY_BYTES` | Maximum request body size | `1048576` |
+| `GATEWAY_MAX_LIST_OBJECTS` | Maximum candidate objects a single `ListObjects` call scans (over-cap returns `ResourceExhausted`) | `1000` |
 
 ## Deployment
 

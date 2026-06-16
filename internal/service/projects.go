@@ -277,5 +277,8 @@ func validateModel(m authz.Model) error {
 	if _, err := authz.ParseModel(data); err != nil {
 		return fmt.Errorf("%w: invalid model: %w", ErrInvalidArgument, err)
 	}
+	if err := authz.ValidateModelRefs(m); err != nil {
+		return fmt.Errorf("%w: %w", ErrInvalidArgument, err)
+	}
 	return nil
 }
