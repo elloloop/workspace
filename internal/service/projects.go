@@ -12,8 +12,11 @@ import (
 // modelResolver resolves a project's authorization model from the repository,
 // caching the result. A project that does not exist, or that carries no model,
 // resolves to authz.DefaultModel — so an unconfigured project behaves exactly
-// like the built-in defaults. The cache is invalidated whenever a project is
-// created or updated.
+// like the built-in defaults. A configured project's namespaces are OVERLAID
+// onto the defaults per namespace: the product surface (workspace, group,
+// resource) is always present, and a project adds its own namespaces (course,
+// lesson, …) or overrides a default one by redeclaring it. The cache is
+// invalidated whenever a project is created or updated.
 type modelResolver struct {
 	repo  Repository
 	mu    sync.RWMutex
@@ -40,7 +43,12 @@ func (r *modelResolver) ModelFor(ctx context.Context, projectID string) (authz.M
 	case err != nil:
 		return nil, err
 	case len(p.Model) > 0:
-		model = p.Model
+		// Overlay the project's namespaces onto the defaults so the built-in
+		// product surface (workspace/group/resource) survives a custom model;
+		// a redeclared namespace overrides the default of the same name.
+		for ns, rels := range p.Model {
+			model[ns] = rels
+		}
 	}
 
 	r.mu.Lock()
@@ -149,10 +157,10 @@ func validateModel(m authz.Model) error {
 	}
 	data, err := authz.MarshalModel(m)
 	if err != nil {
-		return fmt.Errorf("%w: model is not serializable: %v", ErrInvalidArgument, err)
+		return fmt.Errorf("%w: model is not serializable: %w", ErrInvalidArgument, err)
 	}
 	if _, err := authz.ParseModel(data); err != nil {
-		return fmt.Errorf("%w: invalid model: %v", ErrInvalidArgument, err)
+		return fmt.Errorf("%w: invalid model: %w", ErrInvalidArgument, err)
 	}
 	return nil
 }

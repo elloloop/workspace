@@ -22,6 +22,9 @@ type Config struct {
 	// ServiceAuthTokens are the accepted service credentials. Empty disables
 	// the requirement (trusted network / mesh).
 	ServiceAuthTokens []string
+	// AdminAPISecret gates the AdminService (project configuration). Empty
+	// disables the admin RPCs.
+	AdminAPISecret string
 }
 
 // Options configures New. Repo defaults to an in-memory store; Logger
@@ -38,7 +41,7 @@ type Server struct {
 }
 
 // New builds the server.
-func New(_ context.Context, opts Options) (*Server, error) {
+func New(ctx context.Context, opts Options) (*Server, error) {
 	logger := opts.Logger
 	if logger == nil {
 		logger = zap.NewNop()
@@ -51,13 +54,17 @@ func New(_ context.Context, opts Options) (*Server, error) {
 	if projectID == "" {
 		projectID = "default"
 	}
-	handler := app.New(app.Deps{
+	handler, err := app.New(ctx, app.Deps{
 		Logger:            logger,
 		Repo:              repo,
 		DefaultProjectID:  projectID,
 		AllowedOrigins:    opts.Config.AllowedOrigins,
 		ServiceAuthTokens: opts.Config.ServiceAuthTokens,
+		AdminAPISecret:    opts.Config.AdminAPISecret,
 	})
+	if err != nil {
+		return nil, err
+	}
 	return &Server{handler: handler}, nil
 }
 

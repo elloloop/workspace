@@ -19,6 +19,9 @@ type Config struct {
 	ConnectPort      int
 	MetricsPort      int
 	DefaultProjectID string
+	// DefaultTenantID is the tenant pinned for requests that omit tenant_id
+	// (the project's default tenant). Empty is the conventional default.
+	DefaultTenantID string
 
 	// PostgresDSN selects the postgres driver when set; empty uses memory.
 	PostgresDSN string
@@ -32,6 +35,10 @@ type Config struct {
 	// requirement — trust the network/mesh — and the service logs a warning.
 	ServiceAuthTokens []string
 
+	// AdminAPISecret gates the AdminService (project configuration), presented
+	// as the `X-Admin-Secret` header. Empty disables the admin RPCs entirely.
+	AdminAPISecret string
+
 	AllowedOrigins   []string
 	HTTPMaxBodyBytes int64
 }
@@ -42,9 +49,11 @@ func Load() (*Config, error) {
 		ConnectPort:         envInt("GATEWAY_CONNECT_PORT", 8080),
 		MetricsPort:         envInt("GATEWAY_METRICS_PORT", 9090),
 		DefaultProjectID:    envStr("GATEWAY_DEFAULT_PROJECT_ID", DefaultProjectIDFallback),
+		DefaultTenantID:     envStr("GATEWAY_DEFAULT_TENANT_ID", ""),
 		PostgresDSN:         envStr("GATEWAY_POSTGRES_DSN", ""),
 		PostgresAutoMigrate: envBool("GATEWAY_POSTGRES_AUTO_MIGRATE", true),
 		ServiceAuthTokens:   envCSV("GATEWAY_SERVICE_AUTH_TOKENS"),
+		AdminAPISecret:      envStr("GATEWAY_ADMIN_API_SECRET", ""),
 		AllowedOrigins:      envCSV("GATEWAY_ALLOWED_ORIGINS"),
 		HTTPMaxBodyBytes:    int64(envInt("GATEWAY_HTTP_MAX_BODY_BYTES", 1<<20)),
 	}

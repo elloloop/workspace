@@ -61,6 +61,18 @@ func (s *Service) ListObjects(ctx context.Context, p Principal, namespace, relat
 	return s.engine.ListObjects(ctx, p.ProjectID, p.TenantID, namespace, relation, subjectUserID)
 }
 
+// DeprovisionUser deletes every relation tuple whose concrete subject is
+// userID across all namespaces in the caller's project/tenant, returning the
+// count removed. This is the clean revoke-everything path when a user leaves
+// (it also reaches grants held via group usersets, which a per-subject tuple
+// sweep on the concrete user would otherwise miss for group-derived access).
+func (s *Service) DeprovisionUser(ctx context.Context, p Principal, userID string) (int, error) {
+	if userID == "" {
+		return 0, fmt.Errorf("%w: user_id is required", ErrInvalidArgument)
+	}
+	return s.repo.DeleteAllSubjectTuples(ctx, p.ProjectID, p.TenantID, userID)
+}
+
 func validateTuple(t authz.Tuple) error {
 	if t.Namespace == "" || t.ObjectID == "" || t.Relation == "" {
 		return fmt.Errorf("%w: tuple namespace, object_id, relation are required", ErrInvalidArgument)

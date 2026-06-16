@@ -25,18 +25,27 @@ func subjectFromProto(s *workspacev1.Subject) (authz.Subject, error) {
 		return authz.Subject{Set: &authz.SubjectSet{
 			Namespace: k.Set.Namespace, ObjectID: k.Set.ObjectId, Relation: k.Set.Relation,
 		}}, nil
+	case *workspacev1.Subject_Wildcard:
+		if !k.Wildcard {
+			return authz.Subject{}, connect.NewError(connect.CodeInvalidArgument, errors.New("wildcard subject must be true"))
+		}
+		return authz.Subject{Wildcard: true}, nil
 	default:
-		return authz.Subject{}, connect.NewError(connect.CodeInvalidArgument, errors.New("subject must set user_id or set"))
+		return authz.Subject{}, connect.NewError(connect.CodeInvalidArgument, errors.New("subject must set user_id, set, or wildcard"))
 	}
 }
 
 func subjectToProto(s authz.Subject) *workspacev1.Subject {
-	if s.Set != nil {
+	switch {
+	case s.Wildcard:
+		return &workspacev1.Subject{Kind: &workspacev1.Subject_Wildcard{Wildcard: true}}
+	case s.Set != nil:
 		return &workspacev1.Subject{Kind: &workspacev1.Subject_Set{Set: &workspacev1.SubjectSet{
 			Namespace: s.Set.Namespace, ObjectId: s.Set.ObjectID, Relation: s.Set.Relation,
 		}}}
+	default:
+		return &workspacev1.Subject{Kind: &workspacev1.Subject_UserId{UserId: s.UserID}}
 	}
-	return &workspacev1.Subject{Kind: &workspacev1.Subject_UserId{UserId: s.UserID}}
 }
 
 func tupleFromProto(t *workspacev1.RelationTuple) (authz.Tuple, error) {
@@ -50,9 +59,10 @@ func tupleFromProto(t *workspacev1.RelationTuple) (authz.Tuple, error) {
 	return authz.Tuple{Namespace: t.Namespace, ObjectID: t.ObjectId, Relation: t.Relation, Subject: subj}, nil
 }
 
-func tupleToProto(projectID string, t authz.Tuple) *workspacev1.RelationTuple {
+func tupleToProto(projectID, tenantID string, t authz.Tuple) *workspacev1.RelationTuple {
 	return &workspacev1.RelationTuple{
 		ProjectId: projectID,
+		TenantId:  tenantID,
 		Namespace: t.Namespace,
 		ObjectId:  t.ObjectID,
 		Relation:  t.Relation,
@@ -61,7 +71,7 @@ func tupleToProto(projectID string, t authz.Tuple) *workspacev1.RelationTuple {
 }
 
 func (h *Handler) WriteRelationTuples(ctx context.Context, req *connect.Request[workspacev1.WriteRelationTuplesRequest]) (*connect.Response[workspacev1.WriteRelationTuplesResponse], error) {
-	p := h.scope(req.Msg.ProjectId)
+	p := h.scope(req.Msg.ProjectId, req.Msg.TenantId)
 	ops := make([]service.TupleOp, 0, len(req.Msg.Updates))
 	for _, u := range req.Msg.Updates {
 		t, err := tupleFromProto(u.Tuple)
@@ -84,7 +94,7 @@ func (h *Handler) WriteRelationTuples(ctx context.Context, req *connect.Request[
 }
 
 func (h *Handler) ReadRelationTuples(ctx context.Context, req *connect.Request[workspacev1.ReadRelationTuplesRequest]) (*connect.Response[workspacev1.ReadRelationTuplesResponse], error) {
-	p := h.scope(req.Msg.ProjectId)
+	p := h.scope(req.Msg.ProjectId, req.Msg.TenantId)
 	tuples, err := h.svc.ReadTuples(ctx, p, service.TupleFilter{
 		Namespace:     req.Msg.Namespace,
 		ObjectID:      req.Msg.ObjectId,
@@ -96,13 +106,13 @@ func (h *Handler) ReadRelationTuples(ctx context.Context, req *connect.Request[w
 	}
 	out := make([]*workspacev1.RelationTuple, 0, len(tuples))
 	for _, t := range tuples {
-		out = append(out, tupleToProto(p.ProjectID, t))
+		out = append(out, tupleToProto(p.ProjectID, p.TenantID, t))
 	}
 	return connect.NewResponse(&workspacev1.ReadRelationTuplesResponse{Tuples: out}), nil
 }
 
 func (h *Handler) Check(ctx context.Context, req *connect.Request[workspacev1.CheckRequest]) (*connect.Response[workspacev1.CheckResponse], error) {
-	p := h.scope(req.Msg.ProjectId)
+	p := h.scope(req.Msg.ProjectId, req.Msg.TenantId)
 	allowed, err := h.svc.Check(ctx, p, req.Msg.Namespace, req.Msg.ObjectId, req.Msg.Relation, req.Msg.SubjectUserId)
 	if err != nil {
 		return nil, errToConnect(err)
@@ -111,7 +121,7 @@ func (h *Handler) Check(ctx context.Context, req *connect.Request[workspacev1.Ch
 }
 
 func (h *Handler) Expand(ctx context.Context, req *connect.Request[workspacev1.ExpandRequest]) (*connect.Response[workspacev1.ExpandResponse], error) {
-	p := h.scope(req.Msg.ProjectId)
+	p := h.scope(req.Msg.ProjectId, req.Msg.TenantId)
 	tree, err := h.svc.Expand(ctx, p, req.Msg.Namespace, req.Msg.ObjectId, req.Msg.Relation)
 	if err != nil {
 		return nil, errToConnect(err)
@@ -125,19 +135,48 @@ func treeToProto(t authz.Tree) *workspacev1.UsersetTree {
 			Namespace: t.Expanded.Namespace, ObjectId: t.Expanded.ObjectID, Relation: t.Expanded.Relation,
 		},
 	}
-	if len(t.Union) > 0 {
+	switch {
+	case len(t.Union) > 0:
 		node.Type = workspacev1.UsersetTree_NODE_TYPE_UNION
 		for _, c := range t.Union {
 			node.Children = append(node.Children, treeToProto(c))
 		}
-		return node
-	}
-	node.Type = workspacev1.UsersetTree_NODE_TYPE_LEAF
-	node.UserIds = append(node.UserIds, t.Users...)
-	for _, set := range t.Sets {
-		node.Sets = append(node.Sets, &workspacev1.SubjectSet{
-			Namespace: set.Namespace, ObjectId: set.ObjectID, Relation: set.Relation,
-		})
+	case len(t.Intersection) > 0:
+		node.Type = workspacev1.UsersetTree_NODE_TYPE_INTERSECTION
+		for _, c := range t.Intersection {
+			node.Children = append(node.Children, treeToProto(c))
+		}
+	case t.Exclude != nil:
+		// EXCLUSION carries exactly two children: [include, exclude].
+		node.Type = workspacev1.UsersetTree_NODE_TYPE_EXCLUSION
+		node.Children = append(node.Children, treeToProto(t.Exclude.Include), treeToProto(t.Exclude.Exclude))
+	default:
+		node.Type = workspacev1.UsersetTree_NODE_TYPE_LEAF
+		node.UserIds = append(node.UserIds, t.Users...)
+		node.Wildcard = t.Wildcard
+		for _, set := range t.Sets {
+			node.Sets = append(node.Sets, &workspacev1.SubjectSet{
+				Namespace: set.Namespace, ObjectId: set.ObjectID, Relation: set.Relation,
+			})
+		}
 	}
 	return node
+}
+
+func (h *Handler) ListObjects(ctx context.Context, req *connect.Request[workspacev1.ListObjectsRequest]) (*connect.Response[workspacev1.ListObjectsResponse], error) {
+	p := h.scope(req.Msg.ProjectId, req.Msg.TenantId)
+	ids, err := h.svc.ListObjects(ctx, p, req.Msg.Namespace, req.Msg.Relation, req.Msg.SubjectUserId)
+	if err != nil {
+		return nil, errToConnect(err)
+	}
+	return connect.NewResponse(&workspacev1.ListObjectsResponse{ObjectIds: ids}), nil
+}
+
+func (h *Handler) DeprovisionUser(ctx context.Context, req *connect.Request[workspacev1.DeprovisionUserRequest]) (*connect.Response[workspacev1.DeprovisionUserResponse], error) {
+	p := h.scope(req.Msg.ProjectId, req.Msg.TenantId)
+	n, err := h.svc.DeprovisionUser(ctx, p, req.Msg.UserId)
+	if err != nil {
+		return nil, errToConnect(err)
+	}
+	return connect.NewResponse(&workspacev1.DeprovisionUserResponse{DeletedCount: int64(n)}), nil
 }

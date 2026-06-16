@@ -2,6 +2,7 @@ package authz
 
 import (
 	"context"
+	"errors"
 	"fmt"
 )
 
@@ -171,7 +172,7 @@ func (e *Engine) evalTupleToUserset(ctx context.Context, m Model, projectID, ten
 func (e *Engine) ListObjects(ctx context.Context, projectID, tenantID, namespace, relation, userID string) ([]string, error) {
 	lister, ok := e.reader.(ObjectLister)
 	if !ok {
-		return nil, fmt.Errorf("authz: tuple store does not support ListObjects")
+		return nil, errors.New("authz: tuple store does not support ListObjects")
 	}
 	ids, err := lister.ListObjectIDs(ctx, projectID, tenantID, namespace)
 	if err != nil {

@@ -3,6 +3,7 @@ package authz
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 )
 
@@ -67,7 +68,7 @@ func (d ModelDoc) ToModel() (Model, error) {
 	m := make(Model, len(d))
 	for ns, rels := range d {
 		if ns == "" {
-			return nil, fmt.Errorf("authz: model has an empty namespace name")
+			return nil, errors.New("authz: model has an empty namespace name")
 		}
 		nm := make(Namespace, len(rels))
 		for rel, rd := range rels {
@@ -116,7 +117,7 @@ func (rd RewriteDoc) toRewrite() (Rewrite, error) {
 		return computed(rd.Computed), nil
 	case rd.TupleToUserset != nil:
 		if rd.TupleToUserset.Tupleset == "" || rd.TupleToUserset.Computed == "" {
-			return Rewrite{}, fmt.Errorf("tupleToUserset requires tupleset and computed")
+			return Rewrite{}, errors.New("tupleToUserset requires tupleset and computed")
 		}
 		return tupleToUserset(rd.TupleToUserset.Tupleset, rd.TupleToUserset.Computed), nil
 	case rd.Union != nil:
@@ -125,7 +126,7 @@ func (rd RewriteDoc) toRewrite() (Rewrite, error) {
 			return Rewrite{}, err
 		}
 		if len(children) == 0 {
-			return Rewrite{}, fmt.Errorf("union requires at least one child")
+			return Rewrite{}, errors.New("union requires at least one child")
 		}
 		return union(children...), nil
 	case rd.Intersection != nil:
@@ -134,7 +135,7 @@ func (rd RewriteDoc) toRewrite() (Rewrite, error) {
 			return Rewrite{}, err
 		}
 		if len(children) == 0 {
-			return Rewrite{}, fmt.Errorf("intersection requires at least one child")
+			return Rewrite{}, errors.New("intersection requires at least one child")
 		}
 		return intersection(children...), nil
 	default: // rd.Exclusion != nil

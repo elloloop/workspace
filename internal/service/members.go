@@ -114,3 +114,59 @@ func (s *Service) ListMembers(ctx context.Context, p Principal, workspaceID stri
 	}
 	return s.repo.ListMembers(ctx, p.ProjectID, p.TenantID, workspaceID)
 }
+
+// SuspendMember pauses a member's access WITHOUT deleting their membership: it
+// deletes the backing role tuple (so every Check denies immediately and they
+// drop out of active workspace listings) and marks the membership suspended.
+// Requires admin; the owner cannot be suspended. Denial is by tuple absence —
+// no status read on the hot path. ReinstateMember reverses it.
+func (s *Service) SuspendMember(ctx context.Context, p Principal, workspaceID, userID string) (*Membership, error) {
+	if _, err := s.requireWorkspace(ctx, p, workspaceID, RoleAdmin); err != nil {
+		return nil, err
+	}
+	m, err := s.repo.GetMembership(ctx, p.ProjectID, p.TenantID, workspaceID, userID)
+	if err != nil {
+		return nil, err
+	}
+	if m.Role == RoleOwner {
+		return nil, fmt.Errorf("%w: the owner cannot be suspended", ErrFailedPrecondition)
+	}
+	if m.Status == StatusSuspended {
+		return m, nil
+	}
+	if err := s.repo.WriteTuples(ctx, p.ProjectID, p.TenantID, nil,
+		[]authz.Tuple{userTuple("workspace", workspaceID, string(m.Role), userID)}); err != nil {
+		return nil, err
+	}
+	m.Status = StatusSuspended
+	m.UpdatedAt = s.now()
+	if err := s.repo.PutMembership(ctx, m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
+// ReinstateMember restores a suspended member: it re-writes the role tuple
+// from the stored role and marks the membership active. Requires admin.
+func (s *Service) ReinstateMember(ctx context.Context, p Principal, workspaceID, userID string) (*Membership, error) {
+	if _, err := s.requireWorkspace(ctx, p, workspaceID, RoleAdmin); err != nil {
+		return nil, err
+	}
+	m, err := s.repo.GetMembership(ctx, p.ProjectID, p.TenantID, workspaceID, userID)
+	if err != nil {
+		return nil, err
+	}
+	if m.Status != StatusSuspended {
+		return m, nil
+	}
+	if err := s.repo.WriteTuples(ctx, p.ProjectID, p.TenantID,
+		[]authz.Tuple{userTuple("workspace", workspaceID, string(m.Role), userID)}, nil); err != nil {
+		return nil, err
+	}
+	m.Status = StatusActive
+	m.UpdatedAt = s.now()
+	if err := s.repo.PutMembership(ctx, m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}

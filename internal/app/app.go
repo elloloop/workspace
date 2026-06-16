@@ -5,6 +5,7 @@
 package app
 
 import (
+	"context"
 	"net/http"
 
 	"go.uber.org/zap"
@@ -24,17 +25,25 @@ type Deps struct {
 	// ServiceAuthTokens are the accepted service credentials. Empty disables
 	// the requirement (trusted network / mesh); see middleware.ServiceAuth.
 	ServiceAuthTokens []string
+	// AdminAPISecret gates the AdminService (project configuration). Empty
+	// disables the admin RPCs.
+	AdminAPISecret string
 }
 
-// New builds the full HTTP handler: the three Connect services plus health
-// routes, wrapped in the recover → CORS → service-auth middleware chain.
-func New(d Deps) http.Handler {
+// New builds the full HTTP handler: the four Connect services plus health
+// routes, wrapped in the recover → CORS → service-auth middleware chain. It
+// also seeds the default project so the deployment's default shard is always
+// resolvable.
+func New(ctx context.Context, d Deps) (http.Handler, error) {
 	logger := d.Logger
 	if logger == nil {
 		logger = zap.NewNop()
 	}
 	svc := service.New(d.Repo, nil, nil)
-	h := connecthandler.NewHandler(svc, d.DefaultProjectID)
+	if err := svc.EnsureDefaultProject(ctx, d.DefaultProjectID); err != nil {
+		return nil, err
+	}
+	h := connecthandler.NewHandler(svc, d.DefaultProjectID, d.AdminAPISecret)
 
 	mux := http.NewServeMux()
 	wsPath, wsHandler := workspacev1connect.NewWorkspaceServiceHandler(h)
@@ -43,6 +52,8 @@ func New(d Deps) http.Handler {
 	mux.Handle(grpPath, grpHandler)
 	azPath, azHandler := workspacev1connect.NewAuthzServiceHandler(h)
 	mux.Handle(azPath, azHandler)
+	adminPath, adminHandler := workspacev1connect.NewAdminServiceHandler(h)
+	mux.Handle(adminPath, adminHandler)
 
 	health := middleware.Health()
 	mux.Handle("/healthz", health)
@@ -52,5 +63,5 @@ func New(d Deps) http.Handler {
 		middleware.Recover(logger),
 		middleware.CORS(d.AllowedOrigins),
 		middleware.ServiceAuth(d.ServiceAuthTokens, logger),
-	)
+	), nil
 }

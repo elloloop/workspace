@@ -59,6 +59,7 @@ func main() {
 			DefaultProjectID:  cfg.DefaultProjectID,
 			AllowedOrigins:    cfg.AllowedOrigins,
 			ServiceAuthTokens: cfg.ServiceAuthTokens,
+			AdminAPISecret:    cfg.AdminAPISecret,
 		},
 	})
 	if err != nil {
