@@ -46,10 +46,10 @@ func TestCheckSetDirectAndMember(t *testing.T) {
 	}
 
 	// The concrete-user path is unchanged.
-	if ok, _ := e.Check(ctx, "p", "", "doc", "doc1", "viewer", "alice"); !ok {
+	if ok, _ := e.Check(ctx, "p", "", "doc", "doc1", "viewer", "alice", nil); !ok {
 		t.Error("concrete-user Check regressed: alice should have viewer on doc1")
 	}
-	if ok, _ := e.Check(ctx, "p", "", "doc", "doc1", "viewer", "carol"); ok {
+	if ok, _ := e.Check(ctx, "p", "", "doc", "doc1", "viewer", "carol", nil); ok {
 		t.Error("concrete-user Check regressed: carol should not have viewer on doc1")
 	}
 }
@@ -69,7 +69,7 @@ func TestCheckSetNestedGroup(t *testing.T) {
 		t.Fatalf("nested-group set should match: ok=%v err=%v", ok, err)
 	}
 	// And via a concrete member of the nested group.
-	if ok, _ := e.Check(ctx, "p", "", "doc", "doc1", "viewer", "alice"); !ok {
+	if ok, _ := e.Check(ctx, "p", "", "doc", "doc1", "viewer", "alice", nil); !ok {
 		t.Error("alice (nested member) should have viewer on doc1")
 	}
 }

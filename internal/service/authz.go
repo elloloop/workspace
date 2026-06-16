@@ -53,8 +53,10 @@ func (s *Service) ReadTuples(ctx context.Context, p Principal, f TupleFilter) ([
 	return s.repo.ReadTuples(ctx, p.ProjectID, p.TenantID, f)
 }
 
-// Check evaluates a permission for the caller's project and tenant.
-func (s *Service) Check(ctx context.Context, p Principal, namespace, objectID, relation, subjectUserID string) (bool, error) {
+// Check evaluates a permission for the caller's project and tenant. reqContext
+// carries request-time attributes (e.g. age, consent, ip) that conditional
+// grants (caveats) are evaluated against; pass nil when there is no context.
+func (s *Service) Check(ctx context.Context, p Principal, namespace, objectID, relation, subjectUserID string, reqContext map[string]any) (bool, error) {
 	if namespace == "" || objectID == "" || relation == "" || subjectUserID == "" {
 		return false, fmt.Errorf("%w: namespace, object_id, relation, subject_user_id are required", ErrInvalidArgument)
 	}
@@ -63,7 +65,7 @@ func (s *Service) Check(ctx context.Context, p Principal, namespace, objectID, r
 	} else if suspended {
 		return false, nil // a suspended project denies every check
 	}
-	return s.engine.Check(ctx, p.ProjectID, p.TenantID, namespace, objectID, relation, subjectUserID)
+	return s.engine.Check(ctx, p.ProjectID, p.TenantID, namespace, objectID, relation, subjectUserID, reqContext)
 }
 
 // CheckSet evaluates whether a USERSET (e.g. group:cohort-7#member) has the
@@ -153,6 +155,9 @@ func validateTuple(t authz.Tuple) error {
 	}
 	if t.Subject.Set != nil && (t.Subject.Set.Namespace == "" || t.Subject.Set.ObjectID == "") {
 		return fmt.Errorf("%w: subject set requires namespace and object_id", ErrInvalidArgument)
+	}
+	if c := t.Subject.Condition; c != nil && c.Name != "" && !authz.KnownCondition(c.Name) {
+		return fmt.Errorf("%w: unknown condition %q", ErrInvalidArgument, c.Name)
 	}
 	return nil
 }

@@ -59,7 +59,7 @@ func TestCheckWorkspaceRoleHierarchy(t *testing.T) {
 		{"member", "carol", false},
 	}
 	for _, c := range cases {
-		got, err := e.Check(context.Background(), "p", "", "workspace", "w1", c.rel, c.user)
+		got, err := e.Check(context.Background(), "p", "", "workspace", "w1", c.rel, c.user, nil)
 		if err != nil {
 			t.Fatalf("Check %s@%s: %v", c.rel, c.user, err)
 		}
@@ -76,14 +76,14 @@ func TestCheckNestedGroups(t *testing.T) {
 	r.add("group", "backend", "member", user("dana"))
 	e := NewEngine(nil, r)
 
-	ok, err := e.Check(context.Background(), "p", "", "group", "all-eng", "member", "dana")
+	ok, err := e.Check(context.Background(), "p", "", "group", "all-eng", "member", "dana", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !ok {
 		t.Fatal("dana should be a transitive member of all-eng")
 	}
-	ok, _ = e.Check(context.Background(), "p", "", "group", "all-eng", "member", "ed")
+	ok, _ = e.Check(context.Background(), "p", "", "group", "all-eng", "member", "ed", nil)
 	if ok {
 		t.Fatal("ed should not be a member")
 	}
@@ -95,7 +95,7 @@ func TestCheckResourceParentInheritance(t *testing.T) {
 	r.add("resource", "doc1", "parent", set("workspace", "w1", "member"))
 	e := NewEngine(nil, r)
 
-	ok, err := e.Check(context.Background(), "p", "", "resource", "doc1", "viewer", "bob")
+	ok, err := e.Check(context.Background(), "p", "", "resource", "doc1", "viewer", "bob", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -111,7 +111,7 @@ func TestCheckCycleTerminates(t *testing.T) {
 	r.add("group", "b", "member", set("group", "a", "member"))
 	e := NewEngine(nil, r)
 
-	ok, err := e.Check(context.Background(), "p", "", "group", "a", "member", "nobody")
+	ok, err := e.Check(context.Background(), "p", "", "group", "a", "member", "nobody", nil)
 	if err != nil {
 		t.Fatalf("cycle should not error: %v", err)
 	}
@@ -171,14 +171,14 @@ func TestCheckExclusionSuspendedMember(t *testing.T) {
 	r.add("workspace", "w1", "suspended", user("carol"))
 	e := NewEngine(StaticResolver(suspendableModel()), r)
 
-	if ok, _ := e.Check(context.Background(), "p", "", "workspace", "w1", "active", "bob"); !ok {
+	if ok, _ := e.Check(context.Background(), "p", "", "workspace", "w1", "active", "bob", nil); !ok {
 		t.Error("bob is a non-suspended member; active should be true")
 	}
-	if ok, _ := e.Check(context.Background(), "p", "", "workspace", "w1", "active", "carol"); ok {
+	if ok, _ := e.Check(context.Background(), "p", "", "workspace", "w1", "active", "carol", nil); ok {
 		t.Error("carol is suspended; active must be false")
 	}
 	// The base member grant is untouched by the exclusion.
-	if ok, _ := e.Check(context.Background(), "p", "", "workspace", "w1", "member", "carol"); !ok {
+	if ok, _ := e.Check(context.Background(), "p", "", "workspace", "w1", "member", "carol", nil); !ok {
 		t.Error("carol remains a member; only active is excluded")
 	}
 }
@@ -195,7 +195,7 @@ func TestSelfReferentialExclusionFailsClosed(t *testing.T) {
 		"r": exclusion(this(), computed("r")),
 	}}
 	e := NewEngine(StaticResolver(m), r)
-	if ok, _ := e.Check(context.Background(), "p", "", "res", "x", "r", "u1"); ok {
+	if ok, _ := e.Check(context.Background(), "p", "", "res", "x", "r", "u1", nil); ok {
 		t.Error("self-referential exclusion must fail closed (deny), not fan open")
 	}
 }
@@ -212,7 +212,7 @@ func TestNestedExclusionDoubleNegationTerminates(t *testing.T) {
 		"a":     exclusion(computed("base"), computed("inner")),
 	}}
 	e := NewEngine(StaticResolver(m), r)
-	if _, err := e.Check(context.Background(), "p", "", "res", "x", "a", "u1"); err != nil {
+	if _, err := e.Check(context.Background(), "p", "", "res", "x", "a", "u1", nil); err != nil {
 		t.Fatalf("nested exclusion must terminate without error, got %v", err)
 	}
 }
@@ -230,10 +230,10 @@ func TestCheckIntersection(t *testing.T) {
 	}}
 	e := NewEngine(StaticResolver(m), r)
 
-	if ok, _ := e.Check(context.Background(), "p", "", "course", "c1", "can_view", "amy"); !ok {
+	if ok, _ := e.Check(context.Background(), "p", "", "course", "c1", "can_view", "amy", nil); !ok {
 		t.Error("amy is enrolled and paid; can_view should be true")
 	}
-	if ok, _ := e.Check(context.Background(), "p", "", "course", "c1", "can_view", "ben"); ok {
+	if ok, _ := e.Check(context.Background(), "p", "", "course", "c1", "can_view", "ben", nil); ok {
 		t.Error("ben is enrolled but not paid; can_view must be false")
 	}
 }
@@ -244,7 +244,7 @@ func TestCheckWildcardPublic(t *testing.T) {
 	e := NewEngine(nil, r)
 
 	for _, u := range []string{"anyone", "someone-else"} {
-		if ok, _ := e.Check(context.Background(), "p", "", "resource", "pub", "viewer", u); !ok {
+		if ok, _ := e.Check(context.Background(), "p", "", "resource", "pub", "viewer", u, nil); !ok {
 			t.Errorf("wildcard grant should admit %q", u)
 		}
 	}

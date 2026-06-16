@@ -23,6 +23,11 @@ type Subject struct {
 	UserID   string
 	Set      *SubjectSet
 	Wildcard bool
+	// Condition, when non-nil, makes this grant conditional: the subject is
+	// granted the relation only if the named condition evaluates true against
+	// the request-time context (see conditions.go). Nil = unconditional (the
+	// default). It is grant metadata, not part of tuple identity.
+	Condition *Condition
 }
 
 // SubjectSet references the userset namespace:object#relation.

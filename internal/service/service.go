@@ -100,7 +100,7 @@ func (s *Service) Repo() Repository { return s.repo }
 
 // allowed is a thin wrapper over the engine for the common workspace check.
 func (s *Service) allowed(ctx context.Context, p Principal, workspaceID string, rel Role) (bool, error) {
-	return s.engine.Check(ctx, p.ProjectID, p.TenantID, "workspace", workspaceID, string(rel), p.UserID)
+	return s.engine.Check(ctx, p.ProjectID, p.TenantID, "workspace", workspaceID, string(rel), p.UserID, nil)
 }
 
 // requireWorkspace loads a workspace and confirms the caller holds at least

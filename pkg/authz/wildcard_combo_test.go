@@ -21,10 +21,10 @@ func TestWildcardInsideExclusion(t *testing.T) {
 	e := NewEngine(StaticResolver(m), r)
 	ctx := context.Background()
 
-	if ok, _ := e.Check(ctx, "p", "", "doc", "d1", "published", "alice"); !ok {
+	if ok, _ := e.Check(ctx, "p", "", "doc", "d1", "published", "alice", nil); !ok {
 		t.Error("non-blocked user must see published wildcard content")
 	}
-	if ok, _ := e.Check(ctx, "p", "", "doc", "d1", "published", "bob"); ok {
+	if ok, _ := e.Check(ctx, "p", "", "doc", "d1", "published", "bob", nil); ok {
 		t.Error("blocked user must be DENIED published wildcard content (exclusion over wildcard)")
 	}
 }
@@ -43,10 +43,10 @@ func TestWildcardInsideIntersection(t *testing.T) {
 	e := NewEngine(StaticResolver(m), r)
 	ctx := context.Background()
 
-	if ok, _ := e.Check(ctx, "p", "", "doc", "d1", "premium", "amy"); !ok {
+	if ok, _ := e.Check(ctx, "p", "", "doc", "d1", "premium", "amy", nil); !ok {
 		t.Error("paid user must pass the wildcard AND paid intersection")
 	}
-	if ok, _ := e.Check(ctx, "p", "", "doc", "d1", "premium", "ben"); ok {
+	if ok, _ := e.Check(ctx, "p", "", "doc", "d1", "premium", "ben", nil); ok {
 		t.Error("unpaid user must be denied despite the public wildcard leg")
 	}
 }

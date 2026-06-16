@@ -6,12 +6,21 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+	"google.golang.org/protobuf/types/known/structpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	workspacev1 "github.com/elloloop/workspace/gen/go/workspace/v1"
 	"github.com/elloloop/workspace/internal/service"
 	"github.com/elloloop/workspace/pkg/authz"
 )
+
+// structMap converts an optional proto Struct to a Go map (nil-safe).
+func structMap(s *structpb.Struct) map[string]any {
+	if s == nil {
+		return nil
+	}
+	return s.AsMap()
+}
 
 func subjectFromProto(s *workspacev1.Subject) (authz.Subject, error) {
 	if s == nil {
@@ -58,6 +67,9 @@ func tupleFromProto(t *workspacev1.RelationTuple) (authz.Tuple, error) {
 	if err != nil {
 		return authz.Tuple{}, err
 	}
+	if t.ConditionName != "" {
+		subj.Condition = &authz.Condition{Name: t.ConditionName, Params: structMap(t.ConditionParams)}
+	}
 	return authz.Tuple{
 		Namespace: t.Namespace, ObjectID: t.ObjectId, Relation: t.Relation,
 		Subject: subj, ExpiresAt: optTime(t.ExpiresAt),
@@ -65,7 +77,7 @@ func tupleFromProto(t *workspacev1.RelationTuple) (authz.Tuple, error) {
 }
 
 func tupleToProto(projectID, tenantID string, t authz.Tuple) *workspacev1.RelationTuple {
-	return &workspacev1.RelationTuple{
+	rt := &workspacev1.RelationTuple{
 		ProjectId: projectID,
 		TenantId:  tenantID,
 		Namespace: t.Namespace,
@@ -74,6 +86,17 @@ func tupleToProto(projectID, tenantID string, t authz.Tuple) *workspacev1.Relati
 		Subject:   subjectToProto(t.Subject),
 		ExpiresAt: optTimestamp(t.ExpiresAt),
 	}
+	if c := t.Subject.Condition; c != nil && c.Name != "" {
+		rt.ConditionName = c.Name
+		if len(c.Params) > 0 {
+			// Params originated from a proto Struct (JSON-safe), so this does
+			// not fail in practice; on any error leave params unset.
+			if s, err := structpb.NewStruct(c.Params); err == nil {
+				rt.ConditionParams = s
+			}
+		}
+	}
+	return rt
 }
 
 // optTime converts an optional proto timestamp to *time.Time (nil = unset).
@@ -150,7 +173,7 @@ func (h *Handler) Check(ctx context.Context, req *connect.Request[workspacev1.Ch
 		allowed, err = h.svc.CheckSet(ctx, p, req.Msg.Namespace, req.Msg.ObjectId, req.Msg.Relation,
 			authz.SubjectSet{Namespace: set.Namespace, ObjectID: set.ObjectId, Relation: set.Relation})
 	} else {
-		allowed, err = h.svc.Check(ctx, p, req.Msg.Namespace, req.Msg.ObjectId, req.Msg.Relation, userID)
+		allowed, err = h.svc.Check(ctx, p, req.Msg.Namespace, req.Msg.ObjectId, req.Msg.Relation, userID, structMap(req.Msg.Context))
 	}
 	if err != nil {
 		return nil, errToConnect(err)

@@ -39,7 +39,7 @@ func (s *Service) BatchCheck(ctx context.Context, p Principal, items []BatchChec
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-		allowed, err := s.Check(ctx, p, it.Namespace, it.ObjectID, it.Relation, it.SubjectUserID)
+		allowed, err := s.Check(ctx, p, it.Namespace, it.ObjectID, it.Relation, it.SubjectUserID, nil)
 		switch {
 		case err == nil:
 			results[i] = BatchCheckResult{Allowed: allowed}

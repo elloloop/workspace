@@ -52,12 +52,12 @@ type subjectQuery struct {
 
 // Check answers whether userID has relation on namespace:objectID, applying
 // the project's namespace userset-rewrite rules transitively.
-func (e *Engine) Check(ctx context.Context, projectID, tenantID, namespace, objectID, relation, userID string) (bool, error) {
+func (e *Engine) Check(ctx context.Context, projectID, tenantID, namespace, objectID, relation, userID string, cc map[string]any) (bool, error) {
 	m, err := e.resolver.ModelFor(ctx, projectID)
 	if err != nil {
 		return false, err
 	}
-	return e.check(ctx, m, projectID, tenantID, namespace, objectID, relation, subjectQuery{user: userID}, false, map[string]bool{}, 0)
+	return e.check(ctx, m, projectID, tenantID, namespace, objectID, relation, subjectQuery{user: userID}, cc, false, map[string]bool{}, 0)
 }
 
 func visitKey(ns, obj, rel string) string { return ns + ":" + obj + "#" + rel }
@@ -67,7 +67,7 @@ func visitKey(ns, obj, rel string) string { return ns + ":" + obj + "#" + rel }
 // only changes what a CYCLE defaults to: positive context a cycle contributes
 // nothing (false); negated context a cycle fails CLOSED (true = "excluded"), so a
 // self-referential block/suspend denies instead of fanning open.
-func (e *Engine) check(ctx context.Context, m Model, projectID, tenantID, ns, obj, rel string, q subjectQuery, negated bool, visited map[string]bool, depth int) (bool, error) {
+func (e *Engine) check(ctx context.Context, m Model, projectID, tenantID, ns, obj, rel string, q subjectQuery, cc map[string]any, negated bool, visited map[string]bool, depth int) (bool, error) {
 	if depth > e.maxDepth {
 		return false, fmt.Errorf("authz: max recursion depth exceeded at %s", visitKey(ns, obj, rel))
 	}
@@ -78,16 +78,16 @@ func (e *Engine) check(ctx context.Context, m Model, projectID, tenantID, ns, ob
 	visited[key] = true
 	defer delete(visited, key)
 
-	return e.evalRewrite(ctx, m, projectID, tenantID, ns, obj, rel, q, m.rewrite(ns, rel), negated, visited, depth)
+	return e.evalRewrite(ctx, m, projectID, tenantID, ns, obj, rel, q, cc, m.rewrite(ns, rel), negated, visited, depth)
 }
 
-func (e *Engine) evalRewrite(ctx context.Context, m Model, projectID, tenantID, ns, obj, rel string, q subjectQuery, rw Rewrite, negated bool, visited map[string]bool, depth int) (bool, error) {
+func (e *Engine) evalRewrite(ctx context.Context, m Model, projectID, tenantID, ns, obj, rel string, q subjectQuery, cc map[string]any, rw Rewrite, negated bool, visited map[string]bool, depth int) (bool, error) {
 	switch {
 	case rw.isThis():
-		return e.evalThis(ctx, m, projectID, tenantID, ns, obj, rel, q, negated, visited, depth)
+		return e.evalThis(ctx, m, projectID, tenantID, ns, obj, rel, q, cc, negated, visited, depth)
 	case len(rw.Union) > 0:
 		for _, child := range rw.Union {
-			ok, err := e.evalRewrite(ctx, m, projectID, tenantID, ns, obj, rel, q, child, negated, visited, depth)
+			ok, err := e.evalRewrite(ctx, m, projectID, tenantID, ns, obj, rel, q, cc, child, negated, visited, depth)
 			if err != nil {
 				return false, err
 			}
@@ -105,7 +105,7 @@ func (e *Engine) evalRewrite(ctx context.Context, m Model, projectID, tenantID, 
 			return false, nil
 		}
 		for _, child := range rw.Intersection {
-			ok, err := e.evalRewrite(ctx, m, projectID, tenantID, ns, obj, rel, q, child, negated, visited, depth)
+			ok, err := e.evalRewrite(ctx, m, projectID, tenantID, ns, obj, rel, q, cc, child, negated, visited, depth)
 			if err != nil {
 				return false, err
 			}
@@ -118,20 +118,20 @@ func (e *Engine) evalRewrite(ctx context.Context, m Model, projectID, tenantID, 
 		if q.set != nil {
 			return false, nil // a set query cannot be matched structurally through exclusion
 		}
-		ok, err := e.evalRewrite(ctx, m, projectID, tenantID, ns, obj, rel, q, rw.Exclusion.Include, negated, visited, depth)
+		ok, err := e.evalRewrite(ctx, m, projectID, tenantID, ns, obj, rel, q, cc, rw.Exclusion.Include, negated, visited, depth)
 		if err != nil || !ok {
 			return false, err
 		}
 		// The Exclude branch flips polarity: a cycle here must fail closed.
-		excluded, err := e.evalRewrite(ctx, m, projectID, tenantID, ns, obj, rel, q, rw.Exclusion.Exclude, !negated, visited, depth)
+		excluded, err := e.evalRewrite(ctx, m, projectID, tenantID, ns, obj, rel, q, cc, rw.Exclusion.Exclude, !negated, visited, depth)
 		if err != nil {
 			return false, err
 		}
 		return !excluded, nil
 	case rw.Computed != "":
-		return e.check(ctx, m, projectID, tenantID, ns, obj, rw.Computed, q, negated, visited, depth+1)
+		return e.check(ctx, m, projectID, tenantID, ns, obj, rw.Computed, q, cc, negated, visited, depth+1)
 	case rw.TuplesetRelation != "":
-		return e.evalTupleToUserset(ctx, m, projectID, tenantID, ns, obj, rw, q, negated, visited, depth)
+		return e.evalTupleToUserset(ctx, m, projectID, tenantID, ns, obj, rw, q, cc, negated, visited, depth)
 	default:
 		return false, nil
 	}
@@ -143,12 +143,18 @@ func (e *Engine) evalRewrite(ctx context.Context, m Model, projectID, tenantID, 
 // to the query matches structurally (other stored sets are followed, so the query
 // can be matched transitively/nested); concrete members of the query are handled by
 // CheckSet's member resolution.
-func (e *Engine) evalThis(ctx context.Context, m Model, projectID, tenantID, ns, obj, rel string, q subjectQuery, negated bool, visited map[string]bool, depth int) (bool, error) {
+func (e *Engine) evalThis(ctx context.Context, m Model, projectID, tenantID, ns, obj, rel string, q subjectQuery, cc map[string]any, negated bool, visited map[string]bool, depth int) (bool, error) {
 	subjects, err := e.reader.ListSubjects(ctx, projectID, tenantID, ns, obj, rel)
 	if err != nil {
 		return false, err
 	}
 	for _, s := range subjects {
+		// A conditional grant applies only when its condition holds against the
+		// request context; a nil condition always holds. Fails closed (unknown
+		// condition / missing input / ill-typed value => the grant is skipped).
+		if !EvalCondition(s.Condition, cc) {
+			continue
+		}
 		if s.Wildcard {
 			return true, nil // public grant: matches any user or set query
 		}
@@ -161,7 +167,7 @@ func (e *Engine) evalThis(ctx context.Context, m Model, projectID, tenantID, ns,
 		if q.set != nil && *s.Set == *q.set {
 			return true, nil // structural match: the queried userset is stored here
 		}
-		ok, err := e.check(ctx, m, projectID, tenantID, s.Set.Namespace, s.Set.ObjectID, s.Set.Relation, q, negated, visited, depth+1)
+		ok, err := e.check(ctx, m, projectID, tenantID, s.Set.Namespace, s.Set.ObjectID, s.Set.Relation, q, cc, negated, visited, depth+1)
 		if err != nil {
 			return false, err
 		}
@@ -174,16 +180,19 @@ func (e *Engine) evalThis(ctx context.Context, m Model, projectID, tenantID, ns,
 
 // evalTupleToUserset walks every userset stored under the tupleset relation
 // and checks the computed relation on each referenced object.
-func (e *Engine) evalTupleToUserset(ctx context.Context, m Model, projectID, tenantID, ns, obj string, rw Rewrite, q subjectQuery, negated bool, visited map[string]bool, depth int) (bool, error) {
+func (e *Engine) evalTupleToUserset(ctx context.Context, m Model, projectID, tenantID, ns, obj string, rw Rewrite, q subjectQuery, cc map[string]any, negated bool, visited map[string]bool, depth int) (bool, error) {
 	subjects, err := e.reader.ListSubjects(ctx, projectID, tenantID, ns, obj, rw.TuplesetRelation)
 	if err != nil {
 		return false, err
 	}
 	for _, s := range subjects {
+		if !EvalCondition(s.Condition, cc) {
+			continue // a conditional tupleset pointer applies only when its condition holds
+		}
 		if s.Set == nil {
 			continue // tupleset entries must be usersets to walk
 		}
-		ok, err := e.check(ctx, m, projectID, tenantID, s.Set.Namespace, s.Set.ObjectID, rw.ComputedRelation, q, negated, visited, depth+1)
+		ok, err := e.check(ctx, m, projectID, tenantID, s.Set.Namespace, s.Set.ObjectID, rw.ComputedRelation, q, cc, negated, visited, depth+1)
 		if err != nil {
 			return false, err
 		}
@@ -219,7 +228,7 @@ func (e *Engine) ListObjects(ctx context.Context, projectID, tenantID, namespace
 	}
 	out := make([]string, 0, len(ids))
 	for _, id := range ids {
-		ok, err := e.Check(ctx, projectID, tenantID, namespace, id, relation, userID)
+		ok, err := e.Check(ctx, projectID, tenantID, namespace, id, relation, userID, nil)
 		if err != nil {
 			return nil, err
 		}
