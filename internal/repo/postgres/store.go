@@ -73,9 +73,6 @@ CREATE TABLE IF NOT EXISTS workspaces (
 	PRIMARY KEY (project_id, tenant_id, id)
 );
 ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS tenant_id text NOT NULL DEFAULT '';
-CREATE UNIQUE INDEX IF NOT EXISTS workspaces_personal_uniq
-	ON workspaces (project_id, tenant_id, owner_user_id)
-	WHERE type = 'personal';
 
 CREATE TABLE IF NOT EXISTS memberships (
 	project_id   text        NOT NULL,
@@ -141,6 +138,70 @@ CREATE TABLE IF NOT EXISTS relation_tuples (
 		subject_user_id, subject_namespace, subject_object_id, subject_relation)
 );
 ALTER TABLE relation_tuples ADD COLUMN IF NOT EXISTS tenant_id text NOT NULL DEFAULT '';
+
+-- ── Upgrade-path key migrations ──────────────────────────────────────────
+-- The composite (project_id, tenant_id, …) primary keys above only take effect
+-- inside CREATE TABLE IF NOT EXISTS, which is a no-op on a pre-existing table.
+-- These guarded blocks widen the keys on already-populated databases so tenant
+-- isolation actually holds and ON CONFLICT targets resolve. Each rebuilds ONLY
+-- when tenant_id is not yet part of the key, so Migrate stays idempotent and
+-- never rebuilds a large index on a healthy boot. The old key is always a
+-- strict prefix of the new one, so no existing row can violate the wider key.
+DO $$ BEGIN
+	IF NOT EXISTS (SELECT 1 FROM pg_index i JOIN pg_attribute a ON a.attrelid=i.indrelid AND a.attnum=ANY(i.indkey)
+		WHERE i.indrelid='workspaces'::regclass AND i.indisprimary AND a.attname='tenant_id') THEN
+		ALTER TABLE workspaces DROP CONSTRAINT IF EXISTS workspaces_pkey;
+		ALTER TABLE workspaces ADD PRIMARY KEY (project_id, tenant_id, id);
+	END IF;
+END $$;
+DO $$ BEGIN
+	IF NOT EXISTS (SELECT 1 FROM pg_index i JOIN pg_attribute a ON a.attrelid=i.indrelid AND a.attnum=ANY(i.indkey)
+		WHERE i.indrelid='memberships'::regclass AND i.indisprimary AND a.attname='tenant_id') THEN
+		ALTER TABLE memberships DROP CONSTRAINT IF EXISTS memberships_pkey;
+		ALTER TABLE memberships ADD PRIMARY KEY (project_id, tenant_id, workspace_id, user_id);
+	END IF;
+END $$;
+DO $$ BEGIN
+	IF NOT EXISTS (SELECT 1 FROM pg_index i JOIN pg_attribute a ON a.attrelid=i.indrelid AND a.attnum=ANY(i.indkey)
+		WHERE i.indrelid='invitations'::regclass AND i.indisprimary AND a.attname='tenant_id') THEN
+		ALTER TABLE invitations DROP CONSTRAINT IF EXISTS invitations_pkey;
+		ALTER TABLE invitations ADD PRIMARY KEY (project_id, tenant_id, id);
+	END IF;
+END $$;
+DO $$ BEGIN
+	IF NOT EXISTS (SELECT 1 FROM pg_index i JOIN pg_attribute a ON a.attrelid=i.indrelid AND a.attnum=ANY(i.indkey)
+		WHERE i.indrelid='groups'::regclass AND i.indisprimary AND a.attname='tenant_id') THEN
+		ALTER TABLE groups DROP CONSTRAINT IF EXISTS groups_pkey;
+		ALTER TABLE groups ADD PRIMARY KEY (project_id, tenant_id, id);
+	END IF;
+END $$;
+DO $$ BEGIN
+	IF NOT EXISTS (SELECT 1 FROM pg_index i JOIN pg_attribute a ON a.attrelid=i.indrelid AND a.attnum=ANY(i.indkey)
+		WHERE i.indrelid='relation_tuples'::regclass AND i.indisprimary AND a.attname='tenant_id') THEN
+		ALTER TABLE relation_tuples DROP CONSTRAINT IF EXISTS relation_tuples_pkey;
+		ALTER TABLE relation_tuples ADD PRIMARY KEY (project_id, tenant_id, namespace, object_id, relation,
+			subject_kind, subject_user_id, subject_namespace, subject_object_id, subject_relation);
+	END IF;
+END $$;
+-- Drop a stale personal-workspace unique index (old (project_id, owner_user_id)
+-- definition) so the tenant-scoped one below actually replaces it; CREATE … IF
+-- NOT EXISTS alone would skip an index that already exists under this name.
+DO $$ BEGIN
+	IF EXISTS (SELECT 1 FROM pg_class WHERE relname='workspaces_personal_uniq' AND relkind='i') THEN
+		IF NOT EXISTS (SELECT 1 FROM pg_index i JOIN pg_attribute a ON a.attrelid=i.indrelid AND a.attnum=ANY(i.indkey)
+			WHERE i.indexrelid='workspaces_personal_uniq'::regclass AND a.attname='tenant_id') THEN
+			DROP INDEX workspaces_personal_uniq;
+		END IF;
+	END IF;
+END $$;
+CREATE UNIQUE INDEX IF NOT EXISTS workspaces_personal_uniq
+	ON workspaces (project_id, tenant_id, owner_user_id)
+	WHERE type = 'personal';
+-- Supports DeleteAllSubjectTuples and subject-only ReadTuples without a
+-- full (project, tenant) partition scan.
+CREATE INDEX IF NOT EXISTS relation_tuples_subject_user_idx
+	ON relation_tuples (project_id, tenant_id, subject_user_id)
+	WHERE subject_kind = 'user';
 `
 
 // Migrate creates the schema if absent. It is idempotent.
