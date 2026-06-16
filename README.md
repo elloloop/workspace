@@ -245,8 +245,15 @@ docker run -p 8080:8080 -p 9090:9090 \
 
 The binary lives at `cmd/workspace`; `workspace migrate` runs Postgres
 migrations explicitly (they also apply on boot when
-`GATEWAY_POSTGRES_AUTO_MIGRATE=true`, the default). Health probes are
-`GET /healthz` and `GET /readyz`; Prometheus metrics are on `:9090/metrics`.
+`GATEWAY_POSTGRES_AUTO_MIGRATE=true`, the default). Migrations take a session
+advisory lock (so concurrent replicas serialize) and a short `lock_timeout` (so
+a contended DDL fails fast instead of stalling the data plane), and they are
+idempotent. **On a large, already-populated database** the tenant primary-key
+rebuild still takes heavy `ACCESS EXCLUSIVE` locks while it runs: for that
+deploy, set `GATEWAY_POSTGRES_AUTO_MIGRATE=false` and run `workspace migrate`
+out of band during a maintenance window rather than on the request-serving boot
+path. Health probes are `GET /healthz` and `GET /readyz`; Prometheus metrics
+are on `:9090/metrics`.
 
 ## Storage
 

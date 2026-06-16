@@ -11,6 +11,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 
 	"github.com/elloloop/workspace/internal/service"
 	"github.com/elloloop/workspace/pkg/authz"
@@ -204,10 +205,45 @@ CREATE INDEX IF NOT EXISTS relation_tuples_subject_user_idx
 	WHERE subject_kind = 'user';
 `
 
-// Migrate creates the schema if absent. It is idempotent.
+const (
+	// migrateAdvisoryLockKey serializes Migrate across replicas: only one
+	// process runs the (idempotent) DDL at a time, so concurrent boots cannot
+	// race the primary-key rebuilds. Any fixed app-unique key works.
+	migrateAdvisoryLockKey int64 = 0x6D696772 // "migr"
+	// migrateLockTimeout bounds how long a single migration statement waits for
+	// its table lock before failing fast, so a contended hot-path table is not
+	// stalled indefinitely by an auto-migration on boot.
+	migrateLockTimeout = "5s"
+)
+
+// Migrate creates/upgrades the schema. It is idempotent and safe to run on every
+// boot: a session advisory lock serializes concurrent replicas, and lock_timeout
+// makes a contended DDL fail fast instead of stalling the data plane. NOTE: on a
+// LARGE populated table the primary-key rebuild still takes heavy (ACCESS
+// EXCLUSIVE) locks while it runs — for that deploy prefer running `workspace
+// migrate` out of band with GATEWAY_POSTGRES_AUTO_MIGRATE=false.
 func (s *Store) Migrate(ctx context.Context) error {
-	_, err := s.pool.Exec(ctx, schemaSQL)
-	return err
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	// Transaction-scoped advisory lock: serializes migrators across replicas and
+	// auto-releases on commit/rollback (no leak onto a pooled connection). It
+	// blocks only against other migrators, never against live queries.
+	if _, err := tx.Exec(ctx, "SELECT pg_advisory_xact_lock($1)", migrateAdvisoryLockKey); err != nil {
+		return fmt.Errorf("acquire migration lock: %w", err)
+	}
+	// Fail fast rather than stall the authz data plane if a DDL can't get its
+	// table lock (e.g. a long-running query holds it). SET LOCAL is scoped to tx.
+	if _, err := tx.Exec(ctx, "SET LOCAL lock_timeout = '"+migrateLockTimeout+"'"); err != nil {
+		return fmt.Errorf("set lock_timeout: %w", err)
+	}
+	if _, err := tx.Exec(ctx, schemaSQL); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }
 
 // isUniqueViolation reports whether err is a Postgres unique_violation (23505).
