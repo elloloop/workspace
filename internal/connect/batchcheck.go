@@ -11,8 +11,10 @@ import (
 )
 
 // BatchCheck evaluates many Check questions in one round-trip. The request is
-// capped at maxBatchCheckItems; results are index-aligned to items, and a
-// per-item evaluation error is reported in that item's result.
+// capped at maxBatchCheckItems; results are index-aligned to items. A per-item
+// VALIDATION error is reported in that item's result, but an internal failure
+// aborts the whole call with a non-OK status (so an outage is not hidden in a
+// 200 body of per-item error strings).
 func (h *Handler) BatchCheck(ctx context.Context, req *connect.Request[workspacev1.BatchCheckRequest]) (*connect.Response[workspacev1.BatchCheckResponse], error) {
 	items := req.Msg.Items
 	if h.maxBatchCheckItems > 0 && len(items) > h.maxBatchCheckItems {
@@ -31,8 +33,12 @@ func (h *Handler) BatchCheck(ctx context.Context, req *connect.Request[workspace
 		}
 	}
 
-	out := make([]*workspacev1.BatchCheckResult, 0, len(items))
-	for _, r := range h.svc.BatchCheck(ctx, p, svcItems) {
+	results, err := h.svc.BatchCheck(ctx, p, svcItems)
+	if err != nil {
+		return nil, errToConnect(err)
+	}
+	out := make([]*workspacev1.BatchCheckResult, 0, len(results))
+	for _, r := range results {
 		res := &workspacev1.BatchCheckResult{Allowed: r.Allowed}
 		if r.Err != nil {
 			res.Error = r.Err.Error()
