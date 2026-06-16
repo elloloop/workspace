@@ -88,6 +88,28 @@ Unknown namespaces and unknown relations default to `this` — so a product can
 store ad-hoc relations without first registering a namespace; they simply behave
 as plain stored tuples with no inheritance.
 
+## Conditions (caveats)
+
+A stored grant may carry an **optional, fail-closed condition** — set
+`condition_name` (+ static `condition_params`) on a `RelationTuple`. The grant
+then applies only if the named built-in condition evaluates true against the
+static params and the request-time `CheckRequest.context`. An unset condition is
+unconditional (the default); an unknown name, a missing input, or an ill-typed
+value all **deny** (fail closed). The condition is grant metadata, not part of
+tuple identity, so re-writing a tuple replaces (or clears) its condition.
+
+This is the single attribute-aware mechanism behind COPPA parental consent,
+kids age-gating, scoped integration delegation, and time/IP-bound shares.
+Built-ins (`pkg/authz/conditions.go`):
+
+- **`consent_granted`** — `context["consent"]` must be boolean true.
+- **`age_at_least`** — `context["age"]` ≥ `params["min_age"]`.
+- **`ip_in_cidrs`** — `context["ip"]` is within any of `params["cidrs"]`.
+- **`not_after`** — `context["now"]` (RFC3339) is not past `params["until"]`.
+
+Per-project condition definitions and a richer expression evaluator (e.g. CEL)
+are tracked follow-ups; today the registry is a fixed pinned set.
+
 ## The built-in namespaces
 
 Transcribed from `DefaultModel()` in `pkg/authz/model.go`.
