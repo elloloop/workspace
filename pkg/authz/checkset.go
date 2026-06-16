@@ -26,7 +26,11 @@ func (e *Engine) CheckSet(ctx context.Context, projectID, tenantID, namespace, o
 	if err != nil {
 		return false, err
 	}
+	return e.CheckSetWithModel(ctx, m, projectID, tenantID, namespace, objectID, relation, set)
+}
 
+// CheckSetWithModel is CheckSet against an already-resolved model.
+func (e *Engine) CheckSetWithModel(ctx context.Context, m Model, projectID, tenantID, namespace, objectID, relation string, set SubjectSet) (bool, error) {
 	// (1) structural inclusion through the monotone fragment, or target-public.
 	ok, err := e.check(ctx, m, projectID, tenantID, namespace, objectID, relation, subjectQuery{set: &set}, nil, false, map[string]bool{}, 0)
 	if err != nil || ok {

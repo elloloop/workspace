@@ -57,6 +57,13 @@ func (e *Engine) Check(ctx context.Context, projectID, tenantID, namespace, obje
 	if err != nil {
 		return false, err
 	}
+	return e.CheckWithModel(ctx, m, projectID, tenantID, namespace, objectID, relation, userID, cc)
+}
+
+// CheckWithModel is Check against an already-resolved model, so a caller that
+// has resolved the project once (e.g. for a suspension check) does not trigger a
+// second resolve.
+func (e *Engine) CheckWithModel(ctx context.Context, m Model, projectID, tenantID, namespace, objectID, relation, userID string, cc map[string]any) (bool, error) {
 	return e.check(ctx, m, projectID, tenantID, namespace, objectID, relation, subjectQuery{user: userID}, cc, false, map[string]bool{}, 0)
 }
 
@@ -215,6 +222,17 @@ func (e *Engine) evalTupleToUserset(ctx context.Context, m Model, projectID, ten
 var ErrTooManyObjects = errors.New("authz: too many candidate objects for ListObjects")
 
 func (e *Engine) ListObjects(ctx context.Context, projectID, tenantID, namespace, relation, userID string, maxObjects int) ([]string, error) {
+	m, err := e.resolver.ModelFor(ctx, projectID)
+	if err != nil {
+		return nil, err
+	}
+	return e.ListObjectsWithModel(ctx, m, projectID, tenantID, namespace, relation, userID, maxObjects)
+}
+
+// ListObjectsWithModel is ListObjects against an already-resolved model; the
+// per-object Check reuses that model rather than re-resolving the project for
+// every candidate.
+func (e *Engine) ListObjectsWithModel(ctx context.Context, m Model, projectID, tenantID, namespace, relation, userID string, maxObjects int) ([]string, error) {
 	lister, ok := e.reader.(ObjectLister)
 	if !ok {
 		return nil, errors.New("authz: tuple store does not support ListObjects")
@@ -228,7 +246,7 @@ func (e *Engine) ListObjects(ctx context.Context, projectID, tenantID, namespace
 	}
 	out := make([]string, 0, len(ids))
 	for _, id := range ids {
-		ok, err := e.Check(ctx, projectID, tenantID, namespace, id, relation, userID, nil)
+		ok, err := e.CheckWithModel(ctx, m, projectID, tenantID, namespace, id, relation, userID, nil)
 		if err != nil {
 			return nil, err
 		}

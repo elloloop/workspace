@@ -7,6 +7,8 @@ import (
 	"sync"
 	"time"
 
+	"golang.org/x/sync/singleflight"
+
 	"github.com/elloloop/workspace/pkg/authz"
 )
 
@@ -56,6 +58,9 @@ type modelResolver struct {
 	max   int
 	mu    sync.Mutex
 	cache map[string]resolved
+	// sf collapses concurrent cold-cache loads for the same project into a
+	// single GetProject, preventing a resolver stampede on a hot project.
+	sf singleflight.Group
 }
 
 func newModelResolver(repo Repository) *modelResolver {
@@ -69,17 +74,31 @@ func newModelResolver(repo Repository) *modelResolver {
 }
 
 // resolve returns the cached resolution for projectID, loading and caching it on
-// a miss or once the entry's TTL has elapsed.
+// a miss or once the entry's TTL has elapsed. A single request resolves a
+// project at most once — the suspended-check and the model load both go through
+// here and share the entry — and concurrent cold-cache resolvers for the same
+// project collapse to ONE store load via single-flight.
 func (r *modelResolver) resolve(ctx context.Context, projectID string) (resolved, error) {
 	if e, ok := r.lookup(projectID); ok {
 		return e, nil
 	}
-	e, err := r.load(ctx, projectID)
+	v, err, _ := r.sf.Do(projectID, func() (any, error) {
+		// Re-check inside the flight: a racing caller may have just populated
+		// the cache, so the winner of the flight does not reload needlessly.
+		if e, ok := r.lookup(projectID); ok {
+			return e, nil
+		}
+		e, err := r.load(ctx, projectID)
+		if err != nil {
+			return resolved{}, err
+		}
+		r.store(projectID, e)
+		return e, nil
+	})
 	if err != nil {
 		return resolved{}, err
 	}
-	r.store(projectID, e)
-	return e, nil
+	return v.(resolved), nil
 }
 
 // ModelFor returns the authorization model for projectID.
@@ -106,7 +125,9 @@ func (r *modelResolver) load(ctx context.Context, projectID string) (resolved, e
 	case errors.Is(err, ErrNotFound):
 		return resolved{at: r.now()}, nil // nil model => shared default
 	case err != nil:
-		return resolved{}, err
+		// Carry the projectID so a resolver/store failure on the Check hot path
+		// is diagnosable rather than surfacing as an opaque CodeInternal.
+		return resolved{}, fmt.Errorf("authz: resolve project %q: %w", projectID, err)
 	}
 	e := resolved{suspended: p.Status == ProjectSuspended, at: r.now()}
 	if len(p.Model) > 0 {

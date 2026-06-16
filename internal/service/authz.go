@@ -60,12 +60,14 @@ func (s *Service) Check(ctx context.Context, p Principal, namespace, objectID, r
 	if namespace == "" || objectID == "" || relation == "" || subjectUserID == "" {
 		return false, fmt.Errorf("%w: namespace, object_id, relation, subject_user_id are required", ErrInvalidArgument)
 	}
-	if suspended, err := s.resolver.suspended(ctx, p.ProjectID); err != nil {
+	res, err := s.resolver.resolve(ctx, p.ProjectID)
+	if err != nil {
 		return false, err
-	} else if suspended {
+	}
+	if res.suspended {
 		return false, nil // a suspended project denies every check
 	}
-	return s.engine.Check(ctx, p.ProjectID, p.TenantID, namespace, objectID, relation, subjectUserID, reqContext)
+	return s.engine.CheckWithModel(ctx, res.modelOrDefault(), p.ProjectID, p.TenantID, namespace, objectID, relation, subjectUserID, reqContext)
 }
 
 // CheckSet evaluates whether a USERSET (e.g. group:cohort-7#member) has the
@@ -79,12 +81,14 @@ func (s *Service) CheckSet(ctx context.Context, p Principal, namespace, objectID
 	if set.Namespace == "" || set.ObjectID == "" || set.Relation == "" {
 		return false, fmt.Errorf("%w: subject_set requires namespace, object_id, and relation", ErrInvalidArgument)
 	}
-	if suspended, err := s.resolver.suspended(ctx, p.ProjectID); err != nil {
+	res, err := s.resolver.resolve(ctx, p.ProjectID)
+	if err != nil {
 		return false, err
-	} else if suspended {
+	}
+	if res.suspended {
 		return false, nil // a suspended project denies every check
 	}
-	return s.engine.CheckSet(ctx, p.ProjectID, p.TenantID, namespace, objectID, relation, set)
+	return s.engine.CheckSetWithModel(ctx, res.modelOrDefault(), p.ProjectID, p.TenantID, namespace, objectID, relation, set)
 }
 
 // Expand returns the userset tree for the caller's project and tenant.
@@ -92,10 +96,14 @@ func (s *Service) Expand(ctx context.Context, p Principal, namespace, objectID, 
 	if namespace == "" || objectID == "" || relation == "" {
 		return authz.Tree{}, fmt.Errorf("%w: namespace, object_id, relation are required", ErrInvalidArgument)
 	}
-	if err := s.ensureProjectActive(ctx, p); err != nil {
+	res, err := s.resolver.resolve(ctx, p.ProjectID)
+	if err != nil {
 		return authz.Tree{}, err
 	}
-	tree, err := s.engine.Expand(ctx, p.ProjectID, p.TenantID, namespace, objectID, relation, s.maxExpandNodes)
+	if res.suspended {
+		return authz.Tree{}, fmt.Errorf("%w: project %q is suspended", ErrFailedPrecondition, p.ProjectID)
+	}
+	tree, err := s.engine.ExpandWithModel(ctx, res.modelOrDefault(), p.ProjectID, p.TenantID, namespace, objectID, relation, s.maxExpandNodes)
 	if errors.Is(err, authz.ErrExpandTooLarge) {
 		return authz.Tree{}, fmt.Errorf("%w: expand result exceeds %d nodes; narrow the query", ErrResourceExhausted, s.maxExpandNodes)
 	}
@@ -108,10 +116,14 @@ func (s *Service) ListObjects(ctx context.Context, p Principal, namespace, relat
 	if namespace == "" || relation == "" || subjectUserID == "" {
 		return nil, fmt.Errorf("%w: namespace, relation, subject_user_id are required", ErrInvalidArgument)
 	}
-	if err := s.ensureProjectActive(ctx, p); err != nil {
+	res, err := s.resolver.resolve(ctx, p.ProjectID)
+	if err != nil {
 		return nil, err
 	}
-	ids, err := s.engine.ListObjects(ctx, p.ProjectID, p.TenantID, namespace, relation, subjectUserID, s.maxListObjects)
+	if res.suspended {
+		return nil, fmt.Errorf("%w: project %q is suspended", ErrFailedPrecondition, p.ProjectID)
+	}
+	ids, err := s.engine.ListObjectsWithModel(ctx, res.modelOrDefault(), p.ProjectID, p.TenantID, namespace, relation, subjectUserID, s.maxListObjects)
 	if errors.Is(err, authz.ErrTooManyObjects) {
 		return nil, fmt.Errorf("%w: namespace has more than %d objects; narrow the query (pagination is a tracked follow-up)", ErrResourceExhausted, s.maxListObjects)
 	}
