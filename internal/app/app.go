@@ -42,6 +42,9 @@ type Deps struct {
 	// AdminRateLimitPerMinute throttles the admin API per caller; non-positive
 	// disables the limiter.
 	AdminRateLimitPerMinute int
+	// DecisionLogger, when non-nil, receives an audit record for every
+	// Check/CheckSet decision. The caller owns its lifecycle (Close).
+	DecisionLogger service.DecisionLogger
 }
 
 // New builds the full HTTP handler: the four Connect services plus health
@@ -53,9 +56,14 @@ func New(ctx context.Context, d Deps) (http.Handler, error) {
 	if logger == nil {
 		logger = zap.NewNop()
 	}
-	svc := service.New(d.Repo, nil, nil,
+	opts := []service.Option{
 		service.WithMaxListObjects(d.MaxListObjects),
-		service.WithMaxExpandNodes(d.MaxExpandNodes))
+		service.WithMaxExpandNodes(d.MaxExpandNodes),
+	}
+	if d.DecisionLogger != nil {
+		opts = append(opts, service.WithDecisionLogger(d.DecisionLogger))
+	}
+	svc := service.New(d.Repo, nil, nil, opts...)
 	if err := svc.EnsureDefaultProject(ctx, d.DefaultProjectID); err != nil {
 		return nil, err
 	}

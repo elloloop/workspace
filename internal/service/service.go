@@ -40,6 +40,9 @@ type Service struct {
 	newID          func() string
 	maxListObjects int
 	maxExpandNodes int
+	// decisionLog, when non-nil, receives an audit record for every
+	// Check/CheckSet decision. Nil disables it with zero hot-path overhead.
+	decisionLog DecisionLogger
 }
 
 // Option configures a Service at construction.

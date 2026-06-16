@@ -65,11 +65,13 @@ func main() {
 			MaxExpandNodes:          cfg.MaxExpandNodes,
 			MaxBatchCheckItems:      cfg.MaxBatchCheckItems,
 			AdminRateLimitPerMinute: cfg.AdminRateLimitPerMinute,
+			DecisionLog:             cfg.DecisionLog,
 		},
 	})
 	if err != nil {
 		logger.Fatal("server_init_failed", zap.Error(err))
 	}
+	defer srv.Close()
 
 	logger.Info("workspace_service_starting",
 		zap.Int("connect_port", cfg.ConnectPort),

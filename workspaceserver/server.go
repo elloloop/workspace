@@ -11,6 +11,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/elloloop/workspace/internal/app"
+	"github.com/elloloop/workspace/internal/decisionlog"
 	"github.com/elloloop/workspace/internal/repo/memory"
 	"github.com/elloloop/workspace/internal/service"
 )
@@ -39,6 +40,9 @@ type Config struct {
 	// AdminRateLimitPerMinute throttles the admin API per caller; non-positive
 	// disables the limiter.
 	AdminRateLimitPerMinute int
+	// DecisionLog enables the async authorization decision audit log. Default
+	// false. When enabled, call Server.Close on shutdown to flush it.
+	DecisionLog bool
 }
 
 // Options configures New. Repo defaults to an in-memory store; Logger
@@ -51,7 +55,8 @@ type Options struct {
 
 // Server is the assembled workspace service.
 type Server struct {
-	handler http.Handler
+	handler     http.Handler
+	decisionLog *decisionlog.ZapLogger
 }
 
 // New builds the server.
@@ -68,7 +73,7 @@ func New(ctx context.Context, opts Options) (*Server, error) {
 	if projectID == "" {
 		projectID = "default"
 	}
-	handler, err := app.New(ctx, app.Deps{
+	deps := app.Deps{
 		Logger:                  logger,
 		Repo:                    repo,
 		DefaultProjectID:        projectID,
@@ -80,12 +85,32 @@ func New(ctx context.Context, opts Options) (*Server, error) {
 		MaxExpandNodes:          opts.Config.MaxExpandNodes,
 		MaxBatchCheckItems:      opts.Config.MaxBatchCheckItems,
 		AdminRateLimitPerMinute: opts.Config.AdminRateLimitPerMinute,
-	})
+	}
+	// Only construct (and only then set the interface field) when enabled, so a
+	// disabled log leaves a genuinely nil DecisionLogger interface — not a
+	// typed nil that would look non-nil to app.New.
+	var dl *decisionlog.ZapLogger
+	if opts.Config.DecisionLog {
+		dl = decisionlog.NewZap(logger, 0)
+		deps.DecisionLogger = dl
+	}
+	handler, err := app.New(ctx, deps)
 	if err != nil {
+		if dl != nil {
+			dl.Close()
+		}
 		return nil, err
 	}
-	return &Server{handler: handler}, nil
+	return &Server{handler: handler, decisionLog: dl}, nil
 }
 
 // Handler returns the service's HTTP handler; mount it on an h2c/HTTP-2 server.
 func (s *Server) Handler() http.Handler { return s.handler }
+
+// Close releases background resources (the decision-log drain goroutine). It is
+// idempotent and a no-op when the decision log is disabled.
+func (s *Server) Close() {
+	if s.decisionLog != nil {
+		s.decisionLog.Close()
+	}
+}

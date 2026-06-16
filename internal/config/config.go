@@ -54,6 +54,9 @@ type Config struct {
 	// AdminRateLimitPerMinute throttles the admin API per caller (online
 	// brute-force protection); non-positive disables the limiter.
 	AdminRateLimitPerMinute int
+	// DecisionLog enables an async, append-only audit log of every Check/
+	// CheckSet decision (to the structured logger). Default false.
+	DecisionLog bool
 }
 
 // DefaultMaxListObjects bounds a ListObjects request when not overridden.
@@ -86,6 +89,7 @@ func Load() (*Config, error) {
 		MaxExpandNodes:          envInt("GATEWAY_MAX_EXPAND_NODES", DefaultMaxExpandNodes),
 		MaxBatchCheckItems:      envInt("GATEWAY_MAX_BATCH_CHECK_ITEMS", DefaultMaxBatchCheckItems),
 		AdminRateLimitPerMinute: envInt("GATEWAY_ADMIN_RATE_LIMIT_PER_MINUTE", DefaultAdminRateLimitPerMinute),
+		DecisionLog:             envBool("GATEWAY_DECISION_LOG", false),
 	}
 	if err := c.Validate(); err != nil {
 		return nil, err
