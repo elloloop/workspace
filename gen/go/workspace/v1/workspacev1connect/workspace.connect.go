@@ -51,6 +51,9 @@ const (
 	// WorkspaceServiceUpdateWorkspaceProcedure is the fully-qualified name of the WorkspaceService's
 	// UpdateWorkspace RPC.
 	WorkspaceServiceUpdateWorkspaceProcedure = "/workspace.v1.WorkspaceService/UpdateWorkspace"
+	// WorkspaceServiceTransferOwnershipProcedure is the fully-qualified name of the WorkspaceService's
+	// TransferOwnership RPC.
+	WorkspaceServiceTransferOwnershipProcedure = "/workspace.v1.WorkspaceService/TransferOwnership"
 	// WorkspaceServiceDeleteWorkspaceProcedure is the fully-qualified name of the WorkspaceService's
 	// DeleteWorkspace RPC.
 	WorkspaceServiceDeleteWorkspaceProcedure = "/workspace.v1.WorkspaceService/DeleteWorkspace"
@@ -140,6 +143,7 @@ type WorkspaceServiceClient interface {
 	GetWorkspace(context.Context, *connect.Request[v1.GetWorkspaceRequest]) (*connect.Response[v1.GetWorkspaceResponse], error)
 	ListWorkspaces(context.Context, *connect.Request[v1.ListWorkspacesRequest]) (*connect.Response[v1.ListWorkspacesResponse], error)
 	UpdateWorkspace(context.Context, *connect.Request[v1.UpdateWorkspaceRequest]) (*connect.Response[v1.UpdateWorkspaceResponse], error)
+	TransferOwnership(context.Context, *connect.Request[v1.TransferOwnershipRequest]) (*connect.Response[v1.TransferOwnershipResponse], error)
 	DeleteWorkspace(context.Context, *connect.Request[v1.DeleteWorkspaceRequest]) (*connect.Response[v1.DeleteWorkspaceResponse], error)
 	AddMember(context.Context, *connect.Request[v1.AddMemberRequest]) (*connect.Response[v1.AddMemberResponse], error)
 	UpdateMemberRole(context.Context, *connect.Request[v1.UpdateMemberRoleRequest]) (*connect.Response[v1.UpdateMemberRoleResponse], error)
@@ -186,6 +190,12 @@ func NewWorkspaceServiceClient(httpClient connect.HTTPClient, baseURL string, op
 			httpClient,
 			baseURL+WorkspaceServiceUpdateWorkspaceProcedure,
 			connect.WithSchema(workspaceServiceMethods.ByName("UpdateWorkspace")),
+			connect.WithClientOptions(opts...),
+		),
+		transferOwnership: connect.NewClient[v1.TransferOwnershipRequest, v1.TransferOwnershipResponse](
+			httpClient,
+			baseURL+WorkspaceServiceTransferOwnershipProcedure,
+			connect.WithSchema(workspaceServiceMethods.ByName("TransferOwnership")),
 			connect.WithClientOptions(opts...),
 		),
 		deleteWorkspace: connect.NewClient[v1.DeleteWorkspaceRequest, v1.DeleteWorkspaceResponse](
@@ -259,21 +269,22 @@ func NewWorkspaceServiceClient(httpClient connect.HTTPClient, baseURL string, op
 
 // workspaceServiceClient implements WorkspaceServiceClient.
 type workspaceServiceClient struct {
-	createWorkspace  *connect.Client[v1.CreateWorkspaceRequest, v1.CreateWorkspaceResponse]
-	getWorkspace     *connect.Client[v1.GetWorkspaceRequest, v1.GetWorkspaceResponse]
-	listWorkspaces   *connect.Client[v1.ListWorkspacesRequest, v1.ListWorkspacesResponse]
-	updateWorkspace  *connect.Client[v1.UpdateWorkspaceRequest, v1.UpdateWorkspaceResponse]
-	deleteWorkspace  *connect.Client[v1.DeleteWorkspaceRequest, v1.DeleteWorkspaceResponse]
-	addMember        *connect.Client[v1.AddMemberRequest, v1.AddMemberResponse]
-	updateMemberRole *connect.Client[v1.UpdateMemberRoleRequest, v1.UpdateMemberRoleResponse]
-	removeMember     *connect.Client[v1.RemoveMemberRequest, v1.RemoveMemberResponse]
-	suspendMember    *connect.Client[v1.SuspendMemberRequest, v1.SuspendMemberResponse]
-	reinstateMember  *connect.Client[v1.ReinstateMemberRequest, v1.ReinstateMemberResponse]
-	listMembers      *connect.Client[v1.ListMembersRequest, v1.ListMembersResponse]
-	createInvitation *connect.Client[v1.CreateInvitationRequest, v1.CreateInvitationResponse]
-	acceptInvitation *connect.Client[v1.AcceptInvitationRequest, v1.AcceptInvitationResponse]
-	listInvitations  *connect.Client[v1.ListInvitationsRequest, v1.ListInvitationsResponse]
-	revokeInvitation *connect.Client[v1.RevokeInvitationRequest, v1.RevokeInvitationResponse]
+	createWorkspace   *connect.Client[v1.CreateWorkspaceRequest, v1.CreateWorkspaceResponse]
+	getWorkspace      *connect.Client[v1.GetWorkspaceRequest, v1.GetWorkspaceResponse]
+	listWorkspaces    *connect.Client[v1.ListWorkspacesRequest, v1.ListWorkspacesResponse]
+	updateWorkspace   *connect.Client[v1.UpdateWorkspaceRequest, v1.UpdateWorkspaceResponse]
+	transferOwnership *connect.Client[v1.TransferOwnershipRequest, v1.TransferOwnershipResponse]
+	deleteWorkspace   *connect.Client[v1.DeleteWorkspaceRequest, v1.DeleteWorkspaceResponse]
+	addMember         *connect.Client[v1.AddMemberRequest, v1.AddMemberResponse]
+	updateMemberRole  *connect.Client[v1.UpdateMemberRoleRequest, v1.UpdateMemberRoleResponse]
+	removeMember      *connect.Client[v1.RemoveMemberRequest, v1.RemoveMemberResponse]
+	suspendMember     *connect.Client[v1.SuspendMemberRequest, v1.SuspendMemberResponse]
+	reinstateMember   *connect.Client[v1.ReinstateMemberRequest, v1.ReinstateMemberResponse]
+	listMembers       *connect.Client[v1.ListMembersRequest, v1.ListMembersResponse]
+	createInvitation  *connect.Client[v1.CreateInvitationRequest, v1.CreateInvitationResponse]
+	acceptInvitation  *connect.Client[v1.AcceptInvitationRequest, v1.AcceptInvitationResponse]
+	listInvitations   *connect.Client[v1.ListInvitationsRequest, v1.ListInvitationsResponse]
+	revokeInvitation  *connect.Client[v1.RevokeInvitationRequest, v1.RevokeInvitationResponse]
 }
 
 // CreateWorkspace calls workspace.v1.WorkspaceService.CreateWorkspace.
@@ -294,6 +305,11 @@ func (c *workspaceServiceClient) ListWorkspaces(ctx context.Context, req *connec
 // UpdateWorkspace calls workspace.v1.WorkspaceService.UpdateWorkspace.
 func (c *workspaceServiceClient) UpdateWorkspace(ctx context.Context, req *connect.Request[v1.UpdateWorkspaceRequest]) (*connect.Response[v1.UpdateWorkspaceResponse], error) {
 	return c.updateWorkspace.CallUnary(ctx, req)
+}
+
+// TransferOwnership calls workspace.v1.WorkspaceService.TransferOwnership.
+func (c *workspaceServiceClient) TransferOwnership(ctx context.Context, req *connect.Request[v1.TransferOwnershipRequest]) (*connect.Response[v1.TransferOwnershipResponse], error) {
+	return c.transferOwnership.CallUnary(ctx, req)
 }
 
 // DeleteWorkspace calls workspace.v1.WorkspaceService.DeleteWorkspace.
@@ -357,6 +373,7 @@ type WorkspaceServiceHandler interface {
 	GetWorkspace(context.Context, *connect.Request[v1.GetWorkspaceRequest]) (*connect.Response[v1.GetWorkspaceResponse], error)
 	ListWorkspaces(context.Context, *connect.Request[v1.ListWorkspacesRequest]) (*connect.Response[v1.ListWorkspacesResponse], error)
 	UpdateWorkspace(context.Context, *connect.Request[v1.UpdateWorkspaceRequest]) (*connect.Response[v1.UpdateWorkspaceResponse], error)
+	TransferOwnership(context.Context, *connect.Request[v1.TransferOwnershipRequest]) (*connect.Response[v1.TransferOwnershipResponse], error)
 	DeleteWorkspace(context.Context, *connect.Request[v1.DeleteWorkspaceRequest]) (*connect.Response[v1.DeleteWorkspaceResponse], error)
 	AddMember(context.Context, *connect.Request[v1.AddMemberRequest]) (*connect.Response[v1.AddMemberResponse], error)
 	UpdateMemberRole(context.Context, *connect.Request[v1.UpdateMemberRoleRequest]) (*connect.Response[v1.UpdateMemberRoleResponse], error)
@@ -399,6 +416,12 @@ func NewWorkspaceServiceHandler(svc WorkspaceServiceHandler, opts ...connect.Han
 		WorkspaceServiceUpdateWorkspaceProcedure,
 		svc.UpdateWorkspace,
 		connect.WithSchema(workspaceServiceMethods.ByName("UpdateWorkspace")),
+		connect.WithHandlerOptions(opts...),
+	)
+	workspaceServiceTransferOwnershipHandler := connect.NewUnaryHandler(
+		WorkspaceServiceTransferOwnershipProcedure,
+		svc.TransferOwnership,
+		connect.WithSchema(workspaceServiceMethods.ByName("TransferOwnership")),
 		connect.WithHandlerOptions(opts...),
 	)
 	workspaceServiceDeleteWorkspaceHandler := connect.NewUnaryHandler(
@@ -477,6 +500,8 @@ func NewWorkspaceServiceHandler(svc WorkspaceServiceHandler, opts ...connect.Han
 			workspaceServiceListWorkspacesHandler.ServeHTTP(w, r)
 		case WorkspaceServiceUpdateWorkspaceProcedure:
 			workspaceServiceUpdateWorkspaceHandler.ServeHTTP(w, r)
+		case WorkspaceServiceTransferOwnershipProcedure:
+			workspaceServiceTransferOwnershipHandler.ServeHTTP(w, r)
 		case WorkspaceServiceDeleteWorkspaceProcedure:
 			workspaceServiceDeleteWorkspaceHandler.ServeHTTP(w, r)
 		case WorkspaceServiceAddMemberProcedure:
@@ -522,6 +547,10 @@ func (UnimplementedWorkspaceServiceHandler) ListWorkspaces(context.Context, *con
 
 func (UnimplementedWorkspaceServiceHandler) UpdateWorkspace(context.Context, *connect.Request[v1.UpdateWorkspaceRequest]) (*connect.Response[v1.UpdateWorkspaceResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("workspace.v1.WorkspaceService.UpdateWorkspace is not implemented"))
+}
+
+func (UnimplementedWorkspaceServiceHandler) TransferOwnership(context.Context, *connect.Request[v1.TransferOwnershipRequest]) (*connect.Response[v1.TransferOwnershipResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("workspace.v1.WorkspaceService.TransferOwnership is not implemented"))
 }
 
 func (UnimplementedWorkspaceServiceHandler) DeleteWorkspace(context.Context, *connect.Request[v1.DeleteWorkspaceRequest]) (*connect.Response[v1.DeleteWorkspaceResponse], error) {

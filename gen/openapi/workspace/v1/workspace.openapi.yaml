@@ -1316,6 +1316,39 @@ components:
           $ref: '#/components/schemas/workspace.v1.Membership'
       title: SuspendMemberResponse
       additionalProperties: false
+    workspace.v1.TransferOwnershipRequest:
+      type: object
+      properties:
+        workspaceId:
+          type: string
+          title: workspace_id
+        newOwnerUserId:
+          type: string
+          title: new_owner_user_id
+        actingUserId:
+          type: string
+          title: acting_user_id
+        projectId:
+          type: string
+          title: project_id
+        tenantId:
+          type: string
+          title: tenant_id
+      title: TransferOwnershipRequest
+      additionalProperties: false
+      description: |-
+        TransferOwnership hands a TEAM workspace's ownership to another user. Only
+         the current owner (acting_user_id) may transfer; the new owner is granted the
+         `owner` role (added as a member if needed) and the former owner is demoted to
+         `admin` (kept, not orphaned). Personal workspaces cannot be transferred.
+    workspace.v1.TransferOwnershipResponse:
+      type: object
+      properties:
+        workspace:
+          title: workspace
+          $ref: '#/components/schemas/workspace.v1.Workspace'
+      title: TransferOwnershipResponse
+      additionalProperties: false
     workspace.v1.TupleUpdate:
       type: object
       properties:
@@ -1697,6 +1730,41 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/workspace.v1.UpdateWorkspaceResponse'
+  /workspace.v1.WorkspaceService/TransferOwnership:
+    post:
+      tags:
+        - workspace.v1.WorkspaceService
+      summary: TransferOwnership
+      operationId: workspace.v1.WorkspaceService.TransferOwnership
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          required: true
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+        - name: Connect-Timeout-Ms
+          in: header
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/workspace.v1.TransferOwnershipRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/workspace.v1.TransferOwnershipResponse'
   /workspace.v1.WorkspaceService/DeleteWorkspace:
     post:
       tags:

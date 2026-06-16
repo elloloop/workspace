@@ -169,6 +169,19 @@ message UpdateWorkspaceRequest {
 }
 message UpdateWorkspaceResponse { Workspace workspace = 1; }
 
+// TransferOwnership hands a TEAM workspace's ownership to another user. Only
+// the current owner (acting_user_id) may transfer; the new owner is granted the
+// `owner` role (added as a member if needed) and the former owner is demoted to
+// `admin` (kept, not orphaned). Personal workspaces cannot be transferred.
+message TransferOwnershipRequest {
+  string workspace_id = 1;
+  string new_owner_user_id = 2;
+  string acting_user_id = 3;
+  string project_id = 4;
+  string tenant_id = 5;
+}
+message TransferOwnershipResponse { Workspace workspace = 1; }
+
 message DeleteWorkspaceRequest {
   string workspace_id = 1;
   string acting_user_id = 2;
@@ -276,6 +289,7 @@ service WorkspaceService {
   rpc GetWorkspace(GetWorkspaceRequest) returns (GetWorkspaceResponse);
   rpc ListWorkspaces(ListWorkspacesRequest) returns (ListWorkspacesResponse);
   rpc UpdateWorkspace(UpdateWorkspaceRequest) returns (UpdateWorkspaceResponse);
+  rpc TransferOwnership(TransferOwnershipRequest) returns (TransferOwnershipResponse);
   rpc DeleteWorkspace(DeleteWorkspaceRequest) returns (DeleteWorkspaceResponse);
 
   rpc AddMember(AddMemberRequest) returns (AddMemberResponse);

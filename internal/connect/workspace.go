@@ -60,6 +60,18 @@ func (h *Handler) UpdateWorkspace(ctx context.Context, req *connect.Request[work
 	return connect.NewResponse(&workspacev1.UpdateWorkspaceResponse{Workspace: workspaceToProto(w)}), nil
 }
 
+func (h *Handler) TransferOwnership(ctx context.Context, req *connect.Request[workspacev1.TransferOwnershipRequest]) (*connect.Response[workspacev1.TransferOwnershipResponse], error) {
+	p, err := h.acting(req.Msg.ActingUserId, req.Msg.ProjectId, req.Msg.TenantId)
+	if err != nil {
+		return nil, err
+	}
+	w, err := h.svc.TransferOwnership(ctx, p, req.Msg.WorkspaceId, req.Msg.NewOwnerUserId)
+	if err != nil {
+		return nil, errToConnect(err)
+	}
+	return connect.NewResponse(&workspacev1.TransferOwnershipResponse{Workspace: workspaceToProto(w)}), nil
+}
+
 func (h *Handler) DeleteWorkspace(ctx context.Context, req *connect.Request[workspacev1.DeleteWorkspaceRequest]) (*connect.Response[workspacev1.DeleteWorkspaceResponse], error) {
 	p, err := h.acting(req.Msg.ActingUserId, req.Msg.ProjectId, req.Msg.TenantId)
 	if err != nil {
