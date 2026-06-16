@@ -17,6 +17,9 @@ type GroupMember struct {
 // member of that workspace; standalone groups (workspaceID == "") may be
 // created by any authenticated user.
 func (s *Service) CreateGroup(ctx context.Context, p Principal, displayName, slug, workspaceID string) (*Group, error) {
+	if err := s.ensureProjectActive(ctx, p); err != nil {
+		return nil, err
+	}
 	displayName = trimName(displayName)
 	if displayName == "" {
 		return nil, fmt.Errorf("%w: display_name is required", ErrInvalidArgument)
@@ -35,6 +38,7 @@ func (s *Service) CreateGroup(ctx context.Context, p Principal, displayName, slu
 	g := &Group{
 		ID:          s.newID(),
 		ProjectID:   p.ProjectID,
+		TenantID:    p.TenantID,
 		WorkspaceID: workspaceID,
 		Slug:        slug,
 		DisplayName: displayName,
@@ -49,7 +53,7 @@ func (s *Service) CreateGroup(ctx context.Context, p Principal, displayName, slu
 }
 
 func (s *Service) GetGroup(ctx context.Context, p Principal, id string) (*Group, error) {
-	return s.repo.GetGroup(ctx, p.ProjectID, id)
+	return s.repo.GetGroup(ctx, p.ProjectID, p.TenantID, id)
 }
 
 func (s *Service) ListGroups(ctx context.Context, p Principal, workspaceID string) ([]*Group, error) {
@@ -58,7 +62,7 @@ func (s *Service) ListGroups(ctx context.Context, p Principal, workspaceID strin
 			return nil, err
 		}
 	}
-	return s.repo.ListGroups(ctx, p.ProjectID, workspaceID)
+	return s.repo.ListGroups(ctx, p.ProjectID, p.TenantID, workspaceID)
 }
 
 // requireGroupManager confirms the caller may mutate the group: its creator,
@@ -80,18 +84,21 @@ func (s *Service) requireGroupManager(ctx context.Context, p Principal, g *Group
 }
 
 func (s *Service) DeleteGroup(ctx context.Context, p Principal, id string) error {
-	g, err := s.repo.GetGroup(ctx, p.ProjectID, id)
+	g, err := s.repo.GetGroup(ctx, p.ProjectID, p.TenantID, id)
 	if err != nil {
 		return err
 	}
 	if err := s.requireGroupManager(ctx, p, g); err != nil {
 		return err
 	}
-	return s.repo.DeleteGroup(ctx, p.ProjectID, id)
+	return s.repo.DeleteGroup(ctx, p.ProjectID, p.TenantID, id)
 }
 
 func (s *Service) AddGroupMember(ctx context.Context, p Principal, groupID string, member GroupMember) error {
-	g, err := s.repo.GetGroup(ctx, p.ProjectID, groupID)
+	if err := s.ensureProjectActive(ctx, p); err != nil {
+		return err
+	}
+	g, err := s.repo.GetGroup(ctx, p.ProjectID, p.TenantID, groupID)
 	if err != nil {
 		return err
 	}
@@ -102,11 +109,11 @@ func (s *Service) AddGroupMember(ctx context.Context, p Principal, groupID strin
 	if err != nil {
 		return err
 	}
-	return s.repo.WriteTuples(ctx, p.ProjectID, []authz.Tuple{t}, nil)
+	return s.repo.WriteTuples(ctx, p.ProjectID, p.TenantID, []authz.Tuple{t}, nil)
 }
 
 func (s *Service) RemoveGroupMember(ctx context.Context, p Principal, groupID string, member GroupMember) error {
-	g, err := s.repo.GetGroup(ctx, p.ProjectID, groupID)
+	g, err := s.repo.GetGroup(ctx, p.ProjectID, p.TenantID, groupID)
 	if err != nil {
 		return err
 	}
@@ -117,14 +124,14 @@ func (s *Service) RemoveGroupMember(ctx context.Context, p Principal, groupID st
 	if err != nil {
 		return err
 	}
-	return s.repo.WriteTuples(ctx, p.ProjectID, nil, []authz.Tuple{t})
+	return s.repo.WriteTuples(ctx, p.ProjectID, p.TenantID, nil, []authz.Tuple{t})
 }
 
 func (s *Service) ListGroupMembers(ctx context.Context, p Principal, groupID string) ([]GroupMember, error) {
-	if _, err := s.repo.GetGroup(ctx, p.ProjectID, groupID); err != nil {
+	if _, err := s.repo.GetGroup(ctx, p.ProjectID, p.TenantID, groupID); err != nil {
 		return nil, err
 	}
-	subjects, err := s.repo.ListSubjects(ctx, p.ProjectID, "group", groupID, "member")
+	subjects, err := s.repo.ListSubjects(ctx, p.ProjectID, p.TenantID, "group", groupID, "member")
 	if err != nil {
 		return nil, err
 	}

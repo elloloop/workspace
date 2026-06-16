@@ -23,6 +23,7 @@ func Run(t *testing.T, newRepo func() service.Repository) {
 		fn   func(*testing.T, service.Repository)
 	}{
 		{"Tuples", testTuples},
+		{"WildcardTuples", testWildcardTuples},
 		{"WorkspaceCRUD", testWorkspaceCRUD},
 		{"PersonalUniqueness", testPersonalUniqueness},
 		{"DeleteWorkspaceCascade", testDeleteWorkspaceCascade},
@@ -31,6 +32,9 @@ func Run(t *testing.T, newRepo func() service.Repository) {
 		{"Invitations", testInvitations},
 		{"Groups", testGroups},
 		{"ProjectIsolation", testProjectIsolation},
+		{"TenantIsolation", testTenantIsolation},
+		{"Projects", testProjects},
+		{"Deprovision", testDeprovision},
 		{"NotFound", testNotFound},
 	}
 	for _, tc := range tests {
@@ -60,44 +64,44 @@ func testTuples(t *testing.T, r service.Repository) {
 	ts := setTuple("workspace", "w1", "member", "group", "g1", "member")
 
 	// Write two tuples.
-	if err := r.WriteTuples(ctx(), p, []authz.Tuple{tu, ts}, nil); err != nil {
+	if err := r.WriteTuples(ctx(), p, "", []authz.Tuple{tu, ts}, nil); err != nil {
 		t.Fatalf("WriteTuples: %v", err)
 	}
 	// Idempotent insert.
-	if err := r.WriteTuples(ctx(), p, []authz.Tuple{tu}, nil); err != nil {
+	if err := r.WriteTuples(ctx(), p, "", []authz.Tuple{tu}, nil); err != nil {
 		t.Fatalf("WriteTuples idempotent: %v", err)
 	}
 
-	subs, err := r.ListSubjects(ctx(), p, "workspace", "w1", "owner")
+	subs, err := r.ListSubjects(ctx(), p, "", "workspace", "w1", "owner")
 	if err != nil {
 		t.Fatalf("ListSubjects: %v", err)
 	}
 	if len(subs) != 1 || subs[0].UserID != "u1" {
 		t.Fatalf("ListSubjects owner = %+v, want one u1", subs)
 	}
-	subs, _ = r.ListSubjects(ctx(), p, "workspace", "w1", "member")
+	subs, _ = r.ListSubjects(ctx(), p, "", "workspace", "w1", "member")
 	if len(subs) != 1 || subs[0].Set == nil || subs[0].Set.ObjectID != "g1" {
 		t.Fatalf("ListSubjects member = %+v, want one set g1", subs)
 	}
 
 	// ReadTuples filtered by user.
-	all, err := r.ReadTuples(ctx(), p, service.TupleFilter{Namespace: "workspace", ObjectID: "w1"})
+	all, err := r.ReadTuples(ctx(), p, "", service.TupleFilter{Namespace: "workspace", ObjectID: "w1"})
 	if err != nil {
 		t.Fatalf("ReadTuples: %v", err)
 	}
 	if len(all) != 2 {
 		t.Fatalf("ReadTuples = %d, want 2", len(all))
 	}
-	byUser, _ := r.ReadTuples(ctx(), p, service.TupleFilter{SubjectUserID: "u1"})
+	byUser, _ := r.ReadTuples(ctx(), p, "", service.TupleFilter{SubjectUserID: "u1"})
 	if len(byUser) != 1 {
 		t.Fatalf("ReadTuples by user = %d, want 1", len(byUser))
 	}
 
 	// Delete one, delete-missing is a no-op.
-	if err := r.WriteTuples(ctx(), p, nil, []authz.Tuple{tu, userTuple("workspace", "nope", "owner", "x")}); err != nil {
+	if err := r.WriteTuples(ctx(), p, "", nil, []authz.Tuple{tu, userTuple("workspace", "nope", "owner", "x")}); err != nil {
 		t.Fatalf("WriteTuples delete: %v", err)
 	}
-	subs, _ = r.ListSubjects(ctx(), p, "workspace", "w1", "owner")
+	subs, _ = r.ListSubjects(ctx(), p, "", "workspace", "w1", "owner")
 	if len(subs) != 0 {
 		t.Fatalf("after delete owner subs = %d, want 0", len(subs))
 	}
@@ -122,7 +126,7 @@ func testWorkspaceCRUD(t *testing.T, r service.Repository) {
 		t.Fatalf("duplicate id err = %v, want ErrAlreadyExists", err)
 	}
 
-	got, err := r.GetWorkspace(ctx(), p, "w1")
+	got, err := r.GetWorkspace(ctx(), p, "", "w1")
 	if err != nil {
 		t.Fatalf("GetWorkspace: %v", err)
 	}
@@ -134,15 +138,15 @@ func testWorkspaceCRUD(t *testing.T, r service.Repository) {
 	if err := r.UpdateWorkspace(ctx(), got); err != nil {
 		t.Fatalf("UpdateWorkspace: %v", err)
 	}
-	got, _ = r.GetWorkspace(ctx(), p, "w1")
+	got, _ = r.GetWorkspace(ctx(), p, "", "w1")
 	if got.DisplayName != "renamed" {
 		t.Fatalf("after update = %q", got.DisplayName)
 	}
 
-	if err := r.DeleteWorkspace(ctx(), p, "w1"); err != nil {
+	if err := r.DeleteWorkspace(ctx(), p, "", "w1"); err != nil {
 		t.Fatalf("DeleteWorkspace: %v", err)
 	}
-	if _, err := r.GetWorkspace(ctx(), p, "w1"); !errors.Is(err, service.ErrNotFound) {
+	if _, err := r.GetWorkspace(ctx(), p, "", "w1"); !errors.Is(err, service.ErrNotFound) {
 		t.Fatalf("after delete get err = %v, want ErrNotFound", err)
 	}
 }
@@ -163,11 +167,11 @@ func testPersonalUniqueness(t *testing.T, r service.Repository) {
 		t.Fatalf("other owner personal: %v", err)
 	}
 
-	got, err := r.PersonalWorkspace(ctx(), p, "u1")
+	got, err := r.PersonalWorkspace(ctx(), p, "", "u1")
 	if err != nil || got.ID != "p1" {
 		t.Fatalf("PersonalWorkspace = %+v, %v", got, err)
 	}
-	if _, err := r.PersonalWorkspace(ctx(), p, "ghost"); !errors.Is(err, service.ErrNotFound) {
+	if _, err := r.PersonalWorkspace(ctx(), p, "", "ghost"); !errors.Is(err, service.ErrNotFound) {
 		t.Fatalf("missing personal err = %v, want ErrNotFound", err)
 	}
 }
@@ -186,22 +190,22 @@ func testDeleteWorkspaceCascade(t *testing.T, r service.Repository) {
 	if err := r.CreateInvitation(ctx(), inv(p, "i1", "w1", "tok1", now)); err != nil {
 		t.Fatalf("invite: %v", err)
 	}
-	if err := r.WriteTuples(ctx(), p, []authz.Tuple{userTuple("workspace", "w1", "owner", "u1")}, nil); err != nil {
+	if err := r.WriteTuples(ctx(), p, "", []authz.Tuple{userTuple("workspace", "w1", "owner", "u1")}, nil); err != nil {
 		t.Fatalf("tuple: %v", err)
 	}
 
-	if err := r.DeleteWorkspace(ctx(), p, "w1"); err != nil {
+	if err := r.DeleteWorkspace(ctx(), p, "", "w1"); err != nil {
 		t.Fatalf("delete: %v", err)
 	}
 
-	if _, err := r.GetMembership(ctx(), p, "w1", "u1"); !errors.Is(err, service.ErrNotFound) {
+	if _, err := r.GetMembership(ctx(), p, "", "w1", "u1"); !errors.Is(err, service.ErrNotFound) {
 		t.Fatalf("membership not cascaded: %v", err)
 	}
-	invs, _ := r.ListInvitations(ctx(), p, "w1")
+	invs, _ := r.ListInvitations(ctx(), p, "", "w1")
 	if len(invs) != 0 {
 		t.Fatalf("invitations not cascaded: %d", len(invs))
 	}
-	subs, _ := r.ListSubjects(ctx(), p, "workspace", "w1", "owner")
+	subs, _ := r.ListSubjects(ctx(), p, "", "workspace", "w1", "owner")
 	if len(subs) != 0 {
 		t.Fatalf("tuples not cascaded: %d", len(subs))
 	}
@@ -227,7 +231,7 @@ func testMemberships(t *testing.T, r service.Repository) {
 		Role: service.RoleGuest, Status: service.StatusInvited, CreatedAt: now.Add(time.Second), UpdatedAt: now,
 	})
 
-	got, err := r.GetMembership(ctx(), p, "w1", "u1")
+	got, err := r.GetMembership(ctx(), p, "", "w1", "u1")
 	if err != nil || got.Role != service.RoleMember {
 		t.Fatalf("GetMembership = %+v, %v", got, err)
 	}
@@ -237,12 +241,12 @@ func testMemberships(t *testing.T, r service.Repository) {
 		ProjectID: p, WorkspaceID: "w1", UserID: "u1",
 		Role: service.RoleAdmin, Status: service.StatusActive, CreatedAt: now, UpdatedAt: now,
 	})
-	got, _ = r.GetMembership(ctx(), p, "w1", "u1")
+	got, _ = r.GetMembership(ctx(), p, "", "w1", "u1")
 	if got.Role != service.RoleAdmin {
 		t.Fatalf("upsert role = %v", got.Role)
 	}
 
-	members, err := r.ListMembers(ctx(), p, "w1")
+	members, err := r.ListMembers(ctx(), p, "", "w1")
 	if err != nil || len(members) != 2 {
 		t.Fatalf("ListMembers = %d, %v", len(members), err)
 	}
@@ -250,13 +254,13 @@ func testMemberships(t *testing.T, r service.Repository) {
 		t.Fatalf("ListMembers order = %s,%s", members[0].UserID, members[1].UserID)
 	}
 
-	if err := r.DeleteMembership(ctx(), p, "w1", "u1"); err != nil {
+	if err := r.DeleteMembership(ctx(), p, "", "w1", "u1"); err != nil {
 		t.Fatalf("DeleteMembership: %v", err)
 	}
-	if _, err := r.GetMembership(ctx(), p, "w1", "u1"); !errors.Is(err, service.ErrNotFound) {
+	if _, err := r.GetMembership(ctx(), p, "", "w1", "u1"); !errors.Is(err, service.ErrNotFound) {
 		t.Fatalf("after delete err = %v", err)
 	}
-	if err := r.DeleteMembership(ctx(), p, "w1", "u1"); !errors.Is(err, service.ErrNotFound) {
+	if err := r.DeleteMembership(ctx(), p, "", "w1", "u1"); !errors.Is(err, service.ErrNotFound) {
 		t.Fatalf("delete missing err = %v, want ErrNotFound", err)
 	}
 }
@@ -289,7 +293,7 @@ func testWorkspacesForUser(t *testing.T, r service.Repository) {
 		Role: service.RoleMember, Status: service.StatusInvited, CreatedAt: base, UpdatedAt: base,
 	})
 
-	got, err := r.WorkspacesForUser(ctx(), p, "u1")
+	got, err := r.WorkspacesForUser(ctx(), p, "", "u1")
 	if err != nil {
 		t.Fatalf("WorkspacesForUser: %v", err)
 	}
@@ -324,11 +328,11 @@ func testInvitations(t *testing.T, r service.Repository) {
 		t.Fatalf("dup id err = %v, want ErrAlreadyExists", err)
 	}
 
-	got, err := r.GetInvitation(ctx(), p, "i1")
+	got, err := r.GetInvitation(ctx(), p, "", "i1")
 	if err != nil || got.TokenHash != "tokA" {
 		t.Fatalf("GetInvitation = %+v, %v", got, err)
 	}
-	got, err = r.GetInvitationByTokenHash(ctx(), p, "tokB")
+	got, err = r.GetInvitationByTokenHash(ctx(), p, "", "tokB")
 	if err != nil || got.ID != "i2" {
 		t.Fatalf("GetInvitationByTokenHash = %+v, %v", got, err)
 	}
@@ -337,12 +341,12 @@ func testInvitations(t *testing.T, r service.Repository) {
 	if err := r.UpdateInvitation(ctx(), got); err != nil {
 		t.Fatalf("UpdateInvitation: %v", err)
 	}
-	got, _ = r.GetInvitation(ctx(), p, "i2")
+	got, _ = r.GetInvitation(ctx(), p, "", "i2")
 	if got.Status != service.InviteAccepted {
 		t.Fatalf("after update status = %v", got.Status)
 	}
 
-	list, err := r.ListInvitations(ctx(), p, "w1")
+	list, err := r.ListInvitations(ctx(), p, "", "w1")
 	if err != nil || len(list) != 2 {
 		t.Fatalf("ListInvitations = %d, %v", len(list), err)
 	}
@@ -375,31 +379,31 @@ func testGroups(t *testing.T, r service.Repository) {
 		t.Fatalf("dup group err = %v, want ErrAlreadyExists", err)
 	}
 
-	got, err := r.GetGroup(ctx(), p, "g1")
+	got, err := r.GetGroup(ctx(), p, "", "g1")
 	if err != nil || got.WorkspaceID != "w1" {
 		t.Fatalf("GetGroup = %+v, %v", got, err)
 	}
 
-	all, err := r.ListGroups(ctx(), p, "")
+	all, err := r.ListGroups(ctx(), p, "", "")
 	if err != nil || len(all) != 3 {
 		t.Fatalf("ListGroups all = %d, %v", len(all), err)
 	}
-	scoped, _ := r.ListGroups(ctx(), p, "w1")
+	scoped, _ := r.ListGroups(ctx(), p, "", "w1")
 	if len(scoped) != 1 || scoped[0].ID != "g1" {
 		t.Fatalf("ListGroups w1 = %+v", scoped)
 	}
 
 	// Group tuple should cascade on delete.
-	if err := r.WriteTuples(ctx(), p, []authz.Tuple{userTuple("group", "g1", "member", "u1")}, nil); err != nil {
+	if err := r.WriteTuples(ctx(), p, "", []authz.Tuple{userTuple("group", "g1", "member", "u1")}, nil); err != nil {
 		t.Fatalf("group tuple: %v", err)
 	}
-	if err := r.DeleteGroup(ctx(), p, "g1"); err != nil {
+	if err := r.DeleteGroup(ctx(), p, "", "g1"); err != nil {
 		t.Fatalf("DeleteGroup: %v", err)
 	}
-	if _, err := r.GetGroup(ctx(), p, "g1"); !errors.Is(err, service.ErrNotFound) {
+	if _, err := r.GetGroup(ctx(), p, "", "g1"); !errors.Is(err, service.ErrNotFound) {
 		t.Fatalf("after delete err = %v", err)
 	}
-	subs, _ := r.ListSubjects(ctx(), p, "group", "g1", "member")
+	subs, _ := r.ListSubjects(ctx(), p, "", "group", "g1", "member")
 	if len(subs) != 0 {
 		t.Fatalf("group tuples not cascaded: %d", len(subs))
 	}
@@ -422,27 +426,27 @@ func testProjectIsolation(t *testing.T, r service.Repository) {
 	if err := r.CreateInvitation(ctx(), inv(a, "i1", "w1", "tok", now)); err != nil {
 		t.Fatal(err)
 	}
-	if err := r.WriteTuples(ctx(), a, []authz.Tuple{userTuple("workspace", "w1", "owner", "u1")}, nil); err != nil {
+	if err := r.WriteTuples(ctx(), a, "", []authz.Tuple{userTuple("workspace", "w1", "owner", "u1")}, nil); err != nil {
 		t.Fatal(err)
 	}
 
 	// None of project A's data is visible under project B.
-	if _, err := r.GetWorkspace(ctx(), b, "w1"); !errors.Is(err, service.ErrNotFound) {
+	if _, err := r.GetWorkspace(ctx(), b, "", "w1"); !errors.Is(err, service.ErrNotFound) {
 		t.Fatalf("workspace leaked: %v", err)
 	}
-	if _, err := r.GetGroup(ctx(), b, "g1"); !errors.Is(err, service.ErrNotFound) {
+	if _, err := r.GetGroup(ctx(), b, "", "g1"); !errors.Is(err, service.ErrNotFound) {
 		t.Fatalf("group leaked: %v", err)
 	}
-	if _, err := r.GetInvitation(ctx(), b, "i1"); !errors.Is(err, service.ErrNotFound) {
+	if _, err := r.GetInvitation(ctx(), b, "", "i1"); !errors.Is(err, service.ErrNotFound) {
 		t.Fatalf("invitation leaked: %v", err)
 	}
-	if _, err := r.GetMembership(ctx(), b, "w1", "u1"); !errors.Is(err, service.ErrNotFound) {
+	if _, err := r.GetMembership(ctx(), b, "", "w1", "u1"); !errors.Is(err, service.ErrNotFound) {
 		t.Fatalf("membership leaked: %v", err)
 	}
-	if subs, _ := r.ListSubjects(ctx(), b, "workspace", "w1", "owner"); len(subs) != 0 {
+	if subs, _ := r.ListSubjects(ctx(), b, "", "workspace", "w1", "owner"); len(subs) != 0 {
 		t.Fatalf("tuple leaked: %d", len(subs))
 	}
-	if wss, _ := r.WorkspacesForUser(ctx(), b, "u1"); len(wss) != 0 {
+	if wss, _ := r.WorkspacesForUser(ctx(), b, "", "u1"); len(wss) != 0 {
 		t.Fatalf("WorkspacesForUser leaked: %d", len(wss))
 	}
 
@@ -455,31 +459,188 @@ func testProjectIsolation(t *testing.T, r service.Repository) {
 func testNotFound(t *testing.T, r service.Repository) {
 	t.Helper()
 	const p = "proj"
-	if _, err := r.GetWorkspace(ctx(), p, "ghost"); !errors.Is(err, service.ErrNotFound) {
+	if _, err := r.GetWorkspace(ctx(), p, "", "ghost"); !errors.Is(err, service.ErrNotFound) {
 		t.Fatalf("GetWorkspace = %v", err)
 	}
 	if err := r.UpdateWorkspace(ctx(), ws(p, "ghost", "u", service.TypeTeam, time.Now())); !errors.Is(err, service.ErrNotFound) {
 		t.Fatalf("UpdateWorkspace = %v", err)
 	}
-	if err := r.DeleteWorkspace(ctx(), p, "ghost"); !errors.Is(err, service.ErrNotFound) {
+	if err := r.DeleteWorkspace(ctx(), p, "", "ghost"); !errors.Is(err, service.ErrNotFound) {
 		t.Fatalf("DeleteWorkspace = %v", err)
 	}
-	if _, err := r.GetMembership(ctx(), p, "w", "u"); !errors.Is(err, service.ErrNotFound) {
+	if _, err := r.GetMembership(ctx(), p, "", "w", "u"); !errors.Is(err, service.ErrNotFound) {
 		t.Fatalf("GetMembership = %v", err)
 	}
-	if _, err := r.GetInvitation(ctx(), p, "ghost"); !errors.Is(err, service.ErrNotFound) {
+	if _, err := r.GetInvitation(ctx(), p, "", "ghost"); !errors.Is(err, service.ErrNotFound) {
 		t.Fatalf("GetInvitation = %v", err)
 	}
-	if _, err := r.GetInvitationByTokenHash(ctx(), p, "ghost"); !errors.Is(err, service.ErrNotFound) {
+	if _, err := r.GetInvitationByTokenHash(ctx(), p, "", "ghost"); !errors.Is(err, service.ErrNotFound) {
 		t.Fatalf("GetInvitationByTokenHash = %v", err)
 	}
 	if err := r.UpdateInvitation(ctx(), inv(p, "ghost", "w", "t", time.Now())); !errors.Is(err, service.ErrNotFound) {
 		t.Fatalf("UpdateInvitation = %v", err)
 	}
-	if _, err := r.GetGroup(ctx(), p, "ghost"); !errors.Is(err, service.ErrNotFound) {
+	if _, err := r.GetGroup(ctx(), p, "", "ghost"); !errors.Is(err, service.ErrNotFound) {
 		t.Fatalf("GetGroup = %v", err)
 	}
-	if err := r.DeleteGroup(ctx(), p, "ghost"); !errors.Is(err, service.ErrNotFound) {
+	if err := r.DeleteGroup(ctx(), p, "", "ghost"); !errors.Is(err, service.ErrNotFound) {
 		t.Fatalf("DeleteGroup = %v", err)
+	}
+}
+
+// testTenantIsolation pins that two tenants within one project never see each
+// other's data, and that ids are reusable across tenants — the same guarantee
+// as project isolation, one shard level down.
+func testTenantIsolation(t *testing.T, r service.Repository) {
+	t.Helper()
+	const p, t1, t2 = "proj", "tenantA", "tenantB"
+	now := time.Now().UTC()
+
+	w := &service.Workspace{
+		ID: "w1", ProjectID: p, TenantID: t1, Slug: "w1", DisplayName: "w1",
+		Type: service.TypeTeam, OwnerUserID: "u1", CreatedAt: now, UpdatedAt: now,
+	}
+	if err := r.CreateWorkspace(ctx(), w); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	mustPut(t, r, &service.Membership{
+		ProjectID: p, TenantID: t1, WorkspaceID: "w1", UserID: "u1",
+		Role: service.RoleOwner, Status: service.StatusActive, CreatedAt: now, UpdatedAt: now,
+	})
+	if err := r.CreateGroup(ctx(), &service.Group{
+		ID: "g1", ProjectID: p, TenantID: t1, Slug: "g1", DisplayName: "g1", CreatedBy: "u1", CreatedAt: now, UpdatedAt: now,
+	}); err != nil {
+		t.Fatalf("group: %v", err)
+	}
+	if err := r.WriteTuples(ctx(), p, t1, []authz.Tuple{userTuple("workspace", "w1", "owner", "u1")}, nil); err != nil {
+		t.Fatalf("tuple: %v", err)
+	}
+
+	// None of tenant A's data is visible under tenant B of the same project.
+	if _, err := r.GetWorkspace(ctx(), p, t2, "w1"); !errors.Is(err, service.ErrNotFound) {
+		t.Fatalf("workspace leaked across tenant: %v", err)
+	}
+	if _, err := r.GetGroup(ctx(), p, t2, "g1"); !errors.Is(err, service.ErrNotFound) {
+		t.Fatalf("group leaked across tenant: %v", err)
+	}
+	if _, err := r.GetMembership(ctx(), p, t2, "w1", "u1"); !errors.Is(err, service.ErrNotFound) {
+		t.Fatalf("membership leaked across tenant: %v", err)
+	}
+	if subs, _ := r.ListSubjects(ctx(), p, t2, "workspace", "w1", "owner"); len(subs) != 0 {
+		t.Fatalf("tuple leaked across tenant: %d", len(subs))
+	}
+	if wss, _ := r.WorkspacesForUser(ctx(), p, t2, "u1"); len(wss) != 0 {
+		t.Fatalf("WorkspacesForUser leaked across tenant: %d", len(wss))
+	}
+
+	// The same id is reusable in another tenant.
+	if err := r.CreateWorkspace(ctx(), &service.Workspace{
+		ID: "w1", ProjectID: p, TenantID: t2, Slug: "w1", DisplayName: "w1",
+		Type: service.TypeTeam, OwnerUserID: "u9", CreatedAt: now, UpdatedAt: now,
+	}); err != nil {
+		t.Fatalf("reuse id under tenant B: %v", err)
+	}
+}
+
+// testProjects pins the project configuration store: CRUD, model round-trip,
+// duplicate/not-found semantics, and that a model-less project reads back nil.
+func testProjects(t *testing.T, r service.Repository) {
+	t.Helper()
+	now := time.Now().UTC().Truncate(time.Millisecond)
+	model, err := authz.ParseModel([]byte(`{"course":{"viewer":{"this":true},"editor":{"union":[{"this":true},{"computed":"viewer"}]}}}`))
+	if err != nil {
+		t.Fatalf("ParseModel: %v", err)
+	}
+
+	p1 := &service.Project{ID: "prj1", Name: "Kids", Status: service.ProjectActive, Model: model, CreatedAt: now, UpdatedAt: now}
+	if err := r.CreateProject(ctx(), p1); err != nil {
+		t.Fatalf("CreateProject: %v", err)
+	}
+	if err := r.CreateProject(ctx(), p1); !errors.Is(err, service.ErrAlreadyExists) {
+		t.Fatalf("duplicate project err = %v, want ErrAlreadyExists", err)
+	}
+	// Model-less project falls back to nil (the default model).
+	if err := r.CreateProject(ctx(), &service.Project{ID: "prj2", Name: "Pro", Status: service.ProjectActive, CreatedAt: now, UpdatedAt: now}); err != nil {
+		t.Fatalf("CreateProject prj2: %v", err)
+	}
+
+	got, err := r.GetProject(ctx(), "prj1")
+	if err != nil {
+		t.Fatalf("GetProject: %v", err)
+	}
+	gotJSON, _ := authz.MarshalModel(got.Model)
+	wantJSON, _ := authz.MarshalModel(model)
+	if string(gotJSON) != string(wantJSON) {
+		t.Fatalf("model round-trip:\n got %s\nwant %s", gotJSON, wantJSON)
+	}
+	if got2, _ := r.GetProject(ctx(), "prj2"); got2.Model != nil {
+		t.Fatalf("prj2 model = %v, want nil", got2.Model)
+	}
+
+	list, err := r.ListProjects(ctx())
+	if err != nil || len(list) != 2 {
+		t.Fatalf("ListProjects = %d, %v", len(list), err)
+	}
+
+	got.Status = service.ProjectSuspended
+	got.Model = nil
+	if err := r.UpdateProject(ctx(), got); err != nil {
+		t.Fatalf("UpdateProject: %v", err)
+	}
+	if after, _ := r.GetProject(ctx(), "prj1"); after.Status != service.ProjectSuspended || after.Model != nil {
+		t.Fatalf("after update = %+v", after)
+	}
+
+	if _, err := r.GetProject(ctx(), "ghost"); !errors.Is(err, service.ErrNotFound) {
+		t.Fatalf("GetProject ghost = %v", err)
+	}
+}
+
+// testDeprovision pins that DeleteAllSubjectTuplesInProject removes every tuple
+// whose concrete subject is the user across all namespaces AND ALL TENANTS of
+// the project, while leaving other subjects and other projects untouched.
+func testDeprovision(t *testing.T, r service.Repository) {
+	t.Helper()
+	const p, other = "proj", "proj2"
+	// u1 holds grants in two tenants of p, plus an unrelated subject u2; u1 also
+	// holds a grant in a DIFFERENT project that must survive the erase.
+	if err := r.WriteTuples(ctx(), p, "", []authz.Tuple{
+		userTuple("workspace", "w1", "owner", "u1"),
+		userTuple("group", "g1", "member", "u1"),
+		userTuple("resource", "doc2", "viewer", "u2"),
+	}, nil); err != nil {
+		t.Fatalf("WriteTuples tenant '': %v", err)
+	}
+	if err := r.WriteTuples(ctx(), p, "t2", []authz.Tuple{
+		userTuple("resource", "doc1", "viewer", "u1"),
+	}, nil); err != nil {
+		t.Fatalf("WriteTuples tenant t2: %v", err)
+	}
+	if err := r.WriteTuples(ctx(), other, "", []authz.Tuple{
+		userTuple("resource", "doc9", "viewer", "u1"),
+	}, nil); err != nil {
+		t.Fatalf("WriteTuples other project: %v", err)
+	}
+
+	n, err := r.DeleteAllSubjectTuplesInProject(ctx(), p, "u1")
+	if err != nil {
+		t.Fatalf("DeleteAllSubjectTuplesInProject: %v", err)
+	}
+	if n != 3 { // owner+member in tenant '', viewer in tenant t2
+		t.Fatalf("deleted = %d, want 3 (across both tenants)", n)
+	}
+	// u1 is erased in BOTH tenants of p.
+	if subs, _ := r.ListSubjects(ctx(), p, "", "workspace", "w1", "owner"); len(subs) != 0 {
+		t.Fatalf("u1 tenant '' not erased: %d", len(subs))
+	}
+	if subs, _ := r.ListSubjects(ctx(), p, "t2", "resource", "doc1", "viewer"); len(subs) != 0 {
+		t.Fatalf("u1 tenant t2 not erased (cross-tenant leak): %d", len(subs))
+	}
+	// u2 (same project) and u1's grant in another project both survive.
+	if subs, _ := r.ListSubjects(ctx(), p, "", "resource", "doc2", "viewer"); len(subs) != 1 {
+		t.Fatalf("u2 grant should survive, got %d", len(subs))
+	}
+	if subs, _ := r.ListSubjects(ctx(), other, "", "resource", "doc9", "viewer"); len(subs) != 1 {
+		t.Fatalf("u1 grant in other project must survive, got %d", len(subs))
 	}
 }

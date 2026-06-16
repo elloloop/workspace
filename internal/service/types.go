@@ -3,7 +3,35 @@
 // (workspaces, groups, invitations) onto Zanzibar relation tuples.
 package service
 
-import "time"
+import (
+	"time"
+
+	"github.com/elloloop/workspace/pkg/authz"
+)
+
+// ProjectStatus controls whether a project is resolvable. A suspended project
+// is rejected at resolution, mirroring identity.
+type ProjectStatus string
+
+const (
+	ProjectActive    ProjectStatus = "active"
+	ProjectSuspended ProjectStatus = "suspended"
+)
+
+// Project is the configuration/model boundary (identity ADR-0002). Each
+// project carries its own authorization model; a nil Model falls back to
+// authz.DefaultModel, so an unconfigured project behaves exactly like the
+// built-in defaults. Tenants live within a project as the data-isolation
+// boundary and are addressed by tenant_id on every scoped call (no separate
+// row is required for the default tenant).
+type Project struct {
+	ID        string
+	Name      string
+	Status    ProjectStatus
+	Model     authz.Model // nil ⇒ DefaultModel
+	CreatedAt time.Time
+	UpdatedAt time.Time
+}
 
 // Role is a workspace membership grade. It is also the relation name written
 // into the `workspace` authz namespace, so the two never drift.
@@ -56,6 +84,7 @@ const (
 type Workspace struct {
 	ID          string
 	ProjectID   string
+	TenantID    string
 	Slug        string
 	DisplayName string
 	Type        WorkspaceType
@@ -66,6 +95,7 @@ type Workspace struct {
 
 type Membership struct {
 	ProjectID   string
+	TenantID    string
 	WorkspaceID string
 	UserID      string
 	Role        Role
@@ -77,6 +107,7 @@ type Membership struct {
 type Invitation struct {
 	ID          string
 	ProjectID   string
+	TenantID    string
 	WorkspaceID string
 	Email       string
 	Role        Role
@@ -92,6 +123,7 @@ type Invitation struct {
 type Group struct {
 	ID          string
 	ProjectID   string
+	TenantID    string
 	WorkspaceID string // optional owning workspace; "" for standalone groups
 	Slug        string
 	DisplayName string

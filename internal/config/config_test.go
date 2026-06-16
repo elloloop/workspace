@@ -72,14 +72,26 @@ func TestValidate(t *testing.T) {
 		t.Fatalf("valid config rejected: %v", err)
 	}
 	for name, mut := range map[string]func(*Config){
-		"bad connect port": func(c *Config) { c.ConnectPort = 0 },
-		"bad metrics port": func(c *Config) { c.MetricsPort = 70000 },
-		"zero body bytes":  func(c *Config) { c.HTTPMaxBodyBytes = 0 },
+		"bad connect port":  func(c *Config) { c.ConnectPort = 0 },
+		"bad metrics port":  func(c *Config) { c.MetricsPort = 70000 },
+		"zero body bytes":   func(c *Config) { c.HTTPMaxBodyBytes = 0 },
+		"weak admin secret": func(c *Config) { c.AdminAPISecret = "short" },
 	} {
 		c := base()
 		mut(c)
 		if err := c.Validate(); err == nil {
 			t.Errorf("%s: expected validation error", name)
 		}
+	}
+
+	// Empty admin secret is allowed (disables the admin API); a strong one passes.
+	c := base()
+	c.AdminAPISecret = ""
+	if err := c.Validate(); err != nil {
+		t.Errorf("empty admin secret rejected: %v", err)
+	}
+	c.AdminAPISecret = "this-is-a-sufficiently-long-admin-secret-0123456789"
+	if err := c.Validate(); err != nil {
+		t.Errorf("strong admin secret rejected: %v", err)
 	}
 }

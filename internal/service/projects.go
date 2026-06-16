@@ -1,0 +1,284 @@
+package service
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"sync"
+	"time"
+
+	"github.com/elloloop/workspace/pkg/authz"
+)
+
+// resolverTTL bounds how long a resolved project (model + status) is cached.
+// Because invalidate() only reaches the local process, this TTL is what makes a
+// model or suspension change converge across a horizontally-scaled fleet — a
+// stale, possibly more-permissive model is served for at most this long.
+const resolverTTL = 30 * time.Second
+
+// resolverMaxEntries caps the cache so a caller sending many distinct (or
+// non-existent) project_ids cannot grow process memory without bound.
+const resolverMaxEntries = 4096
+
+// sharedDefaultModel is the single DefaultModel instance returned for every
+// unconfigured/unknown project, so resolving N distinct unknown project_ids
+// does not allocate N full model maps. The engine only ever reads the model.
+var sharedDefaultModel = authz.DefaultModel()
+
+// resolved is a cached project resolution: its overlaid model (nil = the shared
+// default) plus whether the project is suspended, with the time it was loaded.
+type resolved struct {
+	model     authz.Model
+	suspended bool
+	at        time.Time
+}
+
+func (e resolved) modelOrDefault() authz.Model {
+	if e.model == nil {
+		return sharedDefaultModel
+	}
+	return e.model
+}
+
+// modelResolver resolves a project's authorization model and status from the
+// repository, caching the result with a TTL and a size cap. A project that does
+// not exist, or that carries no model, resolves to the shared authz.DefaultModel
+// — so an unconfigured project behaves exactly like the built-in defaults. A
+// configured project's namespaces are OVERLAID onto the defaults per namespace:
+// the product surface (workspace, group, resource) is always present, and a
+// project adds its own namespaces (course, lesson, …) or overrides a default one
+// by redeclaring it. The cache is invalidated immediately on the writing process
+// when a project is created or updated, and self-heals elsewhere within the TTL.
+type modelResolver struct {
+	repo  Repository
+	now   func() time.Time
+	ttl   time.Duration
+	max   int
+	mu    sync.Mutex
+	cache map[string]resolved
+}
+
+func newModelResolver(repo Repository) *modelResolver {
+	return &modelResolver{
+		repo:  repo,
+		now:   time.Now,
+		ttl:   resolverTTL,
+		max:   resolverMaxEntries,
+		cache: map[string]resolved{},
+	}
+}
+
+// resolve returns the cached resolution for projectID, loading and caching it on
+// a miss or once the entry's TTL has elapsed.
+func (r *modelResolver) resolve(ctx context.Context, projectID string) (resolved, error) {
+	if e, ok := r.lookup(projectID); ok {
+		return e, nil
+	}
+	e, err := r.load(ctx, projectID)
+	if err != nil {
+		return resolved{}, err
+	}
+	r.store(projectID, e)
+	return e, nil
+}
+
+// ModelFor returns the authorization model for projectID.
+func (r *modelResolver) ModelFor(ctx context.Context, projectID string) (authz.Model, error) {
+	e, err := r.resolve(ctx, projectID)
+	if err != nil {
+		return nil, err
+	}
+	return e.modelOrDefault(), nil
+}
+
+// suspended reports whether projectID is an explicitly suspended project.
+func (r *modelResolver) suspended(ctx context.Context, projectID string) (bool, error) {
+	e, err := r.resolve(ctx, projectID)
+	if err != nil {
+		return false, err
+	}
+	return e.suspended, nil
+}
+
+func (r *modelResolver) load(ctx context.Context, projectID string) (resolved, error) {
+	p, err := r.repo.GetProject(ctx, projectID)
+	switch {
+	case errors.Is(err, ErrNotFound):
+		return resolved{at: r.now()}, nil // nil model => shared default
+	case err != nil:
+		return resolved{}, err
+	}
+	e := resolved{suspended: p.Status == ProjectSuspended, at: r.now()}
+	if len(p.Model) > 0 {
+		// Overlay the project's namespaces onto a fresh copy of the defaults so
+		// the built-in product surface survives a custom model; never mutate
+		// sharedDefaultModel.
+		m := authz.DefaultModel()
+		for ns, rels := range p.Model {
+			m[ns] = rels
+		}
+		e.model = m
+	}
+	return e, nil
+}
+
+func (r *modelResolver) lookup(projectID string) (resolved, bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	e, ok := r.cache[projectID]
+	if !ok {
+		return resolved{}, false
+	}
+	if r.now().Sub(e.at) > r.ttl {
+		delete(r.cache, projectID)
+		return resolved{}, false
+	}
+	return e, true
+}
+
+func (r *modelResolver) store(projectID string, e resolved) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if len(r.cache) >= r.max {
+		r.evictLocked()
+	}
+	r.cache[projectID] = e
+}
+
+// evictLocked bounds the cache: it first drops every expired entry, then, if
+// still at capacity, drops arbitrary entries until under the cap. The caller
+// holds r.mu.
+func (r *modelResolver) evictLocked() {
+	now := r.now()
+	for k, v := range r.cache {
+		if now.Sub(v.at) > r.ttl {
+			delete(r.cache, k)
+		}
+	}
+	for k := range r.cache {
+		if len(r.cache) < r.max {
+			break
+		}
+		delete(r.cache, k)
+	}
+}
+
+func (r *modelResolver) invalidate(projectID string) {
+	r.mu.Lock()
+	delete(r.cache, projectID)
+	r.mu.Unlock()
+}
+
+// CreateProject registers a project and its (optional) authorization model.
+// A nil model means the project uses the built-in default model. This is the
+// configuration surface that lets two products (e.g. a kids platform and a
+// professionals platform) run distinct models on one deployment.
+func (s *Service) CreateProject(ctx context.Context, id, name string, model authz.Model) (*Project, error) {
+	if id == "" {
+		return nil, fmt.Errorf("%w: project id is required", ErrInvalidArgument)
+	}
+	if err := validateModel(model); err != nil {
+		return nil, err
+	}
+	now := s.now()
+	p := &Project{
+		ID:        id,
+		Name:      name,
+		Status:    ProjectActive,
+		Model:     model,
+		CreatedAt: now,
+		UpdatedAt: now,
+	}
+	if err := s.repo.CreateProject(ctx, p); err != nil {
+		return nil, err
+	}
+	s.resolver.invalidate(id)
+	return p, nil
+}
+
+// GetProject returns a project's configuration.
+func (s *Service) GetProject(ctx context.Context, id string) (*Project, error) {
+	if id == "" {
+		return nil, fmt.Errorf("%w: project id is required", ErrInvalidArgument)
+	}
+	return s.repo.GetProject(ctx, id)
+}
+
+// ListProjects returns every configured project.
+func (s *Service) ListProjects(ctx context.Context) ([]*Project, error) {
+	return s.repo.ListProjects(ctx)
+}
+
+// UpdateProject patches a project: it overwrites only the fields the caller
+// actually provides, so e.g. suspending a project (status only) never wipes its
+// custom model or name. An empty name and an empty/nil model both mean "leave
+// unchanged", and an empty/unspecified status means "leave unchanged".
+// (Resetting a model back to the default is not expressed through Update.)
+func (s *Service) UpdateProject(ctx context.Context, id, name string, status ProjectStatus, model authz.Model) (*Project, error) {
+	if id == "" {
+		return nil, fmt.Errorf("%w: project id is required", ErrInvalidArgument)
+	}
+	if status != "" && status != ProjectActive && status != ProjectSuspended {
+		return nil, fmt.Errorf("%w: status must be active or suspended", ErrInvalidArgument)
+	}
+	if err := validateModel(model); err != nil {
+		return nil, err
+	}
+	p, err := s.repo.GetProject(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if name != "" {
+		p.Name = name
+	}
+	if status != "" {
+		p.Status = status
+	}
+	if len(model) > 0 {
+		p.Model = model
+	}
+	p.UpdatedAt = s.now()
+	if err := s.repo.UpdateProject(ctx, p); err != nil {
+		return nil, err
+	}
+	s.resolver.invalidate(id)
+	return p, nil
+}
+
+// EnsureDefaultProject idempotently seeds a project with the default model.
+// It is called at boot for GATEWAY_DEFAULT_PROJECT_ID so the deployment's
+// default shard is always resolvable, mirroring identity's bootstrap.
+func (s *Service) EnsureDefaultProject(ctx context.Context, id string) error {
+	if id == "" {
+		return nil
+	}
+	if _, err := s.repo.GetProject(ctx, id); err == nil {
+		return nil
+	} else if !isNotFound(err) {
+		return err
+	}
+	_, err := s.CreateProject(ctx, id, "Default", nil)
+	if isAlreadyExists(err) {
+		return nil // lost a race; the winner seeded it
+	}
+	return err
+}
+
+// validateModel round-trips the model through its JSON form to reject any
+// structurally invalid rewrite before it is persisted.
+func validateModel(m authz.Model) error {
+	if len(m) == 0 {
+		return nil
+	}
+	data, err := authz.MarshalModel(m)
+	if err != nil {
+		return fmt.Errorf("%w: model is not serializable: %w", ErrInvalidArgument, err)
+	}
+	if _, err := authz.ParseModel(data); err != nil {
+		return fmt.Errorf("%w: invalid model: %w", ErrInvalidArgument, err)
+	}
+	if err := authz.ValidateModelRefs(m); err != nil {
+		return fmt.Errorf("%w: %w", ErrInvalidArgument, err)
+	}
+	return nil
+}

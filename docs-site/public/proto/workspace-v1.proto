@@ -20,14 +20,17 @@ import "google/protobuf/timestamp.proto";
 //     performed on behalf of; the service authorizes that user (e.g. "must
 //     be an admin to add a member").
 //   * `subject_user_id` on Check is the user whose access is being tested.
-//   * `project_id` is the isolation shard; empty means the deployment's
-//     default project.
+//   * `project_id` is the configuration/model shard; empty means the
+//     deployment's default project.
+//   * `tenant_id` is the data-isolation shard WITHIN a project (identity
+//     Project→Tenant). Empty means the project's default tenant. Every row
+//     and relation tuple is scoped to (project_id, tenant_id).
 //
 // End-user authentication happens at the product's edge, before this
 // service is in the picture. The product verifies the user's identity token
 // (issued by github.com/elloloop/identity), then calls here as itself.
 //
-// Two services live here:
+// Three services live here:
 //
 //   * WorkspaceService + GroupService — the product surface. Every user
 //     owns a default PERSONAL workspace; they may create TEAM workspaces and
@@ -39,6 +42,11 @@ import "google/protobuf/timestamp.proto";
 //
 //   * AuthzService — a Zanzibar-style relation-tuple engine, generic over
 //     namespaces. The product writes tuples and asks Check on its hot path.
+//
+//   * AdminService — project configuration. Each project carries its own
+//     authorization model, so distinct products (e.g. a kids platform and a
+//     professionals platform) run different models on one deployment. The
+//     admin RPCs are gated by a platform-operator secret.
 
 // ─── Common enums ──────────────────────────────────────────────────────
 
@@ -81,8 +89,7 @@ enum InvitationStatus {
 
 message Workspace {
   string id = 1;
-  // project_id is the isolation shard (identity ADR-0002): every row and
-  // every relation tuple is scoped to it.
+  // project_id is the configuration/model shard (identity ADR-0002).
   string project_id = 2;
   string slug = 3;
   string display_name = 4;
@@ -90,6 +97,8 @@ message Workspace {
   string owner_user_id = 6;
   google.protobuf.Timestamp created_at = 7;
   google.protobuf.Timestamp updated_at = 8;
+  // tenant_id is the data-isolation shard within the project; empty = default.
+  string tenant_id = 9;
 }
 
 message Membership {
@@ -99,6 +108,7 @@ message Membership {
   MembershipStatus status = 4;
   google.protobuf.Timestamp created_at = 5;
   google.protobuf.Timestamp updated_at = 6;
+  string tenant_id = 7;
 }
 
 message Invitation {
@@ -113,12 +123,14 @@ message Invitation {
   // token is returned ONLY from CreateInvitation so the caller can deliver
   // it out of band; it is never echoed by ListInvitations.
   string token = 9;
+  string tenant_id = 10;
 }
 
 // ─── WorkspaceService requests/responses ───────────────────────────────
 //
 // Every management request carries acting_user_id (the user the call acts
-// as — used for authorization) and project_id (the shard; empty = default).
+// as — used for authorization), project_id (the shard; empty = default), and
+// tenant_id (the data-isolation shard within the project; empty = default).
 
 message CreateWorkspaceRequest {
   string display_name = 1;
@@ -126,6 +138,7 @@ message CreateWorkspaceRequest {
   string slug = 2;
   string acting_user_id = 3;
   string project_id = 4;
+  string tenant_id = 5;
 }
 message CreateWorkspaceResponse { Workspace workspace = 1; }
 
@@ -133,6 +146,7 @@ message GetWorkspaceRequest {
   string workspace_id = 1;
   string acting_user_id = 2;
   string project_id = 3;
+  string tenant_id = 4;
 }
 message GetWorkspaceResponse { Workspace workspace = 1; }
 
@@ -141,6 +155,7 @@ message GetWorkspaceResponse { Workspace workspace = 1; }
 message ListWorkspacesRequest {
   string acting_user_id = 1;
   string project_id = 2;
+  string tenant_id = 3;
 }
 message ListWorkspacesResponse { repeated Workspace workspaces = 1; }
 
@@ -149,6 +164,7 @@ message UpdateWorkspaceRequest {
   string display_name = 2;
   string acting_user_id = 3;
   string project_id = 4;
+  string tenant_id = 5;
 }
 message UpdateWorkspaceResponse { Workspace workspace = 1; }
 
@@ -156,6 +172,7 @@ message DeleteWorkspaceRequest {
   string workspace_id = 1;
   string acting_user_id = 2;
   string project_id = 3;
+  string tenant_id = 4;
 }
 message DeleteWorkspaceResponse {}
 
@@ -165,6 +182,7 @@ message AddMemberRequest {
   Role role = 3;
   string acting_user_id = 4;
   string project_id = 5;
+  string tenant_id = 6;
 }
 message AddMemberResponse { Membership membership = 1; }
 
@@ -174,6 +192,7 @@ message UpdateMemberRoleRequest {
   Role role = 3;
   string acting_user_id = 4;
   string project_id = 5;
+  string tenant_id = 6;
 }
 message UpdateMemberRoleResponse { Membership membership = 1; }
 
@@ -182,13 +201,38 @@ message RemoveMemberRequest {
   string user_id = 2;
   string acting_user_id = 3;
   string project_id = 4;
+  string tenant_id = 5;
 }
 message RemoveMemberResponse {}
+
+// SuspendMember revokes a member's live access WITHOUT deleting their
+// membership: it removes the backing role tuple (so every Check denies) and
+// marks the membership suspended. ReinstateMember restores both. This is the
+// safe way to pause access — denial is by tuple absence, not a status read on
+// the hot path.
+message SuspendMemberRequest {
+  string workspace_id = 1;
+  string user_id = 2;
+  string acting_user_id = 3;
+  string project_id = 4;
+  string tenant_id = 5;
+}
+message SuspendMemberResponse { Membership membership = 1; }
+
+message ReinstateMemberRequest {
+  string workspace_id = 1;
+  string user_id = 2;
+  string acting_user_id = 3;
+  string project_id = 4;
+  string tenant_id = 5;
+}
+message ReinstateMemberResponse { Membership membership = 1; }
 
 message ListMembersRequest {
   string workspace_id = 1;
   string acting_user_id = 2;
   string project_id = 3;
+  string tenant_id = 4;
 }
 message ListMembersResponse { repeated Membership members = 1; }
 
@@ -198,6 +242,7 @@ message CreateInvitationRequest {
   Role role = 3;
   string acting_user_id = 4;
   string project_id = 5;
+  string tenant_id = 6;
 }
 message CreateInvitationResponse { Invitation invitation = 1; }
 
@@ -205,6 +250,7 @@ message AcceptInvitationRequest {
   string token = 1;
   string acting_user_id = 2;
   string project_id = 3;
+  string tenant_id = 4;
 }
 message AcceptInvitationResponse { Membership membership = 1; }
 
@@ -212,6 +258,7 @@ message ListInvitationsRequest {
   string workspace_id = 1;
   string acting_user_id = 2;
   string project_id = 3;
+  string tenant_id = 4;
 }
 message ListInvitationsResponse { repeated Invitation invitations = 1; }
 
@@ -219,6 +266,7 @@ message RevokeInvitationRequest {
   string invitation_id = 1;
   string acting_user_id = 2;
   string project_id = 3;
+  string tenant_id = 4;
 }
 message RevokeInvitationResponse {}
 
@@ -232,6 +280,8 @@ service WorkspaceService {
   rpc AddMember(AddMemberRequest) returns (AddMemberResponse);
   rpc UpdateMemberRole(UpdateMemberRoleRequest) returns (UpdateMemberRoleResponse);
   rpc RemoveMember(RemoveMemberRequest) returns (RemoveMemberResponse);
+  rpc SuspendMember(SuspendMemberRequest) returns (SuspendMemberResponse);
+  rpc ReinstateMember(ReinstateMemberRequest) returns (ReinstateMemberResponse);
   rpc ListMembers(ListMembersRequest) returns (ListMembersResponse);
 
   rpc CreateInvitation(CreateInvitationRequest) returns (CreateInvitationResponse);
@@ -268,6 +318,7 @@ message Group {
   string created_by_user_id = 6;
   google.protobuf.Timestamp created_at = 7;
   google.protobuf.Timestamp updated_at = 8;
+  string tenant_id = 9;
 }
 
 // GroupMember is either a user or a nested group.
@@ -285,6 +336,7 @@ message CreateGroupRequest {
   string workspace_id = 3;
   string acting_user_id = 4;
   string project_id = 5;
+  string tenant_id = 6;
 }
 message CreateGroupResponse { Group group = 1; }
 
@@ -292,6 +344,7 @@ message GetGroupRequest {
   string group_id = 1;
   string acting_user_id = 2;
   string project_id = 3;
+  string tenant_id = 4;
 }
 message GetGroupResponse { Group group = 1; }
 
@@ -300,6 +353,7 @@ message ListGroupsRequest {
   string workspace_id = 1;
   string acting_user_id = 2;
   string project_id = 3;
+  string tenant_id = 4;
 }
 message ListGroupsResponse { repeated Group groups = 1; }
 
@@ -307,6 +361,7 @@ message DeleteGroupRequest {
   string group_id = 1;
   string acting_user_id = 2;
   string project_id = 3;
+  string tenant_id = 4;
 }
 message DeleteGroupResponse {}
 
@@ -315,6 +370,7 @@ message AddGroupMemberRequest {
   GroupMember member = 2;
   string acting_user_id = 3;
   string project_id = 4;
+  string tenant_id = 5;
 }
 message AddGroupMemberResponse {}
 
@@ -323,6 +379,7 @@ message RemoveGroupMemberRequest {
   GroupMember member = 2;
   string acting_user_id = 3;
   string project_id = 4;
+  string tenant_id = 5;
 }
 message RemoveGroupMemberResponse {}
 
@@ -330,6 +387,7 @@ message ListGroupMembersRequest {
   string group_id = 1;
   string acting_user_id = 2;
   string project_id = 3;
+  string tenant_id = 4;
 }
 message ListGroupMembersResponse { repeated GroupMember members = 1; }
 
@@ -348,9 +406,10 @@ service GroupService {
 // ═══════════════════════════════════════════════════════════════════════
 //
 // A relation tuple reads `namespace:object_id#relation@subject`, where the
-// subject is either a concrete user or a userset (another object#relation).
-// These RPCs are pure data operations — the user is an argument, never the
-// caller. project_id scopes the operation; empty means the default project.
+// subject is a concrete user, a userset (another object#relation), or the
+// public wildcard (every user). These RPCs are pure data operations — the
+// user is an argument, never the caller. (project_id, tenant_id) scope the
+// operation; empty means the default project / default tenant.
 
 // SubjectSet references the set of subjects related to another object — the
 // userset `namespace:object_id#relation`. When relation is empty it denotes
@@ -361,11 +420,14 @@ message SubjectSet {
   string relation = 3;
 }
 
-// Subject is the right-hand side of a tuple: a concrete user OR a userset.
+// Subject is the right-hand side of a tuple: a concrete user, a userset, or
+// the public wildcard (matches every user — link-sharing / published
+// content).
 message Subject {
   oneof kind {
     string user_id = 1;
     SubjectSet set = 2;
+    bool wildcard = 3;
   }
 }
 
@@ -375,6 +437,7 @@ message RelationTuple {
   string object_id = 3;
   string relation = 4;
   Subject subject = 5;
+  string tenant_id = 6;
 }
 
 message TupleUpdate {
@@ -391,6 +454,7 @@ message WriteRelationTuplesRequest {
   repeated TupleUpdate updates = 1;
   // project_id scopes every tuple in the batch; empty = default project.
   string project_id = 2;
+  string tenant_id = 3;
 }
 message WriteRelationTuplesResponse {}
 
@@ -404,6 +468,7 @@ message ReadRelationTuplesRequest {
   // optional: restrict to tuples whose subject is this concrete user.
   string subject_user_id = 4;
   string project_id = 5;
+  string tenant_id = 6;
 }
 message ReadRelationTuplesResponse { repeated RelationTuple tuples = 1; }
 
@@ -415,6 +480,7 @@ message CheckRequest {
   string relation = 3;
   string subject_user_id = 4;
   string project_id = 5;
+  string tenant_id = 6;
 }
 message CheckResponse { bool allowed = 1; }
 
@@ -424,6 +490,7 @@ message ExpandRequest {
   string object_id = 2;
   string relation = 3;
   string project_id = 4;
+  string tenant_id = 5;
 }
 
 message UsersetTree {
@@ -431,22 +498,113 @@ message UsersetTree {
     NODE_TYPE_UNSPECIFIED = 0;
     NODE_TYPE_UNION = 1;
     NODE_TYPE_LEAF = 2;
+    NODE_TYPE_INTERSECTION = 3;
+    // EXCLUSION nodes carry exactly two children: [include, exclude].
+    NODE_TYPE_EXCLUSION = 4;
   }
   NodeType type = 1;
   // For LEAF nodes: the concrete subjects and usersets at this node.
   repeated string user_ids = 2;
   repeated SubjectSet sets = 3;
-  // For UNION nodes: the child subtrees.
+  // For UNION / INTERSECTION / EXCLUSION nodes: the child subtrees.
   repeated UsersetTree children = 4;
   // The userset this node expands.
   SubjectSet expanded = 5;
+  // For LEAF nodes: true if the public wildcard subject is present.
+  bool wildcard = 6;
 }
 
 message ExpandResponse { UsersetTree tree = 1; }
+
+// ListObjects returns the object_ids in a namespace where subject_user_id has
+// the relation, for the given project/tenant. The reverse of Check: "which
+// courses can this learner see?".
+message ListObjectsRequest {
+  string namespace = 1;
+  string relation = 2;
+  string subject_user_id = 3;
+  string project_id = 4;
+  string tenant_id = 5;
+}
+message ListObjectsResponse { repeated string object_ids = 1; }
+
+// DeprovisionUser revokes ALL of a user's ACCESS GRANTS: it deletes every
+// relation tuple whose concrete subject is user_id, across all namespaces AND
+// ALL TENANTS of the project, so a leaving user cannot retain live access in a
+// sibling tenant; tenant_id is therefore ignored here. It does NOT delete the
+// user's PII (membership/invitation/workspace rows) — full subject erasure and
+// data-subject export are a separate concern (issue #14), so this RPC alone is
+// not a GDPR/COPPA "right to erasure".
+message DeprovisionUserRequest {
+  string project_id = 1;
+  // tenant_id is accepted for call-shape symmetry but IGNORED: erasure spans
+  // every tenant of the project.
+  string tenant_id = 2;
+  string user_id = 3;
+}
+message DeprovisionUserResponse { int64 deleted_count = 1; }
 
 service AuthzService {
   rpc WriteRelationTuples(WriteRelationTuplesRequest) returns (WriteRelationTuplesResponse);
   rpc ReadRelationTuples(ReadRelationTuplesRequest) returns (ReadRelationTuplesResponse);
   rpc Check(CheckRequest) returns (CheckResponse);
   rpc Expand(ExpandRequest) returns (ExpandResponse);
+  rpc ListObjects(ListObjectsRequest) returns (ListObjectsResponse);
+  rpc DeprovisionUser(DeprovisionUserRequest) returns (DeprovisionUserResponse);
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// AdminService — project configuration (platform-operator only)
+// ═══════════════════════════════════════════════════════════════════════
+//
+// A project carries its own authorization model so distinct products run
+// distinct namespaces/relations on one deployment. The model is a JSON
+// document (see the model schema); an empty model_json means the project uses
+// the built-in default model. These RPCs are gated by the platform-operator
+// secret (GATEWAY_ADMIN_API_SECRET, presented as the X-Admin-Secret header);
+// when the secret is unset they are disabled.
+
+enum ProjectStatus {
+  PROJECT_STATUS_UNSPECIFIED = 0;
+  PROJECT_STATUS_ACTIVE = 1;
+  PROJECT_STATUS_SUSPENDED = 2;
+}
+
+message Project {
+  string id = 1;
+  string name = 2;
+  ProjectStatus status = 3;
+  // model_json is the project's authorization model as a JSON document. Empty
+  // means the project uses the built-in default model.
+  string model_json = 4;
+  google.protobuf.Timestamp created_at = 5;
+  google.protobuf.Timestamp updated_at = 6;
+}
+
+message CreateProjectRequest {
+  string id = 1;
+  string name = 2;
+  string model_json = 3;
+}
+message CreateProjectResponse { Project project = 1; }
+
+message GetProjectRequest { string id = 1; }
+message GetProjectResponse { Project project = 1; }
+
+message UpdateProjectRequest {
+  string id = 1;
+  string name = 2;
+  ProjectStatus status = 3;
+  string model_json = 4;
+}
+message UpdateProjectResponse { Project project = 1; }
+
+message ListProjectsRequest {}
+message ListProjectsResponse { repeated Project projects = 1; }
+
+service AdminService {
+  rpc CreateProject(CreateProjectRequest) returns (CreateProjectResponse);
+  rpc GetProject(GetProjectRequest) returns (GetProjectResponse);
+  rpc UpdateProject(UpdateProjectRequest) returns (UpdateProjectResponse);
+  rpc ListProjects(ListProjectsRequest) returns (ListProjectsResponse);
 }

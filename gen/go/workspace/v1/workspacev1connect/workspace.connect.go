@@ -27,6 +27,8 @@ const (
 	GroupServiceName = "workspace.v1.GroupService"
 	// AuthzServiceName is the fully-qualified name of the AuthzService service.
 	AuthzServiceName = "workspace.v1.AuthzService"
+	// AdminServiceName is the fully-qualified name of the AdminService service.
+	AdminServiceName = "workspace.v1.AdminService"
 )
 
 // These constants are the fully-qualified names of the RPCs defined in this package. They're
@@ -61,6 +63,12 @@ const (
 	// WorkspaceServiceRemoveMemberProcedure is the fully-qualified name of the WorkspaceService's
 	// RemoveMember RPC.
 	WorkspaceServiceRemoveMemberProcedure = "/workspace.v1.WorkspaceService/RemoveMember"
+	// WorkspaceServiceSuspendMemberProcedure is the fully-qualified name of the WorkspaceService's
+	// SuspendMember RPC.
+	WorkspaceServiceSuspendMemberProcedure = "/workspace.v1.WorkspaceService/SuspendMember"
+	// WorkspaceServiceReinstateMemberProcedure is the fully-qualified name of the WorkspaceService's
+	// ReinstateMember RPC.
+	WorkspaceServiceReinstateMemberProcedure = "/workspace.v1.WorkspaceService/ReinstateMember"
 	// WorkspaceServiceListMembersProcedure is the fully-qualified name of the WorkspaceService's
 	// ListMembers RPC.
 	WorkspaceServiceListMembersProcedure = "/workspace.v1.WorkspaceService/ListMembers"
@@ -105,6 +113,23 @@ const (
 	AuthzServiceCheckProcedure = "/workspace.v1.AuthzService/Check"
 	// AuthzServiceExpandProcedure is the fully-qualified name of the AuthzService's Expand RPC.
 	AuthzServiceExpandProcedure = "/workspace.v1.AuthzService/Expand"
+	// AuthzServiceListObjectsProcedure is the fully-qualified name of the AuthzService's ListObjects
+	// RPC.
+	AuthzServiceListObjectsProcedure = "/workspace.v1.AuthzService/ListObjects"
+	// AuthzServiceDeprovisionUserProcedure is the fully-qualified name of the AuthzService's
+	// DeprovisionUser RPC.
+	AuthzServiceDeprovisionUserProcedure = "/workspace.v1.AuthzService/DeprovisionUser"
+	// AdminServiceCreateProjectProcedure is the fully-qualified name of the AdminService's
+	// CreateProject RPC.
+	AdminServiceCreateProjectProcedure = "/workspace.v1.AdminService/CreateProject"
+	// AdminServiceGetProjectProcedure is the fully-qualified name of the AdminService's GetProject RPC.
+	AdminServiceGetProjectProcedure = "/workspace.v1.AdminService/GetProject"
+	// AdminServiceUpdateProjectProcedure is the fully-qualified name of the AdminService's
+	// UpdateProject RPC.
+	AdminServiceUpdateProjectProcedure = "/workspace.v1.AdminService/UpdateProject"
+	// AdminServiceListProjectsProcedure is the fully-qualified name of the AdminService's ListProjects
+	// RPC.
+	AdminServiceListProjectsProcedure = "/workspace.v1.AdminService/ListProjects"
 )
 
 // WorkspaceServiceClient is a client for the workspace.v1.WorkspaceService service.
@@ -117,6 +142,8 @@ type WorkspaceServiceClient interface {
 	AddMember(context.Context, *connect.Request[v1.AddMemberRequest]) (*connect.Response[v1.AddMemberResponse], error)
 	UpdateMemberRole(context.Context, *connect.Request[v1.UpdateMemberRoleRequest]) (*connect.Response[v1.UpdateMemberRoleResponse], error)
 	RemoveMember(context.Context, *connect.Request[v1.RemoveMemberRequest]) (*connect.Response[v1.RemoveMemberResponse], error)
+	SuspendMember(context.Context, *connect.Request[v1.SuspendMemberRequest]) (*connect.Response[v1.SuspendMemberResponse], error)
+	ReinstateMember(context.Context, *connect.Request[v1.ReinstateMemberRequest]) (*connect.Response[v1.ReinstateMemberResponse], error)
 	ListMembers(context.Context, *connect.Request[v1.ListMembersRequest]) (*connect.Response[v1.ListMembersResponse], error)
 	CreateInvitation(context.Context, *connect.Request[v1.CreateInvitationRequest]) (*connect.Response[v1.CreateInvitationResponse], error)
 	AcceptInvitation(context.Context, *connect.Request[v1.AcceptInvitationRequest]) (*connect.Response[v1.AcceptInvitationResponse], error)
@@ -183,6 +210,18 @@ func NewWorkspaceServiceClient(httpClient connect.HTTPClient, baseURL string, op
 			connect.WithSchema(workspaceServiceMethods.ByName("RemoveMember")),
 			connect.WithClientOptions(opts...),
 		),
+		suspendMember: connect.NewClient[v1.SuspendMemberRequest, v1.SuspendMemberResponse](
+			httpClient,
+			baseURL+WorkspaceServiceSuspendMemberProcedure,
+			connect.WithSchema(workspaceServiceMethods.ByName("SuspendMember")),
+			connect.WithClientOptions(opts...),
+		),
+		reinstateMember: connect.NewClient[v1.ReinstateMemberRequest, v1.ReinstateMemberResponse](
+			httpClient,
+			baseURL+WorkspaceServiceReinstateMemberProcedure,
+			connect.WithSchema(workspaceServiceMethods.ByName("ReinstateMember")),
+			connect.WithClientOptions(opts...),
+		),
 		listMembers: connect.NewClient[v1.ListMembersRequest, v1.ListMembersResponse](
 			httpClient,
 			baseURL+WorkspaceServiceListMembersProcedure,
@@ -226,6 +265,8 @@ type workspaceServiceClient struct {
 	addMember        *connect.Client[v1.AddMemberRequest, v1.AddMemberResponse]
 	updateMemberRole *connect.Client[v1.UpdateMemberRoleRequest, v1.UpdateMemberRoleResponse]
 	removeMember     *connect.Client[v1.RemoveMemberRequest, v1.RemoveMemberResponse]
+	suspendMember    *connect.Client[v1.SuspendMemberRequest, v1.SuspendMemberResponse]
+	reinstateMember  *connect.Client[v1.ReinstateMemberRequest, v1.ReinstateMemberResponse]
 	listMembers      *connect.Client[v1.ListMembersRequest, v1.ListMembersResponse]
 	createInvitation *connect.Client[v1.CreateInvitationRequest, v1.CreateInvitationResponse]
 	acceptInvitation *connect.Client[v1.AcceptInvitationRequest, v1.AcceptInvitationResponse]
@@ -273,6 +314,16 @@ func (c *workspaceServiceClient) RemoveMember(ctx context.Context, req *connect.
 	return c.removeMember.CallUnary(ctx, req)
 }
 
+// SuspendMember calls workspace.v1.WorkspaceService.SuspendMember.
+func (c *workspaceServiceClient) SuspendMember(ctx context.Context, req *connect.Request[v1.SuspendMemberRequest]) (*connect.Response[v1.SuspendMemberResponse], error) {
+	return c.suspendMember.CallUnary(ctx, req)
+}
+
+// ReinstateMember calls workspace.v1.WorkspaceService.ReinstateMember.
+func (c *workspaceServiceClient) ReinstateMember(ctx context.Context, req *connect.Request[v1.ReinstateMemberRequest]) (*connect.Response[v1.ReinstateMemberResponse], error) {
+	return c.reinstateMember.CallUnary(ctx, req)
+}
+
 // ListMembers calls workspace.v1.WorkspaceService.ListMembers.
 func (c *workspaceServiceClient) ListMembers(ctx context.Context, req *connect.Request[v1.ListMembersRequest]) (*connect.Response[v1.ListMembersResponse], error) {
 	return c.listMembers.CallUnary(ctx, req)
@@ -308,6 +359,8 @@ type WorkspaceServiceHandler interface {
 	AddMember(context.Context, *connect.Request[v1.AddMemberRequest]) (*connect.Response[v1.AddMemberResponse], error)
 	UpdateMemberRole(context.Context, *connect.Request[v1.UpdateMemberRoleRequest]) (*connect.Response[v1.UpdateMemberRoleResponse], error)
 	RemoveMember(context.Context, *connect.Request[v1.RemoveMemberRequest]) (*connect.Response[v1.RemoveMemberResponse], error)
+	SuspendMember(context.Context, *connect.Request[v1.SuspendMemberRequest]) (*connect.Response[v1.SuspendMemberResponse], error)
+	ReinstateMember(context.Context, *connect.Request[v1.ReinstateMemberRequest]) (*connect.Response[v1.ReinstateMemberResponse], error)
 	ListMembers(context.Context, *connect.Request[v1.ListMembersRequest]) (*connect.Response[v1.ListMembersResponse], error)
 	CreateInvitation(context.Context, *connect.Request[v1.CreateInvitationRequest]) (*connect.Response[v1.CreateInvitationResponse], error)
 	AcceptInvitation(context.Context, *connect.Request[v1.AcceptInvitationRequest]) (*connect.Response[v1.AcceptInvitationResponse], error)
@@ -370,6 +423,18 @@ func NewWorkspaceServiceHandler(svc WorkspaceServiceHandler, opts ...connect.Han
 		connect.WithSchema(workspaceServiceMethods.ByName("RemoveMember")),
 		connect.WithHandlerOptions(opts...),
 	)
+	workspaceServiceSuspendMemberHandler := connect.NewUnaryHandler(
+		WorkspaceServiceSuspendMemberProcedure,
+		svc.SuspendMember,
+		connect.WithSchema(workspaceServiceMethods.ByName("SuspendMember")),
+		connect.WithHandlerOptions(opts...),
+	)
+	workspaceServiceReinstateMemberHandler := connect.NewUnaryHandler(
+		WorkspaceServiceReinstateMemberProcedure,
+		svc.ReinstateMember,
+		connect.WithSchema(workspaceServiceMethods.ByName("ReinstateMember")),
+		connect.WithHandlerOptions(opts...),
+	)
 	workspaceServiceListMembersHandler := connect.NewUnaryHandler(
 		WorkspaceServiceListMembersProcedure,
 		svc.ListMembers,
@@ -418,6 +483,10 @@ func NewWorkspaceServiceHandler(svc WorkspaceServiceHandler, opts ...connect.Han
 			workspaceServiceUpdateMemberRoleHandler.ServeHTTP(w, r)
 		case WorkspaceServiceRemoveMemberProcedure:
 			workspaceServiceRemoveMemberHandler.ServeHTTP(w, r)
+		case WorkspaceServiceSuspendMemberProcedure:
+			workspaceServiceSuspendMemberHandler.ServeHTTP(w, r)
+		case WorkspaceServiceReinstateMemberProcedure:
+			workspaceServiceReinstateMemberHandler.ServeHTTP(w, r)
 		case WorkspaceServiceListMembersProcedure:
 			workspaceServiceListMembersHandler.ServeHTTP(w, r)
 		case WorkspaceServiceCreateInvitationProcedure:
@@ -467,6 +536,14 @@ func (UnimplementedWorkspaceServiceHandler) UpdateMemberRole(context.Context, *c
 
 func (UnimplementedWorkspaceServiceHandler) RemoveMember(context.Context, *connect.Request[v1.RemoveMemberRequest]) (*connect.Response[v1.RemoveMemberResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("workspace.v1.WorkspaceService.RemoveMember is not implemented"))
+}
+
+func (UnimplementedWorkspaceServiceHandler) SuspendMember(context.Context, *connect.Request[v1.SuspendMemberRequest]) (*connect.Response[v1.SuspendMemberResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("workspace.v1.WorkspaceService.SuspendMember is not implemented"))
+}
+
+func (UnimplementedWorkspaceServiceHandler) ReinstateMember(context.Context, *connect.Request[v1.ReinstateMemberRequest]) (*connect.Response[v1.ReinstateMemberResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("workspace.v1.WorkspaceService.ReinstateMember is not implemented"))
 }
 
 func (UnimplementedWorkspaceServiceHandler) ListMembers(context.Context, *connect.Request[v1.ListMembersRequest]) (*connect.Response[v1.ListMembersResponse], error) {
@@ -721,6 +798,8 @@ type AuthzServiceClient interface {
 	ReadRelationTuples(context.Context, *connect.Request[v1.ReadRelationTuplesRequest]) (*connect.Response[v1.ReadRelationTuplesResponse], error)
 	Check(context.Context, *connect.Request[v1.CheckRequest]) (*connect.Response[v1.CheckResponse], error)
 	Expand(context.Context, *connect.Request[v1.ExpandRequest]) (*connect.Response[v1.ExpandResponse], error)
+	ListObjects(context.Context, *connect.Request[v1.ListObjectsRequest]) (*connect.Response[v1.ListObjectsResponse], error)
+	DeprovisionUser(context.Context, *connect.Request[v1.DeprovisionUserRequest]) (*connect.Response[v1.DeprovisionUserResponse], error)
 }
 
 // NewAuthzServiceClient constructs a client for the workspace.v1.AuthzService service. By default,
@@ -758,6 +837,18 @@ func NewAuthzServiceClient(httpClient connect.HTTPClient, baseURL string, opts .
 			connect.WithSchema(authzServiceMethods.ByName("Expand")),
 			connect.WithClientOptions(opts...),
 		),
+		listObjects: connect.NewClient[v1.ListObjectsRequest, v1.ListObjectsResponse](
+			httpClient,
+			baseURL+AuthzServiceListObjectsProcedure,
+			connect.WithSchema(authzServiceMethods.ByName("ListObjects")),
+			connect.WithClientOptions(opts...),
+		),
+		deprovisionUser: connect.NewClient[v1.DeprovisionUserRequest, v1.DeprovisionUserResponse](
+			httpClient,
+			baseURL+AuthzServiceDeprovisionUserProcedure,
+			connect.WithSchema(authzServiceMethods.ByName("DeprovisionUser")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -767,6 +858,8 @@ type authzServiceClient struct {
 	readRelationTuples  *connect.Client[v1.ReadRelationTuplesRequest, v1.ReadRelationTuplesResponse]
 	check               *connect.Client[v1.CheckRequest, v1.CheckResponse]
 	expand              *connect.Client[v1.ExpandRequest, v1.ExpandResponse]
+	listObjects         *connect.Client[v1.ListObjectsRequest, v1.ListObjectsResponse]
+	deprovisionUser     *connect.Client[v1.DeprovisionUserRequest, v1.DeprovisionUserResponse]
 }
 
 // WriteRelationTuples calls workspace.v1.AuthzService.WriteRelationTuples.
@@ -789,12 +882,24 @@ func (c *authzServiceClient) Expand(ctx context.Context, req *connect.Request[v1
 	return c.expand.CallUnary(ctx, req)
 }
 
+// ListObjects calls workspace.v1.AuthzService.ListObjects.
+func (c *authzServiceClient) ListObjects(ctx context.Context, req *connect.Request[v1.ListObjectsRequest]) (*connect.Response[v1.ListObjectsResponse], error) {
+	return c.listObjects.CallUnary(ctx, req)
+}
+
+// DeprovisionUser calls workspace.v1.AuthzService.DeprovisionUser.
+func (c *authzServiceClient) DeprovisionUser(ctx context.Context, req *connect.Request[v1.DeprovisionUserRequest]) (*connect.Response[v1.DeprovisionUserResponse], error) {
+	return c.deprovisionUser.CallUnary(ctx, req)
+}
+
 // AuthzServiceHandler is an implementation of the workspace.v1.AuthzService service.
 type AuthzServiceHandler interface {
 	WriteRelationTuples(context.Context, *connect.Request[v1.WriteRelationTuplesRequest]) (*connect.Response[v1.WriteRelationTuplesResponse], error)
 	ReadRelationTuples(context.Context, *connect.Request[v1.ReadRelationTuplesRequest]) (*connect.Response[v1.ReadRelationTuplesResponse], error)
 	Check(context.Context, *connect.Request[v1.CheckRequest]) (*connect.Response[v1.CheckResponse], error)
 	Expand(context.Context, *connect.Request[v1.ExpandRequest]) (*connect.Response[v1.ExpandResponse], error)
+	ListObjects(context.Context, *connect.Request[v1.ListObjectsRequest]) (*connect.Response[v1.ListObjectsResponse], error)
+	DeprovisionUser(context.Context, *connect.Request[v1.DeprovisionUserRequest]) (*connect.Response[v1.DeprovisionUserResponse], error)
 }
 
 // NewAuthzServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -828,6 +933,18 @@ func NewAuthzServiceHandler(svc AuthzServiceHandler, opts ...connect.HandlerOpti
 		connect.WithSchema(authzServiceMethods.ByName("Expand")),
 		connect.WithHandlerOptions(opts...),
 	)
+	authzServiceListObjectsHandler := connect.NewUnaryHandler(
+		AuthzServiceListObjectsProcedure,
+		svc.ListObjects,
+		connect.WithSchema(authzServiceMethods.ByName("ListObjects")),
+		connect.WithHandlerOptions(opts...),
+	)
+	authzServiceDeprovisionUserHandler := connect.NewUnaryHandler(
+		AuthzServiceDeprovisionUserProcedure,
+		svc.DeprovisionUser,
+		connect.WithSchema(authzServiceMethods.ByName("DeprovisionUser")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/workspace.v1.AuthzService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case AuthzServiceWriteRelationTuplesProcedure:
@@ -838,6 +955,10 @@ func NewAuthzServiceHandler(svc AuthzServiceHandler, opts ...connect.HandlerOpti
 			authzServiceCheckHandler.ServeHTTP(w, r)
 		case AuthzServiceExpandProcedure:
 			authzServiceExpandHandler.ServeHTTP(w, r)
+		case AuthzServiceListObjectsProcedure:
+			authzServiceListObjectsHandler.ServeHTTP(w, r)
+		case AuthzServiceDeprovisionUserProcedure:
+			authzServiceDeprovisionUserHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -861,4 +982,160 @@ func (UnimplementedAuthzServiceHandler) Check(context.Context, *connect.Request[
 
 func (UnimplementedAuthzServiceHandler) Expand(context.Context, *connect.Request[v1.ExpandRequest]) (*connect.Response[v1.ExpandResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("workspace.v1.AuthzService.Expand is not implemented"))
+}
+
+func (UnimplementedAuthzServiceHandler) ListObjects(context.Context, *connect.Request[v1.ListObjectsRequest]) (*connect.Response[v1.ListObjectsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("workspace.v1.AuthzService.ListObjects is not implemented"))
+}
+
+func (UnimplementedAuthzServiceHandler) DeprovisionUser(context.Context, *connect.Request[v1.DeprovisionUserRequest]) (*connect.Response[v1.DeprovisionUserResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("workspace.v1.AuthzService.DeprovisionUser is not implemented"))
+}
+
+// AdminServiceClient is a client for the workspace.v1.AdminService service.
+type AdminServiceClient interface {
+	CreateProject(context.Context, *connect.Request[v1.CreateProjectRequest]) (*connect.Response[v1.CreateProjectResponse], error)
+	GetProject(context.Context, *connect.Request[v1.GetProjectRequest]) (*connect.Response[v1.GetProjectResponse], error)
+	UpdateProject(context.Context, *connect.Request[v1.UpdateProjectRequest]) (*connect.Response[v1.UpdateProjectResponse], error)
+	ListProjects(context.Context, *connect.Request[v1.ListProjectsRequest]) (*connect.Response[v1.ListProjectsResponse], error)
+}
+
+// NewAdminServiceClient constructs a client for the workspace.v1.AdminService service. By default,
+// it uses the Connect protocol with the binary Protobuf Codec, asks for gzipped responses, and
+// sends uncompressed requests. To use the gRPC or gRPC-Web protocols, supply the connect.WithGRPC()
+// or connect.WithGRPCWeb() options.
+//
+// The URL supplied here should be the base URL for the Connect or gRPC server (for example,
+// http://api.acme.com or https://acme.com/grpc).
+func NewAdminServiceClient(httpClient connect.HTTPClient, baseURL string, opts ...connect.ClientOption) AdminServiceClient {
+	baseURL = strings.TrimRight(baseURL, "/")
+	adminServiceMethods := v1.File_workspace_v1_workspace_proto.Services().ByName("AdminService").Methods()
+	return &adminServiceClient{
+		createProject: connect.NewClient[v1.CreateProjectRequest, v1.CreateProjectResponse](
+			httpClient,
+			baseURL+AdminServiceCreateProjectProcedure,
+			connect.WithSchema(adminServiceMethods.ByName("CreateProject")),
+			connect.WithClientOptions(opts...),
+		),
+		getProject: connect.NewClient[v1.GetProjectRequest, v1.GetProjectResponse](
+			httpClient,
+			baseURL+AdminServiceGetProjectProcedure,
+			connect.WithSchema(adminServiceMethods.ByName("GetProject")),
+			connect.WithClientOptions(opts...),
+		),
+		updateProject: connect.NewClient[v1.UpdateProjectRequest, v1.UpdateProjectResponse](
+			httpClient,
+			baseURL+AdminServiceUpdateProjectProcedure,
+			connect.WithSchema(adminServiceMethods.ByName("UpdateProject")),
+			connect.WithClientOptions(opts...),
+		),
+		listProjects: connect.NewClient[v1.ListProjectsRequest, v1.ListProjectsResponse](
+			httpClient,
+			baseURL+AdminServiceListProjectsProcedure,
+			connect.WithSchema(adminServiceMethods.ByName("ListProjects")),
+			connect.WithClientOptions(opts...),
+		),
+	}
+}
+
+// adminServiceClient implements AdminServiceClient.
+type adminServiceClient struct {
+	createProject *connect.Client[v1.CreateProjectRequest, v1.CreateProjectResponse]
+	getProject    *connect.Client[v1.GetProjectRequest, v1.GetProjectResponse]
+	updateProject *connect.Client[v1.UpdateProjectRequest, v1.UpdateProjectResponse]
+	listProjects  *connect.Client[v1.ListProjectsRequest, v1.ListProjectsResponse]
+}
+
+// CreateProject calls workspace.v1.AdminService.CreateProject.
+func (c *adminServiceClient) CreateProject(ctx context.Context, req *connect.Request[v1.CreateProjectRequest]) (*connect.Response[v1.CreateProjectResponse], error) {
+	return c.createProject.CallUnary(ctx, req)
+}
+
+// GetProject calls workspace.v1.AdminService.GetProject.
+func (c *adminServiceClient) GetProject(ctx context.Context, req *connect.Request[v1.GetProjectRequest]) (*connect.Response[v1.GetProjectResponse], error) {
+	return c.getProject.CallUnary(ctx, req)
+}
+
+// UpdateProject calls workspace.v1.AdminService.UpdateProject.
+func (c *adminServiceClient) UpdateProject(ctx context.Context, req *connect.Request[v1.UpdateProjectRequest]) (*connect.Response[v1.UpdateProjectResponse], error) {
+	return c.updateProject.CallUnary(ctx, req)
+}
+
+// ListProjects calls workspace.v1.AdminService.ListProjects.
+func (c *adminServiceClient) ListProjects(ctx context.Context, req *connect.Request[v1.ListProjectsRequest]) (*connect.Response[v1.ListProjectsResponse], error) {
+	return c.listProjects.CallUnary(ctx, req)
+}
+
+// AdminServiceHandler is an implementation of the workspace.v1.AdminService service.
+type AdminServiceHandler interface {
+	CreateProject(context.Context, *connect.Request[v1.CreateProjectRequest]) (*connect.Response[v1.CreateProjectResponse], error)
+	GetProject(context.Context, *connect.Request[v1.GetProjectRequest]) (*connect.Response[v1.GetProjectResponse], error)
+	UpdateProject(context.Context, *connect.Request[v1.UpdateProjectRequest]) (*connect.Response[v1.UpdateProjectResponse], error)
+	ListProjects(context.Context, *connect.Request[v1.ListProjectsRequest]) (*connect.Response[v1.ListProjectsResponse], error)
+}
+
+// NewAdminServiceHandler builds an HTTP handler from the service implementation. It returns the
+// path on which to mount the handler and the handler itself.
+//
+// By default, handlers support the Connect, gRPC, and gRPC-Web protocols with the binary Protobuf
+// and JSON codecs. They also support gzip compression.
+func NewAdminServiceHandler(svc AdminServiceHandler, opts ...connect.HandlerOption) (string, http.Handler) {
+	adminServiceMethods := v1.File_workspace_v1_workspace_proto.Services().ByName("AdminService").Methods()
+	adminServiceCreateProjectHandler := connect.NewUnaryHandler(
+		AdminServiceCreateProjectProcedure,
+		svc.CreateProject,
+		connect.WithSchema(adminServiceMethods.ByName("CreateProject")),
+		connect.WithHandlerOptions(opts...),
+	)
+	adminServiceGetProjectHandler := connect.NewUnaryHandler(
+		AdminServiceGetProjectProcedure,
+		svc.GetProject,
+		connect.WithSchema(adminServiceMethods.ByName("GetProject")),
+		connect.WithHandlerOptions(opts...),
+	)
+	adminServiceUpdateProjectHandler := connect.NewUnaryHandler(
+		AdminServiceUpdateProjectProcedure,
+		svc.UpdateProject,
+		connect.WithSchema(adminServiceMethods.ByName("UpdateProject")),
+		connect.WithHandlerOptions(opts...),
+	)
+	adminServiceListProjectsHandler := connect.NewUnaryHandler(
+		AdminServiceListProjectsProcedure,
+		svc.ListProjects,
+		connect.WithSchema(adminServiceMethods.ByName("ListProjects")),
+		connect.WithHandlerOptions(opts...),
+	)
+	return "/workspace.v1.AdminService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case AdminServiceCreateProjectProcedure:
+			adminServiceCreateProjectHandler.ServeHTTP(w, r)
+		case AdminServiceGetProjectProcedure:
+			adminServiceGetProjectHandler.ServeHTTP(w, r)
+		case AdminServiceUpdateProjectProcedure:
+			adminServiceUpdateProjectHandler.ServeHTTP(w, r)
+		case AdminServiceListProjectsProcedure:
+			adminServiceListProjectsHandler.ServeHTTP(w, r)
+		default:
+			http.NotFound(w, r)
+		}
+	})
+}
+
+// UnimplementedAdminServiceHandler returns CodeUnimplemented from all methods.
+type UnimplementedAdminServiceHandler struct{}
+
+func (UnimplementedAdminServiceHandler) CreateProject(context.Context, *connect.Request[v1.CreateProjectRequest]) (*connect.Response[v1.CreateProjectResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("workspace.v1.AdminService.CreateProject is not implemented"))
+}
+
+func (UnimplementedAdminServiceHandler) GetProject(context.Context, *connect.Request[v1.GetProjectRequest]) (*connect.Response[v1.GetProjectResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("workspace.v1.AdminService.GetProject is not implemented"))
+}
+
+func (UnimplementedAdminServiceHandler) UpdateProject(context.Context, *connect.Request[v1.UpdateProjectRequest]) (*connect.Response[v1.UpdateProjectResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("workspace.v1.AdminService.UpdateProject is not implemented"))
+}
+
+func (UnimplementedAdminServiceHandler) ListProjects(context.Context, *connect.Request[v1.ListProjectsRequest]) (*connect.Response[v1.ListProjectsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("workspace.v1.AdminService.ListProjects is not implemented"))
 }

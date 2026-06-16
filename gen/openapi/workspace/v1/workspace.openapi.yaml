@@ -35,6 +35,13 @@ components:
         - MEMBERSHIP_STATUS_ACTIVE
         - MEMBERSHIP_STATUS_INVITED
         - MEMBERSHIP_STATUS_SUSPENDED
+    workspace.v1.ProjectStatus:
+      type: string
+      title: ProjectStatus
+      enum:
+        - PROJECT_STATUS_UNSPECIFIED
+        - PROJECT_STATUS_ACTIVE
+        - PROJECT_STATUS_SUSPENDED
     workspace.v1.Role:
       type: string
       title: Role
@@ -61,6 +68,8 @@ components:
         - NODE_TYPE_UNSPECIFIED
         - NODE_TYPE_UNION
         - NODE_TYPE_LEAF
+        - NODE_TYPE_INTERSECTION
+        - NODE_TYPE_EXCLUSION
     workspace.v1.WorkspaceType:
       type: string
       title: WorkspaceType
@@ -176,6 +185,9 @@ components:
         projectId:
           type: string
           title: project_id
+        tenantId:
+          type: string
+          title: tenant_id
       title: AcceptInvitationRequest
       additionalProperties: false
     workspace.v1.AcceptInvitationResponse:
@@ -201,6 +213,9 @@ components:
         projectId:
           type: string
           title: project_id
+        tenantId:
+          type: string
+          title: tenant_id
       title: AddGroupMemberRequest
       additionalProperties: false
     workspace.v1.AddGroupMemberResponse:
@@ -225,6 +240,9 @@ components:
         projectId:
           type: string
           title: project_id
+        tenantId:
+          type: string
+          title: tenant_id
       title: AddMemberRequest
       additionalProperties: false
     workspace.v1.AddMemberResponse:
@@ -253,6 +271,9 @@ components:
         projectId:
           type: string
           title: project_id
+        tenantId:
+          type: string
+          title: tenant_id
       title: CheckRequest
       additionalProperties: false
       description: |-
@@ -285,6 +306,9 @@ components:
         projectId:
           type: string
           title: project_id
+        tenantId:
+          type: string
+          title: tenant_id
       title: CreateGroupRequest
       additionalProperties: false
     workspace.v1.CreateGroupResponse:
@@ -313,6 +337,9 @@ components:
         projectId:
           type: string
           title: project_id
+        tenantId:
+          type: string
+          title: tenant_id
       title: CreateInvitationRequest
       additionalProperties: false
     workspace.v1.CreateInvitationResponse:
@@ -322,6 +349,28 @@ components:
           title: invitation
           $ref: '#/components/schemas/workspace.v1.Invitation'
       title: CreateInvitationResponse
+      additionalProperties: false
+    workspace.v1.CreateProjectRequest:
+      type: object
+      properties:
+        id:
+          type: string
+          title: id
+        name:
+          type: string
+          title: name
+        modelJson:
+          type: string
+          title: model_json
+      title: CreateProjectRequest
+      additionalProperties: false
+    workspace.v1.CreateProjectResponse:
+      type: object
+      properties:
+        project:
+          title: project
+          $ref: '#/components/schemas/workspace.v1.Project'
+      title: CreateProjectResponse
       additionalProperties: false
     workspace.v1.CreateWorkspaceRequest:
       type: object
@@ -339,6 +388,9 @@ components:
         projectId:
           type: string
           title: project_id
+        tenantId:
+          type: string
+          title: tenant_id
       title: CreateWorkspaceRequest
       additionalProperties: false
     workspace.v1.CreateWorkspaceResponse:
@@ -361,6 +413,9 @@ components:
         projectId:
           type: string
           title: project_id
+        tenantId:
+          type: string
+          title: tenant_id
       title: DeleteGroupRequest
       additionalProperties: false
     workspace.v1.DeleteGroupResponse:
@@ -379,11 +434,50 @@ components:
         projectId:
           type: string
           title: project_id
+        tenantId:
+          type: string
+          title: tenant_id
       title: DeleteWorkspaceRequest
       additionalProperties: false
     workspace.v1.DeleteWorkspaceResponse:
       type: object
       title: DeleteWorkspaceResponse
+      additionalProperties: false
+    workspace.v1.DeprovisionUserRequest:
+      type: object
+      properties:
+        projectId:
+          type: string
+          title: project_id
+        tenantId:
+          type: string
+          title: tenant_id
+          description: |-
+            tenant_id is accepted for call-shape symmetry but IGNORED: erasure spans
+             every tenant of the project.
+        userId:
+          type: string
+          title: user_id
+      title: DeprovisionUserRequest
+      additionalProperties: false
+      description: |-
+        DeprovisionUser revokes ALL of a user's ACCESS GRANTS: it deletes every
+         relation tuple whose concrete subject is user_id, across all namespaces AND
+         ALL TENANTS of the project, so a leaving user cannot retain live access in a
+         sibling tenant; tenant_id is therefore ignored here. It does NOT delete the
+         user's PII (membership/invitation/workspace rows) — full subject erasure and
+         data-subject export are a separate concern (issue #14), so this RPC alone is
+         not a GDPR/COPPA "right to erasure".
+    workspace.v1.DeprovisionUserResponse:
+      type: object
+      properties:
+        deletedCount:
+          type:
+            - integer
+            - string
+          title: deleted_count
+          format: int64
+      title: DeprovisionUserResponse
       additionalProperties: false
     workspace.v1.ExpandRequest:
       type: object
@@ -400,6 +494,9 @@ components:
         projectId:
           type: string
           title: project_id
+        tenantId:
+          type: string
+          title: tenant_id
       title: ExpandRequest
       additionalProperties: false
       description: Expand returns the effective userset tree for namespace:object_id#relation.
@@ -423,6 +520,9 @@ components:
         projectId:
           type: string
           title: project_id
+        tenantId:
+          type: string
+          title: tenant_id
       title: GetGroupRequest
       additionalProperties: false
     workspace.v1.GetGroupResponse:
@@ -432,6 +532,22 @@ components:
           title: group
           $ref: '#/components/schemas/workspace.v1.Group'
       title: GetGroupResponse
+      additionalProperties: false
+    workspace.v1.GetProjectRequest:
+      type: object
+      properties:
+        id:
+          type: string
+          title: id
+      title: GetProjectRequest
+      additionalProperties: false
+    workspace.v1.GetProjectResponse:
+      type: object
+      properties:
+        project:
+          title: project
+          $ref: '#/components/schemas/workspace.v1.Project'
+      title: GetProjectResponse
       additionalProperties: false
     workspace.v1.GetWorkspaceRequest:
       type: object
@@ -445,6 +561,9 @@ components:
         projectId:
           type: string
           title: project_id
+        tenantId:
+          type: string
+          title: tenant_id
       title: GetWorkspaceRequest
       additionalProperties: false
     workspace.v1.GetWorkspaceResponse:
@@ -486,6 +605,9 @@ components:
         updatedAt:
           title: updated_at
           $ref: '#/components/schemas/google.protobuf.Timestamp'
+        tenantId:
+          type: string
+          title: tenant_id
       title: Group
       additionalProperties: false
     workspace.v1.GroupMember:
@@ -541,6 +663,9 @@ components:
           description: |-
             token is returned ONLY from CreateInvitation so the caller can deliver
              it out of band; it is never echoed by ListInvitations.
+        tenantId:
+          type: string
+          title: tenant_id
       title: Invitation
       additionalProperties: false
     workspace.v1.ListGroupMembersRequest:
@@ -555,6 +680,9 @@ components:
         projectId:
           type: string
           title: project_id
+        tenantId:
+          type: string
+          title: tenant_id
       title: ListGroupMembersRequest
       additionalProperties: false
     workspace.v1.ListGroupMembersResponse:
@@ -580,6 +708,9 @@ components:
         projectId:
           type: string
           title: project_id
+        tenantId:
+          type: string
+          title: tenant_id
       title: ListGroupsRequest
       additionalProperties: false
     workspace.v1.ListGroupsResponse:
@@ -604,6 +735,9 @@ components:
         projectId:
           type: string
           title: project_id
+        tenantId:
+          type: string
+          title: tenant_id
       title: ListInvitationsRequest
       additionalProperties: false
     workspace.v1.ListInvitationsResponse:
@@ -628,6 +762,9 @@ components:
         projectId:
           type: string
           title: project_id
+        tenantId:
+          type: string
+          title: tenant_id
       title: ListMembersRequest
       additionalProperties: false
     workspace.v1.ListMembersResponse:
@@ -640,6 +777,54 @@ components:
           title: members
       title: ListMembersResponse
       additionalProperties: false
+    workspace.v1.ListObjectsRequest:
+      type: object
+      properties:
+        namespace:
+          type: string
+          title: namespace
+        relation:
+          type: string
+          title: relation
+        subjectUserId:
+          type: string
+          title: subject_user_id
+        projectId:
+          type: string
+          title: project_id
+        tenantId:
+          type: string
+          title: tenant_id
+      title: ListObjectsRequest
+      additionalProperties: false
+      description: |-
+        ListObjects returns the object_ids in a namespace where subject_user_id has
+         the relation, for the given project/tenant. The reverse of Check: "which
+         courses can this learner see?".
+    workspace.v1.ListObjectsResponse:
+      type: object
+      properties:
+        objectIds:
+          type: array
+          items:
+            type: string
+          title: object_ids
+      title: ListObjectsResponse
+      additionalProperties: false
+    workspace.v1.ListProjectsRequest:
+      type: object
+      title: ListProjectsRequest
+      additionalProperties: false
+    workspace.v1.ListProjectsResponse:
+      type: object
+      properties:
+        projects:
+          type: array
+          items:
+            $ref: '#/components/schemas/workspace.v1.Project'
+          title: projects
+      title: ListProjectsResponse
+      additionalProperties: false
     workspace.v1.ListWorkspacesRequest:
       type: object
       properties:
@@ -649,6 +834,9 @@ components:
         projectId:
           type: string
           title: project_id
+        tenantId:
+          type: string
+          title: tenant_id
       title: ListWorkspacesRequest
       additionalProperties: false
       description: |-
@@ -685,7 +873,36 @@ components:
         updatedAt:
           title: updated_at
           $ref: '#/components/schemas/google.protobuf.Timestamp'
+        tenantId:
+          type: string
+          title: tenant_id
       title: Membership
+      additionalProperties: false
+    workspace.v1.Project:
+      type: object
+      properties:
+        id:
+          type: string
+          title: id
+        name:
+          type: string
+          title: name
+        status:
+          title: status
+          $ref: '#/components/schemas/workspace.v1.ProjectStatus'
+        modelJson:
+          type: string
+          title: model_json
+          description: |-
+            model_json is the project's authorization model as a JSON document. Empty
+             means the project uses the built-in default model.
+        createdAt:
+          title: created_at
+          $ref: '#/components/schemas/google.protobuf.Timestamp'
+        updatedAt:
+          title: updated_at
+          $ref: '#/components/schemas/google.protobuf.Timestamp'
+      title: Project
       additionalProperties: false
     workspace.v1.ReadRelationTuplesRequest:
       type: object
@@ -706,6 +923,9 @@ components:
         projectId:
           type: string
           title: project_id
+        tenantId:
+          type: string
+          title: tenant_id
       title: ReadRelationTuplesRequest
       additionalProperties: false
       description: |-
@@ -721,6 +941,34 @@ components:
             $ref: '#/components/schemas/workspace.v1.RelationTuple'
           title: tuples
       title: ReadRelationTuplesResponse
+      additionalProperties: false
+    workspace.v1.ReinstateMemberRequest:
+      type: object
+      properties:
+        workspaceId:
+          type: string
+          title: workspace_id
+        userId:
+          type: string
+          title: user_id
+        actingUserId:
+          type: string
+          title: acting_user_id
+        projectId:
+          type: string
+          title: project_id
+        tenantId:
+          type: string
+          title: tenant_id
+      title: ReinstateMemberRequest
+      additionalProperties: false
+    workspace.v1.ReinstateMemberResponse:
+      type: object
+      properties:
+        membership:
+          title: membership
+          $ref: '#/components/schemas/workspace.v1.Membership'
+      title: ReinstateMemberResponse
       additionalProperties: false
     workspace.v1.RelationTuple:
       type: object
@@ -740,6 +988,9 @@ components:
         subject:
           title: subject
           $ref: '#/components/schemas/workspace.v1.Subject'
+        tenantId:
+          type: string
+          title: tenant_id
       title: RelationTuple
       additionalProperties: false
     workspace.v1.RemoveGroupMemberRequest:
@@ -757,6 +1008,9 @@ components:
         projectId:
           type: string
           title: project_id
+        tenantId:
+          type: string
+          title: tenant_id
       title: RemoveGroupMemberRequest
       additionalProperties: false
     workspace.v1.RemoveGroupMemberResponse:
@@ -778,6 +1032,9 @@ components:
         projectId:
           type: string
           title: project_id
+        tenantId:
+          type: string
+          title: tenant_id
       title: RemoveMemberRequest
       additionalProperties: false
     workspace.v1.RemoveMemberResponse:
@@ -796,6 +1053,9 @@ components:
         projectId:
           type: string
           title: project_id
+        tenantId:
+          type: string
+          title: tenant_id
       title: RevokeInvitationRequest
       additionalProperties: false
     workspace.v1.RevokeInvitationResponse:
@@ -819,9 +1079,19 @@ components:
           title: user_id
           required:
             - userId
+        - properties:
+            wildcard:
+              type: boolean
+              title: wildcard
+          title: wildcard
+          required:
+            - wildcard
       title: Subject
       additionalProperties: false
-      description: 'Subject is the right-hand side of a tuple: a concrete user OR a userset.'
+      description: |-
+        Subject is the right-hand side of a tuple: a concrete user, a userset, or
+         the public wildcard (matches every user — link-sharing / published
+         content).
     workspace.v1.SubjectSet:
       type: object
       properties:
@@ -840,6 +1110,40 @@ components:
         SubjectSet references the set of subjects related to another object — the
          userset `namespace:object_id#relation`. When relation is empty it denotes
          the object itself (rarely needed).
+    workspace.v1.SuspendMemberRequest:
+      type: object
+      properties:
+        workspaceId:
+          type: string
+          title: workspace_id
+        userId:
+          type: string
+          title: user_id
+        actingUserId:
+          type: string
+          title: acting_user_id
+        projectId:
+          type: string
+          title: project_id
+        tenantId:
+          type: string
+          title: tenant_id
+      title: SuspendMemberRequest
+      additionalProperties: false
+      description: |-
+        SuspendMember revokes a member's live access WITHOUT deleting their
+         membership: it removes the backing role tuple (so every Check denies) and
+         marks the membership suspended. ReinstateMember restores both. This is the
+         safe way to pause access — denial is by tuple absence, not a status read on
+         the hot path.
+    workspace.v1.SuspendMemberResponse:
+      type: object
+      properties:
+        membership:
+          title: membership
+          $ref: '#/components/schemas/workspace.v1.Membership'
+      title: SuspendMemberResponse
+      additionalProperties: false
     workspace.v1.TupleUpdate:
       type: object
       properties:
@@ -869,6 +1173,9 @@ components:
         projectId:
           type: string
           title: project_id
+        tenantId:
+          type: string
+          title: tenant_id
       title: UpdateMemberRoleRequest
       additionalProperties: false
     workspace.v1.UpdateMemberRoleResponse:
@@ -878,6 +1185,31 @@ components:
           title: membership
           $ref: '#/components/schemas/workspace.v1.Membership'
       title: UpdateMemberRoleResponse
+      additionalProperties: false
+    workspace.v1.UpdateProjectRequest:
+      type: object
+      properties:
+        id:
+          type: string
+          title: id
+        name:
+          type: string
+          title: name
+        status:
+          title: status
+          $ref: '#/components/schemas/workspace.v1.ProjectStatus'
+        modelJson:
+          type: string
+          title: model_json
+      title: UpdateProjectRequest
+      additionalProperties: false
+    workspace.v1.UpdateProjectResponse:
+      type: object
+      properties:
+        project:
+          title: project
+          $ref: '#/components/schemas/workspace.v1.Project'
+      title: UpdateProjectResponse
       additionalProperties: false
     workspace.v1.UpdateWorkspaceRequest:
       type: object
@@ -894,6 +1226,9 @@ components:
         projectId:
           type: string
           title: project_id
+        tenantId:
+          type: string
+          title: tenant_id
       title: UpdateWorkspaceRequest
       additionalProperties: false
     workspace.v1.UpdateWorkspaceResponse:
@@ -926,11 +1261,15 @@ components:
           items:
             $ref: '#/components/schemas/workspace.v1.UsersetTree'
           title: children
-          description: 'For UNION nodes: the child subtrees.'
+          description: 'For UNION / INTERSECTION / EXCLUSION nodes: the child subtrees.'
         expanded:
           title: expanded
           description: The userset this node expands.
           $ref: '#/components/schemas/workspace.v1.SubjectSet'
+        wildcard:
+          type: boolean
+          title: wildcard
+          description: 'For LEAF nodes: true if the public wildcard subject is present.'
       title: UsersetTree
       additionalProperties: false
     workspace.v1.Workspace:
@@ -942,9 +1281,7 @@ components:
         projectId:
           type: string
           title: project_id
-          description: |-
-            project_id is the isolation shard (identity ADR-0002): every row and
-             every relation tuple is scoped to it.
+          description: project_id is the configuration/model shard (identity ADR-0002).
         slug:
           type: string
           title: slug
@@ -963,6 +1300,10 @@ components:
         updatedAt:
           title: updated_at
           $ref: '#/components/schemas/google.protobuf.Timestamp'
+        tenantId:
+          type: string
+          title: tenant_id
+          description: tenant_id is the data-isolation shard within the project; empty = default.
       title: Workspace
       additionalProperties: false
     workspace.v1.WriteRelationTuplesRequest:
@@ -977,6 +1318,9 @@ components:
           type: string
           title: project_id
           description: project_id scopes every tuple in the batch; empty = default project.
+        tenantId:
+          type: string
+          title: tenant_id
       title: WriteRelationTuplesRequest
       additionalProperties: false
     workspace.v1.WriteRelationTuplesResponse:
@@ -1321,6 +1665,76 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/workspace.v1.RemoveMemberResponse'
+  /workspace.v1.WorkspaceService/SuspendMember:
+    post:
+      tags:
+        - workspace.v1.WorkspaceService
+      summary: SuspendMember
+      operationId: workspace.v1.WorkspaceService.SuspendMember
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          required: true
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+        - name: Connect-Timeout-Ms
+          in: header
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/workspace.v1.SuspendMemberRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/workspace.v1.SuspendMemberResponse'
+  /workspace.v1.WorkspaceService/ReinstateMember:
+    post:
+      tags:
+        - workspace.v1.WorkspaceService
+      summary: ReinstateMember
+      operationId: workspace.v1.WorkspaceService.ReinstateMember
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          required: true
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+        - name: Connect-Timeout-Ms
+          in: header
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/workspace.v1.ReinstateMemberRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/workspace.v1.ReinstateMemberResponse'
   /workspace.v1.WorkspaceService/ListMembers:
     post:
       tags:
@@ -1881,7 +2295,218 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/workspace.v1.ExpandResponse'
+  /workspace.v1.AuthzService/ListObjects:
+    post:
+      tags:
+        - workspace.v1.AuthzService
+      summary: ListObjects
+      operationId: workspace.v1.AuthzService.ListObjects
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          required: true
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+        - name: Connect-Timeout-Ms
+          in: header
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/workspace.v1.ListObjectsRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/workspace.v1.ListObjectsResponse'
+  /workspace.v1.AuthzService/DeprovisionUser:
+    post:
+      tags:
+        - workspace.v1.AuthzService
+      summary: DeprovisionUser
+      operationId: workspace.v1.AuthzService.DeprovisionUser
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          required: true
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+        - name: Connect-Timeout-Ms
+          in: header
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/workspace.v1.DeprovisionUserRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/workspace.v1.DeprovisionUserResponse'
+  /workspace.v1.AdminService/CreateProject:
+    post:
+      tags:
+        - workspace.v1.AdminService
+      summary: CreateProject
+      operationId: workspace.v1.AdminService.CreateProject
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          required: true
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+        - name: Connect-Timeout-Ms
+          in: header
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/workspace.v1.CreateProjectRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/workspace.v1.CreateProjectResponse'
+  /workspace.v1.AdminService/GetProject:
+    post:
+      tags:
+        - workspace.v1.AdminService
+      summary: GetProject
+      operationId: workspace.v1.AdminService.GetProject
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          required: true
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+        - name: Connect-Timeout-Ms
+          in: header
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/workspace.v1.GetProjectRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/workspace.v1.GetProjectResponse'
+  /workspace.v1.AdminService/UpdateProject:
+    post:
+      tags:
+        - workspace.v1.AdminService
+      summary: UpdateProject
+      operationId: workspace.v1.AdminService.UpdateProject
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          required: true
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+        - name: Connect-Timeout-Ms
+          in: header
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/workspace.v1.UpdateProjectRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/workspace.v1.UpdateProjectResponse'
+  /workspace.v1.AdminService/ListProjects:
+    post:
+      tags:
+        - workspace.v1.AdminService
+      summary: ListProjects
+      operationId: workspace.v1.AdminService.ListProjects
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          required: true
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+        - name: Connect-Timeout-Ms
+          in: header
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/workspace.v1.ListProjectsRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/workspace.v1.ListProjectsResponse'
 tags:
   - name: workspace.v1.WorkspaceService
   - name: workspace.v1.GroupService
   - name: workspace.v1.AuthzService
+  - name: workspace.v1.AdminService

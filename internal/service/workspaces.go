@@ -11,7 +11,7 @@ import (
 // it on first call. It is idempotent: concurrent first calls converge on a
 // single personal workspace (the repo enforces one-personal-per-user).
 func (s *Service) EnsurePersonalWorkspace(ctx context.Context, p Principal) (*Workspace, error) {
-	if w, err := s.repo.PersonalWorkspace(ctx, p.ProjectID, p.UserID); err == nil {
+	if w, err := s.repo.PersonalWorkspace(ctx, p.ProjectID, p.TenantID, p.UserID); err == nil {
 		return w, nil
 	} else if !isNotFound(err) {
 		return nil, err
@@ -20,6 +20,7 @@ func (s *Service) EnsurePersonalWorkspace(ctx context.Context, p Principal) (*Wo
 	w := &Workspace{
 		ID:          s.newID(),
 		ProjectID:   p.ProjectID,
+		TenantID:    p.TenantID,
 		Slug:        "personal",
 		DisplayName: "Personal",
 		Type:        TypePersonal,
@@ -30,7 +31,7 @@ func (s *Service) EnsurePersonalWorkspace(ctx context.Context, p Principal) (*Wo
 	if err := s.createWorkspaceWithOwner(ctx, p, w); err != nil {
 		// Lost a race: another call created it first. Return the winner.
 		if isAlreadyExists(err) {
-			return s.repo.PersonalWorkspace(ctx, p.ProjectID, p.UserID)
+			return s.repo.PersonalWorkspace(ctx, p.ProjectID, p.TenantID, p.UserID)
 		}
 		return nil, err
 	}
@@ -39,6 +40,9 @@ func (s *Service) EnsurePersonalWorkspace(ctx context.Context, p Principal) (*Wo
 
 // CreateWorkspace creates a TEAM workspace owned by the caller.
 func (s *Service) CreateWorkspace(ctx context.Context, p Principal, displayName, slug string) (*Workspace, error) {
+	if err := s.ensureProjectActive(ctx, p); err != nil {
+		return nil, err
+	}
 	displayName = trimName(displayName)
 	if displayName == "" {
 		return nil, fmt.Errorf("%w: display_name is required", ErrInvalidArgument)
@@ -52,6 +56,7 @@ func (s *Service) CreateWorkspace(ctx context.Context, p Principal, displayName,
 	w := &Workspace{
 		ID:          s.newID(),
 		ProjectID:   p.ProjectID,
+		TenantID:    p.TenantID,
 		Slug:        slug,
 		DisplayName: displayName,
 		Type:        TypeTeam,
@@ -73,6 +78,7 @@ func (s *Service) createWorkspaceWithOwner(ctx context.Context, p Principal, w *
 	}
 	m := &Membership{
 		ProjectID:   w.ProjectID,
+		TenantID:    w.TenantID,
 		WorkspaceID: w.ID,
 		UserID:      w.OwnerUserID,
 		Role:        RoleOwner,
@@ -83,7 +89,7 @@ func (s *Service) createWorkspaceWithOwner(ctx context.Context, p Principal, w *
 	if err := s.repo.PutMembership(ctx, m); err != nil {
 		return err
 	}
-	return s.repo.WriteTuples(ctx, w.ProjectID,
+	return s.repo.WriteTuples(ctx, w.ProjectID, w.TenantID,
 		[]authz.Tuple{userTuple("workspace", w.ID, string(RoleOwner), w.OwnerUserID)}, nil)
 }
 
@@ -95,7 +101,7 @@ func (s *Service) ListWorkspaces(ctx context.Context, p Principal) ([]*Workspace
 	if _, err := s.EnsurePersonalWorkspace(ctx, p); err != nil {
 		return nil, err
 	}
-	return s.repo.WorkspacesForUser(ctx, p.ProjectID, p.UserID)
+	return s.repo.WorkspacesForUser(ctx, p.ProjectID, p.TenantID, p.UserID)
 }
 
 func (s *Service) UpdateWorkspace(ctx context.Context, p Principal, id, displayName string) (*Workspace, error) {
@@ -125,5 +131,5 @@ func (s *Service) DeleteWorkspace(ctx context.Context, p Principal, id string) e
 	if w.Type == TypePersonal {
 		return fmt.Errorf("%w: personal workspaces cannot be deleted", ErrFailedPrecondition)
 	}
-	return s.repo.DeleteWorkspace(ctx, p.ProjectID, id)
+	return s.repo.DeleteWorkspace(ctx, p.ProjectID, p.TenantID, id)
 }

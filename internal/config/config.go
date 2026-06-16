@@ -19,6 +19,9 @@ type Config struct {
 	ConnectPort      int
 	MetricsPort      int
 	DefaultProjectID string
+	// DefaultTenantID is the tenant pinned for requests that omit tenant_id
+	// (the project's default tenant). Empty is the conventional default.
+	DefaultTenantID string
 
 	// PostgresDSN selects the postgres driver when set; empty uses memory.
 	PostgresDSN string
@@ -32,9 +35,26 @@ type Config struct {
 	// requirement — trust the network/mesh — and the service logs a warning.
 	ServiceAuthTokens []string
 
+	// AdminAPISecret gates the AdminService (project configuration), presented
+	// as the `X-Admin-Secret` header. Empty disables the admin RPCs entirely.
+	AdminAPISecret string
+
 	AllowedOrigins   []string
 	HTTPMaxBodyBytes int64
+
+	// MaxListObjects caps the candidate set a single ListObjects call scans,
+	// bounding its full-scan + per-object Check cost.
+	MaxListObjects int
+	// MaxExpandNodes caps the size of an Expand result tree, bounding the
+	// response a single cheap request can amplify into.
+	MaxExpandNodes int
 }
+
+// DefaultMaxListObjects bounds a ListObjects request when not overridden.
+const DefaultMaxListObjects = 1000
+
+// DefaultMaxExpandNodes bounds an Expand result tree when not overridden.
+const DefaultMaxExpandNodes = 10000
 
 // Load reads configuration from the environment, applying defaults.
 func Load() (*Config, error) {
@@ -42,11 +62,15 @@ func Load() (*Config, error) {
 		ConnectPort:         envInt("GATEWAY_CONNECT_PORT", 8080),
 		MetricsPort:         envInt("GATEWAY_METRICS_PORT", 9090),
 		DefaultProjectID:    envStr("GATEWAY_DEFAULT_PROJECT_ID", DefaultProjectIDFallback),
+		DefaultTenantID:     envStr("GATEWAY_DEFAULT_TENANT_ID", ""),
 		PostgresDSN:         envStr("GATEWAY_POSTGRES_DSN", ""),
 		PostgresAutoMigrate: envBool("GATEWAY_POSTGRES_AUTO_MIGRATE", true),
 		ServiceAuthTokens:   envCSV("GATEWAY_SERVICE_AUTH_TOKENS"),
+		AdminAPISecret:      envStr("GATEWAY_ADMIN_API_SECRET", ""),
 		AllowedOrigins:      envCSV("GATEWAY_ALLOWED_ORIGINS"),
 		HTTPMaxBodyBytes:    int64(envInt("GATEWAY_HTTP_MAX_BODY_BYTES", 1<<20)),
+		MaxListObjects:      envInt("GATEWAY_MAX_LIST_OBJECTS", DefaultMaxListObjects),
+		MaxExpandNodes:      envInt("GATEWAY_MAX_EXPAND_NODES", DefaultMaxExpandNodes),
 	}
 	if err := c.Validate(); err != nil {
 		return nil, err
@@ -65,8 +89,17 @@ func (c *Config) Validate() error {
 	if c.HTTPMaxBodyBytes <= 0 {
 		return errors.New("GATEWAY_HTTP_MAX_BODY_BYTES must be positive")
 	}
+	// The admin secret guards the project-model-takeover surface; reject a weak
+	// one outright rather than serving a brute-forceable credential. Empty is
+	// allowed (it disables the admin API entirely).
+	if c.AdminAPISecret != "" && len(c.AdminAPISecret) < minAdminSecretLen {
+		return fmt.Errorf("GATEWAY_ADMIN_API_SECRET must be a high-entropy value of at least %d characters", minAdminSecretLen)
+	}
 	return nil
 }
+
+// minAdminSecretLen is the minimum length for a configured admin secret.
+const minAdminSecretLen = 32
 
 func envStr(key, def string) string {
 	if v, ok := os.LookupEnv(key); ok {

@@ -18,10 +18,21 @@ import (
 // Config is the embedder-facing subset of service configuration.
 type Config struct {
 	DefaultProjectID string
-	AllowedOrigins   []string
+	// DefaultTenantID is applied when a request omits tenant_id.
+	DefaultTenantID string
+	AllowedOrigins  []string
 	// ServiceAuthTokens are the accepted service credentials. Empty disables
 	// the requirement (trusted network / mesh).
 	ServiceAuthTokens []string
+	// AdminAPISecret gates the AdminService (project configuration). Empty
+	// disables the admin RPCs.
+	AdminAPISecret string
+	// MaxListObjects caps a ListObjects candidate set; non-positive uses the
+	// service default.
+	MaxListObjects int
+	// MaxExpandNodes caps an Expand result tree; non-positive uses the service
+	// default.
+	MaxExpandNodes int
 }
 
 // Options configures New. Repo defaults to an in-memory store; Logger
@@ -38,7 +49,7 @@ type Server struct {
 }
 
 // New builds the server.
-func New(_ context.Context, opts Options) (*Server, error) {
+func New(ctx context.Context, opts Options) (*Server, error) {
 	logger := opts.Logger
 	if logger == nil {
 		logger = zap.NewNop()
@@ -51,13 +62,20 @@ func New(_ context.Context, opts Options) (*Server, error) {
 	if projectID == "" {
 		projectID = "default"
 	}
-	handler := app.New(app.Deps{
+	handler, err := app.New(ctx, app.Deps{
 		Logger:            logger,
 		Repo:              repo,
 		DefaultProjectID:  projectID,
+		DefaultTenantID:   opts.Config.DefaultTenantID,
 		AllowedOrigins:    opts.Config.AllowedOrigins,
 		ServiceAuthTokens: opts.Config.ServiceAuthTokens,
+		AdminAPISecret:    opts.Config.AdminAPISecret,
+		MaxListObjects:    opts.Config.MaxListObjects,
+		MaxExpandNodes:    opts.Config.MaxExpandNodes,
 	})
+	if err != nil {
+		return nil, err
+	}
 	return &Server{handler: handler}, nil
 }
 

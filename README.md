@@ -212,11 +212,15 @@ All config is via environment variables (the `GATEWAY_` prefix matches identity)
 | `GATEWAY_CONNECT_PORT` | Connect/HTTP (JSON + gRPC) listen port | `8080` |
 | `GATEWAY_METRICS_PORT` | Prometheus metrics listen port | `9090` |
 | `GATEWAY_DEFAULT_PROJECT_ID` | Project shard pinned for requests with no `project_id` | `default` |
+| `GATEWAY_DEFAULT_TENANT_ID` | Tenant (data-isolation shard within a project) pinned for requests with no `tenant_id` | — (empty = default tenant) |
+| `GATEWAY_ADMIN_API_SECRET` | Platform-operator secret for `AdminService` (project config), presented as `X-Admin-Secret`. **Empty disables the admin API** (`Unimplemented`). When set it must be a high-entropy value of **at least 32 characters** (startup fails otherwise). | — |
 | `GATEWAY_POSTGRES_DSN` | Postgres connection string; selects the postgres storage driver | — (memory driver if unset) |
 | `GATEWAY_POSTGRES_AUTO_MIGRATE` | Apply pending migrations on boot | `true` |
 | `GATEWAY_SERVICE_AUTH_TOKENS` | Accepted service credentials, comma-separated, presented as `Authorization: Bearer <token>`. **Empty disables the requirement** (trust the network/mesh) and logs a warning. | — |
 | `GATEWAY_ALLOWED_ORIGINS` | CORS origins for browser callers, comma-separated | — |
 | `GATEWAY_HTTP_MAX_BODY_BYTES` | Maximum request body size | `1048576` |
+| `GATEWAY_MAX_LIST_OBJECTS` | Maximum candidate objects a single `ListObjects` call scans (over-cap returns `ResourceExhausted`) | `1000` |
+| `GATEWAY_MAX_EXPAND_NODES` | Maximum nodes/subjects in a single `Expand` result tree (over-cap returns `ResourceExhausted`) | `10000` |
 
 ## Deployment
 
@@ -242,8 +246,15 @@ docker run -p 8080:8080 -p 9090:9090 \
 
 The binary lives at `cmd/workspace`; `workspace migrate` runs Postgres
 migrations explicitly (they also apply on boot when
-`GATEWAY_POSTGRES_AUTO_MIGRATE=true`, the default). Health probes are
-`GET /healthz` and `GET /readyz`; Prometheus metrics are on `:9090/metrics`.
+`GATEWAY_POSTGRES_AUTO_MIGRATE=true`, the default). Migrations take a session
+advisory lock (so concurrent replicas serialize) and a short `lock_timeout` (so
+a contended DDL fails fast instead of stalling the data plane), and they are
+idempotent. **On a large, already-populated database** the tenant primary-key
+rebuild still takes heavy `ACCESS EXCLUSIVE` locks while it runs: for that
+deploy, set `GATEWAY_POSTGRES_AUTO_MIGRATE=false` and run `workspace migrate`
+out of band during a maintenance window rather than on the request-serving boot
+path. Health probes are `GET /healthz` and `GET /readyz`; Prometheus metrics
+are on `:9090/metrics`.
 
 ## Storage
 
