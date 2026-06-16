@@ -82,8 +82,17 @@ func (c *Config) Validate() error {
 	if c.HTTPMaxBodyBytes <= 0 {
 		return errors.New("GATEWAY_HTTP_MAX_BODY_BYTES must be positive")
 	}
+	// The admin secret guards the project-model-takeover surface; reject a weak
+	// one outright rather than serving a brute-forceable credential. Empty is
+	// allowed (it disables the admin API entirely).
+	if c.AdminAPISecret != "" && len(c.AdminAPISecret) < minAdminSecretLen {
+		return fmt.Errorf("GATEWAY_ADMIN_API_SECRET must be a high-entropy value of at least %d characters", minAdminSecretLen)
+	}
 	return nil
 }
+
+// minAdminSecretLen is the minimum length for a configured admin secret.
+const minAdminSecretLen = 32
 
 func envStr(key, def string) string {
 	if v, ok := os.LookupEnv(key); ok {

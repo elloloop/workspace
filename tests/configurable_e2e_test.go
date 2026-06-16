@@ -13,7 +13,7 @@ import (
 	"github.com/elloloop/workspace/workspaceserver"
 )
 
-const adminSecret = "admin-secret-0123456789abcdef" //nolint:gosec // test-only admin secret
+const adminSecret = "test-admin-secret-0123456789abcdef-32+" //nolint:gosec // test-only admin secret (>= minAdminSecretLen)
 
 type adminHarness struct {
 	ws    workspacev1connect.WorkspaceServiceClient

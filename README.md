@@ -213,7 +213,7 @@ All config is via environment variables (the `GATEWAY_` prefix matches identity)
 | `GATEWAY_METRICS_PORT` | Prometheus metrics listen port | `9090` |
 | `GATEWAY_DEFAULT_PROJECT_ID` | Project shard pinned for requests with no `project_id` | `default` |
 | `GATEWAY_DEFAULT_TENANT_ID` | Tenant (data-isolation shard within a project) pinned for requests with no `tenant_id` | — (empty = default tenant) |
-| `GATEWAY_ADMIN_API_SECRET` | Platform-operator secret for `AdminService` (project config), presented as `X-Admin-Secret`. **Empty disables the admin API** (`Unimplemented`). | — |
+| `GATEWAY_ADMIN_API_SECRET` | Platform-operator secret for `AdminService` (project config), presented as `X-Admin-Secret`. **Empty disables the admin API** (`Unimplemented`). When set it must be a high-entropy value of **at least 32 characters** (startup fails otherwise). | — |
 | `GATEWAY_POSTGRES_DSN` | Postgres connection string; selects the postgres storage driver | — (memory driver if unset) |
 | `GATEWAY_POSTGRES_AUTO_MIGRATE` | Apply pending migrations on boot | `true` |
 | `GATEWAY_SERVICE_AUTH_TOKENS` | Accepted service credentials, comma-separated, presented as `Authorization: Bearer <token>`. **Empty disables the requirement** (trust the network/mesh) and logs a warning. | — |
