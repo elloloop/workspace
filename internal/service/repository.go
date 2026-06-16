@@ -24,10 +24,12 @@ type Repository interface {
 	WriteTuples(ctx context.Context, projectID, tenantID string, inserts, deletes []authz.Tuple) error
 	// ReadTuples returns stored tuples matching the non-empty filter fields.
 	ReadTuples(ctx context.Context, projectID, tenantID string, f TupleFilter) ([]authz.Tuple, error)
-	// DeleteAllSubjectTuples deletes every tuple whose concrete subject is
-	// userID, across all namespaces, in one transaction. It returns the count
-	// deleted. This is the storage primitive behind user deprovisioning.
-	DeleteAllSubjectTuples(ctx context.Context, projectID, tenantID, userID string) (int, error)
+	// DeleteAllSubjectTuplesInProject deletes every tuple whose concrete subject
+	// is userID, across all namespaces AND ALL TENANTS of the project, in one
+	// transaction. It returns the count deleted. This is the storage primitive
+	// behind user deprovisioning/erasure: a leaving or erased user must lose
+	// access in every sibling tenant, not just one.
+	DeleteAllSubjectTuplesInProject(ctx context.Context, projectID, userID string) (int, error)
 
 	// ── Projects ─────────────────────────────────────────────────────
 	// Projects are the configuration/model boundary. A project carries its

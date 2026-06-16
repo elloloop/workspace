@@ -1243,7 +1243,7 @@
         
       
         <h3 id="workspace.v1.DeprovisionUserRequest">DeprovisionUserRequest</h3>
-        <p>DeprovisionUser deletes every relation tuple whose concrete subject is</p><p>user_id, across all namespaces, in the given project/tenant — the storage</p><p>side of "this user left; revoke everything".</p>
+        <p>DeprovisionUser deletes every relation tuple whose concrete subject is</p><p>user_id, across all namespaces AND ALL TENANTS of the project — the storage</p><p>side of "this user left / was erased; revoke everything". Erasure is</p><p>intentionally project-wide so a leaving or GDPR-erased user cannot retain</p><p>live access in a sibling tenant; tenant_id is therefore ignored here.</p>
 
         
           <table class="field-table">
@@ -1263,7 +1263,8 @@
                   <td>tenant_id</td>
                   <td><a href="#string">string</a></td>
                   <td></td>
-                  <td><p> </p></td>
+                  <td><p>tenant_id is accepted for call-shape symmetry but IGNORED: erasure spans
+every tenant of the project. </p></td>
                 </tr>
               
                 <tr>

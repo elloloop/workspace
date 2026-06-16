@@ -4437,13 +4437,17 @@ func (x *ListObjectsResponse) GetObjectIds() []string {
 }
 
 // DeprovisionUser deletes every relation tuple whose concrete subject is
-// user_id, across all namespaces, in the given project/tenant — the storage
-// side of "this user left; revoke everything".
+// user_id, across all namespaces AND ALL TENANTS of the project — the storage
+// side of "this user left / was erased; revoke everything". Erasure is
+// intentionally project-wide so a leaving or GDPR-erased user cannot retain
+// live access in a sibling tenant; tenant_id is therefore ignored here.
 type DeprovisionUserRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	ProjectId     string                 `protobuf:"bytes,1,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
-	TenantId      string                 `protobuf:"bytes,2,opt,name=tenant_id,json=tenantId,proto3" json:"tenant_id,omitempty"`
-	UserId        string                 `protobuf:"bytes,3,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	state     protoimpl.MessageState `protogen:"open.v1"`
+	ProjectId string                 `protobuf:"bytes,1,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
+	// tenant_id is accepted for call-shape symmetry but IGNORED: erasure spans
+	// every tenant of the project.
+	TenantId      string `protobuf:"bytes,2,opt,name=tenant_id,json=tenantId,proto3" json:"tenant_id,omitempty"`
+	UserId        string `protobuf:"bytes,3,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }

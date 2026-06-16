@@ -596,37 +596,51 @@ func testProjects(t *testing.T, r service.Repository) {
 	}
 }
 
-// testDeprovision pins that DeleteAllSubjectTuples removes every tuple whose
-// concrete subject is the user, across all namespaces, and leaves others.
+// testDeprovision pins that DeleteAllSubjectTuplesInProject removes every tuple
+// whose concrete subject is the user across all namespaces AND ALL TENANTS of
+// the project, while leaving other subjects and other projects untouched.
 func testDeprovision(t *testing.T, r service.Repository) {
 	t.Helper()
-	const p = "proj"
-	tuples := []authz.Tuple{
+	const p, other = "proj", "proj2"
+	// u1 holds grants in two tenants of p, plus an unrelated subject u2; u1 also
+	// holds a grant in a DIFFERENT project that must survive the erase.
+	if err := r.WriteTuples(ctx(), p, "", []authz.Tuple{
 		userTuple("workspace", "w1", "owner", "u1"),
 		userTuple("group", "g1", "member", "u1"),
-		userTuple("resource", "doc1", "viewer", "u1"),
 		userTuple("resource", "doc2", "viewer", "u2"),
+	}, nil); err != nil {
+		t.Fatalf("WriteTuples tenant '': %v", err)
 	}
-	if err := r.WriteTuples(ctx(), p, "", tuples, nil); err != nil {
-		t.Fatalf("WriteTuples: %v", err)
+	if err := r.WriteTuples(ctx(), p, "t2", []authz.Tuple{
+		userTuple("resource", "doc1", "viewer", "u1"),
+	}, nil); err != nil {
+		t.Fatalf("WriteTuples tenant t2: %v", err)
+	}
+	if err := r.WriteTuples(ctx(), other, "", []authz.Tuple{
+		userTuple("resource", "doc9", "viewer", "u1"),
+	}, nil); err != nil {
+		t.Fatalf("WriteTuples other project: %v", err)
 	}
 
-	n, err := r.DeleteAllSubjectTuples(ctx(), p, "", "u1")
+	n, err := r.DeleteAllSubjectTuplesInProject(ctx(), p, "u1")
 	if err != nil {
-		t.Fatalf("DeleteAllSubjectTuples: %v", err)
+		t.Fatalf("DeleteAllSubjectTuplesInProject: %v", err)
 	}
-	if n != 3 {
-		t.Fatalf("deleted = %d, want 3", n)
+	if n != 3 { // owner+member in tenant '', viewer in tenant t2
+		t.Fatalf("deleted = %d, want 3 (across both tenants)", n)
 	}
-	for _, c := range []struct{ ns, obj, rel string }{
-		{"workspace", "w1", "owner"}, {"group", "g1", "member"}, {"resource", "doc1", "viewer"},
-	} {
-		if subs, _ := r.ListSubjects(ctx(), p, "", c.ns, c.obj, c.rel); len(subs) != 0 {
-			t.Fatalf("%s:%s#%s not deprovisioned: %d", c.ns, c.obj, c.rel, len(subs))
-		}
+	// u1 is erased in BOTH tenants of p.
+	if subs, _ := r.ListSubjects(ctx(), p, "", "workspace", "w1", "owner"); len(subs) != 0 {
+		t.Fatalf("u1 tenant '' not erased: %d", len(subs))
 	}
-	// u2's grant survives.
+	if subs, _ := r.ListSubjects(ctx(), p, "t2", "resource", "doc1", "viewer"); len(subs) != 0 {
+		t.Fatalf("u1 tenant t2 not erased (cross-tenant leak): %d", len(subs))
+	}
+	// u2 (same project) and u1's grant in another project both survive.
 	if subs, _ := r.ListSubjects(ctx(), p, "", "resource", "doc2", "viewer"); len(subs) != 1 {
 		t.Fatalf("u2 grant should survive, got %d", len(subs))
+	}
+	if subs, _ := r.ListSubjects(ctx(), other, "", "resource", "doc9", "viewer"); len(subs) != 1 {
+		t.Fatalf("u1 grant in other project must survive, got %d", len(subs))
 	}
 }

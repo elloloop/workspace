@@ -44,8 +44,8 @@ func testWildcardTuples(t *testing.T, r service.Repository) {
 	}
 
 	// Deprovisioning bob removes his concrete grant but leaves the wildcard.
-	if _, err := r.DeleteAllSubjectTuples(ctx(), p, "", "bob"); err != nil {
-		t.Fatalf("DeleteAllSubjectTuples: %v", err)
+	if _, err := r.DeleteAllSubjectTuplesInProject(ctx(), p, "bob"); err != nil {
+		t.Fatalf("DeleteAllSubjectTuplesInProject: %v", err)
 	}
 	subs, _ = r.ListSubjects(ctx(), p, "", "doc", "d1", "viewer")
 	if len(subs) != 1 || !subs[0].Wildcard {

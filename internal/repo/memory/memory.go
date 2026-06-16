@@ -6,6 +6,7 @@ package memory
 import (
 	"context"
 	"sort"
+	"strings"
 	"sync"
 
 	"github.com/elloloop/workspace/internal/service"
@@ -179,15 +180,20 @@ func (s *Store) ReadTuples(_ context.Context, projectID, tenantID string, f serv
 	return out, nil
 }
 
-func (s *Store) DeleteAllSubjectTuples(_ context.Context, projectID, tenantID, userID string) (int, error) {
+func (s *Store) DeleteAllSubjectTuplesInProject(_ context.Context, projectID, userID string) (int, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	m := s.tuples[scope(projectID, tenantID)]
+	prefix := projectID + "\x00" // every (project, tenant) scope for this project
 	n := 0
-	for k, t := range m {
-		if t.Subject.Set == nil && !t.Subject.Wildcard && t.Subject.UserID == userID {
-			delete(m, k)
-			n++
+	for sk, m := range s.tuples {
+		if !strings.HasPrefix(sk, prefix) {
+			continue
+		}
+		for k, t := range m {
+			if t.Subject.Set == nil && !t.Subject.Wildcard && t.Subject.UserID == userID {
+				delete(m, k)
+				n++
+			}
 		}
 	}
 	return n, nil

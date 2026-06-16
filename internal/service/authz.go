@@ -94,15 +94,17 @@ func (s *Service) ListObjects(ctx context.Context, p Principal, namespace, relat
 }
 
 // DeprovisionUser deletes every relation tuple whose concrete subject is
-// userID across all namespaces in the caller's project/tenant, returning the
-// count removed. This is the clean revoke-everything path when a user leaves
-// (it also reaches grants held via group usersets, which a per-subject tuple
-// sweep on the concrete user would otherwise miss for group-derived access).
+// userID across all namespaces AND ALL TENANTS of the caller's project,
+// returning the count removed. This is the clean revoke-everything / erase path
+// when a user leaves: it is intentionally project-wide (tenant_id on the request
+// is ignored) so a GDPR erase or offboarding cannot leave the user with live
+// grants in a sibling tenant. It also reaches grants held via group usersets,
+// which a per-subject sweep on the concrete user would otherwise miss.
 func (s *Service) DeprovisionUser(ctx context.Context, p Principal, userID string) (int, error) {
 	if userID == "" {
 		return 0, fmt.Errorf("%w: user_id is required", ErrInvalidArgument)
 	}
-	return s.repo.DeleteAllSubjectTuples(ctx, p.ProjectID, p.TenantID, userID)
+	return s.repo.DeleteAllSubjectTuplesInProject(ctx, p.ProjectID, userID)
 }
 
 func validateTuple(t authz.Tuple) error {

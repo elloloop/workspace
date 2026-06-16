@@ -529,10 +529,14 @@ message ListObjectsRequest {
 message ListObjectsResponse { repeated string object_ids = 1; }
 
 // DeprovisionUser deletes every relation tuple whose concrete subject is
-// user_id, across all namespaces, in the given project/tenant — the storage
-// side of "this user left; revoke everything".
+// user_id, across all namespaces AND ALL TENANTS of the project — the storage
+// side of "this user left / was erased; revoke everything". Erasure is
+// intentionally project-wide so a leaving or GDPR-erased user cannot retain
+// live access in a sibling tenant; tenant_id is therefore ignored here.
 message DeprovisionUserRequest {
   string project_id = 1;
+  // tenant_id is accepted for call-shape symmetry but IGNORED: erasure spans
+  // every tenant of the project.
   string tenant_id = 2;
   string user_id = 3;
 }

@@ -71,6 +71,12 @@ func (s *Service) UpdateMemberRole(ctx context.Context, p Principal, workspaceID
 	if m.Role == RoleOwner {
 		return nil, fmt.Errorf("%w: the owner's role cannot be changed", ErrFailedPrecondition)
 	}
+	if m.Status == StatusSuspended {
+		// A suspended member holds no role tuple (access was revoked by tuple
+		// absence). Writing the new role tuple here would silently re-grant live
+		// access while the membership still reads suspended — reinstate first.
+		return nil, fmt.Errorf("%w: member is suspended; reinstate before changing their role", ErrFailedPrecondition)
+	}
 	if m.Role == role {
 		return m, nil
 	}

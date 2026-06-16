@@ -119,6 +119,40 @@ func TestSuspendReinstateRevokesAccess(t *testing.T) {
 	}
 }
 
+// TestUpdateMemberRoleOnSuspendedFailsClosed: changing a suspended member's
+// role must NOT silently re-grant access — it is refused until reinstatement.
+func TestUpdateMemberRoleOnSuspendedFailsClosed(t *testing.T) {
+	h := newHarness(t)
+	ctx := context.Background()
+
+	created, _ := h.ws.CreateWorkspace(ctx, req(&workspacev1.CreateWorkspaceRequest{ActingUserId: "alice", DisplayName: "Acme"}))
+	ws := created.Msg.Workspace
+	if _, err := h.ws.AddMember(ctx, req(&workspacev1.AddMemberRequest{
+		ActingUserId: "alice", WorkspaceId: ws.Id, UserId: "bob", Role: workspacev1.Role_ROLE_MEMBER,
+	})); err != nil {
+		t.Fatalf("AddMember: %v", err)
+	}
+	if _, err := h.ws.SuspendMember(ctx, req(&workspacev1.SuspendMemberRequest{
+		ActingUserId: "alice", WorkspaceId: ws.Id, UserId: "bob",
+	})); err != nil {
+		t.Fatalf("SuspendMember: %v", err)
+	}
+
+	// Promoting the suspended member must fail closed, not re-grant access.
+	_, err := h.ws.UpdateMemberRole(ctx, req(&workspacev1.UpdateMemberRoleRequest{
+		ActingUserId: "alice", WorkspaceId: ws.Id, UserId: "bob", Role: workspacev1.Role_ROLE_ADMIN,
+	}))
+	if err == nil || connect.CodeOf(err) != connect.CodeFailedPrecondition {
+		t.Fatalf("want FailedPrecondition updating suspended member, got %v", err)
+	}
+	if checkAllowed(ctx, t, h, "workspace", ws.Id, "member", "bob") {
+		t.Fatal("suspended member must still be denied after a role-change attempt")
+	}
+	if checkAllowed(ctx, t, h, "workspace", ws.Id, "admin", "bob") {
+		t.Fatal("the refused promotion must not have granted admin")
+	}
+}
+
 // TestWildcardPublicGrant: a wildcard tuple grants the relation to any user
 // (link-sharing / published content).
 func TestWildcardPublicGrant(t *testing.T) {
@@ -205,15 +239,37 @@ func TestDeprovisionUser(t *testing.T) {
 		t.Fatalf("WriteRelationTuples: %v", err)
 	}
 
+	// bob also holds a grant in a DIFFERENT tenant of the same project.
+	if _, err := h.authz.WriteRelationTuples(ctx, req(&workspacev1.WriteRelationTuplesRequest{
+		TenantId: "t2",
+		Updates: []*workspacev1.TupleUpdate{{
+			Op:    workspacev1.TupleUpdate_OP_INSERT,
+			Tuple: &workspacev1.RelationTuple{Namespace: "resource", ObjectId: "doc2", Relation: "viewer", Subject: &workspacev1.Subject{Kind: &workspacev1.Subject_UserId{UserId: "bob"}}},
+		}},
+	})); err != nil {
+		t.Fatalf("WriteRelationTuples tenant t2: %v", err)
+	}
+
+	// A single deprovision erases across ALL tenants of the project (tenant_id
+	// on the request is ignored for erase).
 	resp, err := h.authz.DeprovisionUser(ctx, req(&workspacev1.DeprovisionUserRequest{UserId: "bob"}))
 	if err != nil {
 		t.Fatalf("DeprovisionUser: %v", err)
 	}
-	if resp.Msg.DeletedCount != 3 {
-		t.Fatalf("deleted = %d, want 3", resp.Msg.DeletedCount)
+	if resp.Msg.DeletedCount != 4 {
+		t.Fatalf("deleted = %d, want 4 (3 in default tenant + 1 in t2)", resp.Msg.DeletedCount)
 	}
 	if checkAllowed(ctx, t, h, "resource", "doc1", "viewer", "bob") {
-		t.Fatal("bob's grants should be gone after deprovisioning")
+		t.Fatal("bob's default-tenant grants should be gone after deprovisioning")
+	}
+	got, err := h.authz.Check(ctx, req(&workspacev1.CheckRequest{
+		Namespace: "resource", ObjectId: "doc2", Relation: "viewer", SubjectUserId: "bob", TenantId: "t2",
+	}))
+	if err != nil {
+		t.Fatalf("Check t2: %v", err)
+	}
+	if got.Msg.Allowed {
+		t.Fatal("bob's sibling-tenant grant must also be erased (cross-tenant leak)")
 	}
 }
 

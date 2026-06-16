@@ -463,11 +463,14 @@ func (s *Store) ReadTuples(ctx context.Context, projectID, tenantID string, f se
 	return out, rows.Err()
 }
 
-func (s *Store) DeleteAllSubjectTuples(ctx context.Context, projectID, tenantID, userID string) (int, error) {
+func (s *Store) DeleteAllSubjectTuplesInProject(ctx context.Context, projectID, userID string) (int, error) {
+	// Project-wide erase across ALL tenants. project_id leads the
+	// relation_tuples_subject_user_idx index, so dropping the tenant_id filter
+	// still uses it.
 	tag, err := s.pool.Exec(ctx,
 		`DELETE FROM relation_tuples
-		  WHERE project_id=$1 AND tenant_id=$2 AND subject_kind='user' AND subject_user_id=$3`,
-		projectID, tenantID, userID)
+		  WHERE project_id=$1 AND subject_kind='user' AND subject_user_id=$2`,
+		projectID, userID)
 	if err != nil {
 		return 0, err
 	}
