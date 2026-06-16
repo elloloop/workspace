@@ -10,7 +10,10 @@
 // built-in defaults that back this service's product surface.
 package authz
 
-import "context"
+import (
+	"context"
+	"time"
+)
 
 // Subject is the right-hand side of a tuple: exactly one of UserID, Set, or
 // Wildcard is set. Wildcard is the public "everyone" subject (Zanzibar's
@@ -36,6 +39,17 @@ type Tuple struct {
 	ObjectID  string
 	Relation  string
 	Subject   Subject
+	// ExpiresAt, when non-nil, time-bounds the grant: the tuple is inert once
+	// the instant passes. Nil = permanent. It is metadata, not identity — two
+	// tuples that differ only in ExpiresAt are the same tuple.
+	ExpiresAt *time.Time
+}
+
+// ActiveAt reports whether the tuple grants at instant now: a nil expiry is
+// always active, otherwise the expiry must be strictly in the future. Stores
+// use this to filter expired tuples out of every read path.
+func (t Tuple) ActiveAt(now time.Time) bool {
+	return t.ExpiresAt == nil || t.ExpiresAt.After(now)
 }
 
 // Rewrite is a userset-rewrite expression for one relation.

@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/elloloop/workspace/internal/service"
 	"github.com/elloloop/workspace/pkg/authz"
@@ -133,9 +134,10 @@ func (s *Store) WriteTuples(_ context.Context, projectID, tenantID string, inser
 func (s *Store) ListSubjects(_ context.Context, projectID, tenantID, namespace, objectID, relation string) ([]authz.Subject, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
+	now := time.Now()
 	var out []authz.Subject
 	for _, t := range s.tuples[scope(projectID, tenantID)] {
-		if t.Namespace == namespace && t.ObjectID == objectID && t.Relation == relation {
+		if t.Namespace == namespace && t.ObjectID == objectID && t.Relation == relation && t.ActiveAt(now) {
 			out = append(out, t.Subject)
 		}
 	}
@@ -145,10 +147,11 @@ func (s *Store) ListSubjects(_ context.Context, projectID, tenantID, namespace, 
 func (s *Store) ListObjectIDs(_ context.Context, projectID, tenantID, namespace string) ([]string, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
+	now := time.Now()
 	seen := map[string]bool{}
 	var out []string
 	for _, t := range s.tuples[scope(projectID, tenantID)] {
-		if t.Namespace == namespace && !seen[t.ObjectID] {
+		if t.Namespace == namespace && t.ActiveAt(now) && !seen[t.ObjectID] {
 			seen[t.ObjectID] = true
 			out = append(out, t.ObjectID)
 		}
@@ -160,8 +163,12 @@ func (s *Store) ListObjectIDs(_ context.Context, projectID, tenantID, namespace 
 func (s *Store) ReadTuples(_ context.Context, projectID, tenantID string, f service.TupleFilter) ([]authz.Tuple, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
+	now := time.Now()
 	var out []authz.Tuple
 	for _, t := range s.tuples[scope(projectID, tenantID)] {
+		if !t.ActiveAt(now) {
+			continue
+		}
 		if f.Namespace != "" && t.Namespace != f.Namespace {
 			continue
 		}

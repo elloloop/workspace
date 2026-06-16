@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/elloloop/workspace/internal/service"
 	"github.com/elloloop/workspace/pkg/authz"
@@ -135,10 +136,12 @@ CREATE TABLE IF NOT EXISTS relation_tuples (
 	subject_namespace text NOT NULL DEFAULT '',
 	subject_object_id text NOT NULL DEFAULT '',
 	subject_relation  text NOT NULL DEFAULT '',
+	expires_at        timestamptz,
 	PRIMARY KEY (project_id, tenant_id, namespace, object_id, relation, subject_kind,
 		subject_user_id, subject_namespace, subject_object_id, subject_relation)
 );
 ALTER TABLE relation_tuples ADD COLUMN IF NOT EXISTS tenant_id text NOT NULL DEFAULT '';
+ALTER TABLE relation_tuples ADD COLUMN IF NOT EXISTS expires_at timestamptz;
 
 -- ── Upgrade-path key migrations ──────────────────────────────────────────
 -- The composite (project_id, tenant_id, …) primary keys above only take effect
@@ -407,9 +410,12 @@ func (s *Store) WriteTuples(ctx context.Context, projectID, tenantID string, ins
 		_, err := tx.Exec(ctx,
 			`INSERT INTO relation_tuples
 			   (project_id, tenant_id, namespace, object_id, relation, subject_kind,
+			    subject_user_id, subject_namespace, subject_object_id, subject_relation, expires_at)
+			 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+			 ON CONFLICT (project_id, tenant_id, namespace, object_id, relation, subject_kind,
 			    subject_user_id, subject_namespace, subject_object_id, subject_relation)
-			 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) ON CONFLICT DO NOTHING`,
-			projectID, tenantID, t.Namespace, t.ObjectID, t.Relation, kind, uid, sns, soid, srel)
+			 DO UPDATE SET expires_at = EXCLUDED.expires_at`,
+			projectID, tenantID, t.Namespace, t.ObjectID, t.Relation, kind, uid, sns, soid, srel, t.ExpiresAt)
 		if err != nil {
 			return err
 		}
@@ -420,9 +426,11 @@ func (s *Store) WriteTuples(ctx context.Context, projectID, tenantID string, ins
 func scanTuple(row pgx.Row) (authz.Tuple, error) {
 	var t authz.Tuple
 	var kind, uid, sns, soid, srel string
-	if err := row.Scan(&t.Namespace, &t.ObjectID, &t.Relation, &kind, &uid, &sns, &soid, &srel); err != nil {
+	var expires *time.Time
+	if err := row.Scan(&t.Namespace, &t.ObjectID, &t.Relation, &kind, &uid, &sns, &soid, &srel, &expires); err != nil {
 		return t, err
 	}
+	t.ExpiresAt = expires
 	switch kind {
 	case "set":
 		t.Subject.Set = &authz.SubjectSet{Namespace: sns, ObjectID: soid, Relation: srel}
@@ -437,9 +445,10 @@ func scanTuple(row pgx.Row) (authz.Tuple, error) {
 func (s *Store) ListSubjects(ctx context.Context, projectID, tenantID, namespace, objectID, relation string) ([]authz.Subject, error) {
 	rows, err := s.pool.Query(ctx,
 		`SELECT namespace, object_id, relation, subject_kind, subject_user_id,
-		        subject_namespace, subject_object_id, subject_relation
+		        subject_namespace, subject_object_id, subject_relation, expires_at
 		   FROM relation_tuples
-		  WHERE project_id=$1 AND tenant_id=$2 AND namespace=$3 AND object_id=$4 AND relation=$5`,
+		  WHERE project_id=$1 AND tenant_id=$2 AND namespace=$3 AND object_id=$4 AND relation=$5
+		    AND (expires_at IS NULL OR expires_at > now())`,
 		projectID, tenantID, namespace, objectID, relation)
 	if err != nil {
 		return nil, err
@@ -460,6 +469,7 @@ func (s *Store) ListObjectIDs(ctx context.Context, projectID, tenantID, namespac
 	rows, err := s.pool.Query(ctx,
 		`SELECT DISTINCT object_id FROM relation_tuples
 		  WHERE project_id=$1 AND tenant_id=$2 AND namespace=$3
+		    AND (expires_at IS NULL OR expires_at > now())
 		  ORDER BY object_id`,
 		projectID, tenantID, namespace)
 	if err != nil {
@@ -480,13 +490,14 @@ func (s *Store) ListObjectIDs(ctx context.Context, projectID, tenantID, namespac
 func (s *Store) ReadTuples(ctx context.Context, projectID, tenantID string, f service.TupleFilter) ([]authz.Tuple, error) {
 	rows, err := s.pool.Query(ctx,
 		`SELECT namespace, object_id, relation, subject_kind, subject_user_id,
-		        subject_namespace, subject_object_id, subject_relation
+		        subject_namespace, subject_object_id, subject_relation, expires_at
 		   FROM relation_tuples
 		  WHERE project_id=$1 AND tenant_id=$2
 		    AND ($3='' OR namespace=$3)
 		    AND ($4='' OR object_id=$4)
 		    AND ($5='' OR relation=$5)
 		    AND ($6='' OR subject_user_id=$6)
+		    AND (expires_at IS NULL OR expires_at > now())
 		  ORDER BY namespace, object_id, relation, subject_kind, subject_user_id,
 		           subject_namespace, subject_object_id, subject_relation`,
 		projectID, tenantID, f.Namespace, f.ObjectID, f.Relation, f.SubjectUserID)
