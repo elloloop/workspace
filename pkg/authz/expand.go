@@ -56,6 +56,11 @@ func (e *Engine) Expand(ctx context.Context, projectID, tenantID, namespace, obj
 	if err != nil {
 		return Tree{}, err
 	}
+	return e.ExpandWithModel(ctx, m, projectID, tenantID, namespace, objectID, relation, maxNodes)
+}
+
+// ExpandWithModel is Expand against an already-resolved model.
+func (e *Engine) ExpandWithModel(ctx context.Context, m Model, projectID, tenantID, namespace, objectID, relation string, maxNodes int) (Tree, error) {
 	count := 0
 	return e.expand(ctx, m, projectID, tenantID, namespace, objectID, relation, &count, maxNodes, map[string]bool{}, 0)
 }
