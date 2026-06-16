@@ -220,6 +220,7 @@ All config is via environment variables (the `GATEWAY_` prefix matches identity)
 | `GATEWAY_ALLOWED_ORIGINS` | CORS origins for browser callers, comma-separated | — |
 | `GATEWAY_HTTP_MAX_BODY_BYTES` | Maximum request body size | `1048576` |
 | `GATEWAY_MAX_LIST_OBJECTS` | Maximum candidate objects a single `ListObjects` call scans (over-cap returns `ResourceExhausted`) | `1000` |
+| `GATEWAY_MAX_EXPAND_NODES` | Maximum nodes/subjects in a single `Expand` result tree (over-cap returns `ResourceExhausted`) | `10000` |
 
 ## Deployment
 

@@ -416,6 +416,34 @@ func TestAdminGating(t *testing.T) {
 	}
 }
 
+// TestAdminRequiresServiceCredentialAndSecret pins the credential composition
+// for the model-takeover surface: reaching AdminService needs BOTH a valid
+// service credential (ServiceAuth) AND the admin secret (requireAdmin). Neither
+// alone is sufficient.
+func TestAdminRequiresServiceCredentialAndSecret(t *testing.T) {
+	h := newAdminHarness(t)
+	ctx := context.Background()
+
+	// (a) Admin secret present but NO service credential → ServiceAuth rejects.
+	noSvc := connect.NewRequest(&workspacev1.ListProjectsRequest{})
+	noSvc.Header().Set("X-Admin-Secret", adminSecret)
+	if _, err := h.admin.ListProjects(ctx, noSvc); err == nil || connect.CodeOf(err) != connect.CodeUnauthenticated {
+		t.Fatalf("admin call without a service credential: want Unauthenticated, got %v", err)
+	}
+
+	// (b) Service credential present but WRONG admin secret → requireAdmin rejects.
+	wrong := req(&workspacev1.ListProjectsRequest{})
+	wrong.Header().Set("X-Admin-Secret", "wrong-but-長-enough-admin-secret-000000")
+	if _, err := h.admin.ListProjects(ctx, wrong); err == nil || connect.CodeOf(err) != connect.CodeUnauthenticated {
+		t.Fatalf("admin call with wrong secret: want Unauthenticated, got %v", err)
+	}
+
+	// (c) Both valid → OK.
+	if _, err := h.admin.ListProjects(ctx, reqAdmin(&workspacev1.ListProjectsRequest{})); err != nil {
+		t.Fatalf("admin call with both credentials: %v", err)
+	}
+}
+
 func subjUser(id string) *workspacev1.Subject {
 	return &workspacev1.Subject{Kind: &workspacev1.Subject_UserId{UserId: id}}
 }

@@ -1243,7 +1243,7 @@
         
       
         <h3 id="workspace.v1.DeprovisionUserRequest">DeprovisionUserRequest</h3>
-        <p>DeprovisionUser deletes every relation tuple whose concrete subject is</p><p>user_id, across all namespaces AND ALL TENANTS of the project — the storage</p><p>side of "this user left / was erased; revoke everything". Erasure is</p><p>intentionally project-wide so a leaving or GDPR-erased user cannot retain</p><p>live access in a sibling tenant; tenant_id is therefore ignored here.</p>
+        <p>DeprovisionUser revokes ALL of a user's ACCESS GRANTS: it deletes every</p><p>relation tuple whose concrete subject is user_id, across all namespaces AND</p><p>ALL TENANTS of the project, so a leaving user cannot retain live access in a</p><p>sibling tenant; tenant_id is therefore ignored here. It does NOT delete the</p><p>user's PII (membership/invitation/workspace rows) — full subject erasure and</p><p>data-subject export are a separate concern (issue #14), so this RPC alone is</p><p>not a GDPR/COPPA "right to erasure".</p>
 
         
           <table class="field-table">

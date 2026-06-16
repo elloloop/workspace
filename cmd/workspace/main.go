@@ -62,6 +62,7 @@ func main() {
 			ServiceAuthTokens: cfg.ServiceAuthTokens,
 			AdminAPISecret:    cfg.AdminAPISecret,
 			MaxListObjects:    cfg.MaxListObjects,
+			MaxExpandNodes:    cfg.MaxExpandNodes,
 		},
 	})
 	if err != nil {

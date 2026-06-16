@@ -33,6 +33,9 @@ type Deps struct {
 	// MaxListObjects caps a ListObjects candidate set; non-positive uses the
 	// service default.
 	MaxListObjects int
+	// MaxExpandNodes caps an Expand result tree; non-positive uses the service
+	// default.
+	MaxExpandNodes int
 }
 
 // New builds the full HTTP handler: the four Connect services plus health
@@ -44,7 +47,9 @@ func New(ctx context.Context, d Deps) (http.Handler, error) {
 	if logger == nil {
 		logger = zap.NewNop()
 	}
-	svc := service.New(d.Repo, nil, nil, service.WithMaxListObjects(d.MaxListObjects))
+	svc := service.New(d.Repo, nil, nil,
+		service.WithMaxListObjects(d.MaxListObjects),
+		service.WithMaxExpandNodes(d.MaxExpandNodes))
 	if err := svc.EnsureDefaultProject(ctx, d.DefaultProjectID); err != nil {
 		return nil, err
 	}

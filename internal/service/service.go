@@ -29,6 +29,9 @@ type Principal struct {
 // DefaultMaxListObjects bounds a ListObjects candidate set when not overridden.
 const DefaultMaxListObjects = 1000
 
+// DefaultMaxExpandNodes bounds an Expand result tree when not overridden.
+const DefaultMaxExpandNodes = 10000
+
 type Service struct {
 	repo           Repository
 	engine         *authz.Engine
@@ -36,6 +39,7 @@ type Service struct {
 	now            func() time.Time
 	newID          func() string
 	maxListObjects int
+	maxExpandNodes int
 }
 
 // Option configures a Service at construction.
@@ -47,6 +51,16 @@ func WithMaxListObjects(n int) Option {
 	return func(s *Service) {
 		if n > 0 {
 			s.maxListObjects = n
+		}
+	}
+}
+
+// WithMaxExpandNodes caps the size of an Expand result tree; a non-positive
+// value keeps the default.
+func WithMaxExpandNodes(n int) Option {
+	return func(s *Service) {
+		if n > 0 {
+			s.maxExpandNodes = n
 		}
 	}
 }
@@ -70,6 +84,7 @@ func New(repo Repository, clock func() time.Time, idgen func() string, opts ...O
 		now:            clock,
 		newID:          idgen,
 		maxListObjects: DefaultMaxListObjects,
+		maxExpandNodes: DefaultMaxExpandNodes,
 	}
 	for _, opt := range opts {
 		opt(s)

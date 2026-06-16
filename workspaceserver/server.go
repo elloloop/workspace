@@ -30,6 +30,9 @@ type Config struct {
 	// MaxListObjects caps a ListObjects candidate set; non-positive uses the
 	// service default.
 	MaxListObjects int
+	// MaxExpandNodes caps an Expand result tree; non-positive uses the service
+	// default.
+	MaxExpandNodes int
 }
 
 // Options configures New. Repo defaults to an in-memory store; Logger
@@ -68,6 +71,7 @@ func New(ctx context.Context, opts Options) (*Server, error) {
 		ServiceAuthTokens: opts.Config.ServiceAuthTokens,
 		AdminAPISecret:    opts.Config.AdminAPISecret,
 		MaxListObjects:    opts.Config.MaxListObjects,
+		MaxExpandNodes:    opts.Config.MaxExpandNodes,
 	})
 	if err != nil {
 		return nil, err

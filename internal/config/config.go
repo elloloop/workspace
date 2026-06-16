@@ -45,10 +45,16 @@ type Config struct {
 	// MaxListObjects caps the candidate set a single ListObjects call scans,
 	// bounding its full-scan + per-object Check cost.
 	MaxListObjects int
+	// MaxExpandNodes caps the size of an Expand result tree, bounding the
+	// response a single cheap request can amplify into.
+	MaxExpandNodes int
 }
 
 // DefaultMaxListObjects bounds a ListObjects request when not overridden.
 const DefaultMaxListObjects = 1000
+
+// DefaultMaxExpandNodes bounds an Expand result tree when not overridden.
+const DefaultMaxExpandNodes = 10000
 
 // Load reads configuration from the environment, applying defaults.
 func Load() (*Config, error) {
@@ -64,6 +70,7 @@ func Load() (*Config, error) {
 		AllowedOrigins:      envCSV("GATEWAY_ALLOWED_ORIGINS"),
 		HTTPMaxBodyBytes:    int64(envInt("GATEWAY_HTTP_MAX_BODY_BYTES", 1<<20)),
 		MaxListObjects:      envInt("GATEWAY_MAX_LIST_OBJECTS", DefaultMaxListObjects),
+		MaxExpandNodes:      envInt("GATEWAY_MAX_EXPAND_NODES", DefaultMaxExpandNodes),
 	}
 	if err := c.Validate(); err != nil {
 		return nil, err

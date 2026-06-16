@@ -4436,11 +4436,13 @@ func (x *ListObjectsResponse) GetObjectIds() []string {
 	return nil
 }
 
-// DeprovisionUser deletes every relation tuple whose concrete subject is
-// user_id, across all namespaces AND ALL TENANTS of the project — the storage
-// side of "this user left / was erased; revoke everything". Erasure is
-// intentionally project-wide so a leaving or GDPR-erased user cannot retain
-// live access in a sibling tenant; tenant_id is therefore ignored here.
+// DeprovisionUser revokes ALL of a user's ACCESS GRANTS: it deletes every
+// relation tuple whose concrete subject is user_id, across all namespaces AND
+// ALL TENANTS of the project, so a leaving user cannot retain live access in a
+// sibling tenant; tenant_id is therefore ignored here. It does NOT delete the
+// user's PII (membership/invitation/workspace rows) — full subject erasure and
+// data-subject export are a separate concern (issue #14), so this RPC alone is
+// not a GDPR/COPPA "right to erasure".
 type DeprovisionUserRequest struct {
 	state     protoimpl.MessageState `protogen:"open.v1"`
 	ProjectId string                 `protobuf:"bytes,1,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`

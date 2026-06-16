@@ -74,7 +74,11 @@ func (s *Service) Expand(ctx context.Context, p Principal, namespace, objectID, 
 	if err := s.ensureProjectActive(ctx, p); err != nil {
 		return authz.Tree{}, err
 	}
-	return s.engine.Expand(ctx, p.ProjectID, p.TenantID, namespace, objectID, relation)
+	tree, err := s.engine.Expand(ctx, p.ProjectID, p.TenantID, namespace, objectID, relation, s.maxExpandNodes)
+	if errors.Is(err, authz.ErrExpandTooLarge) {
+		return authz.Tree{}, fmt.Errorf("%w: expand result exceeds %d nodes; narrow the query", ErrResourceExhausted, s.maxExpandNodes)
+	}
+	return tree, err
 }
 
 // ListObjects returns the object_ids in a namespace where subjectUserID has
@@ -93,13 +97,17 @@ func (s *Service) ListObjects(ctx context.Context, p Principal, namespace, relat
 	return ids, err
 }
 
-// DeprovisionUser deletes every relation tuple whose concrete subject is
-// userID across all namespaces AND ALL TENANTS of the caller's project,
-// returning the count removed. This is the clean revoke-everything / erase path
-// when a user leaves: it is intentionally project-wide (tenant_id on the request
-// is ignored) so a GDPR erase or offboarding cannot leave the user with live
-// grants in a sibling tenant. It also reaches grants held via group usersets,
-// which a per-subject sweep on the concrete user would otherwise miss.
+// DeprovisionUser revokes ALL of a subject's ACCESS GRANTS: it deletes every
+// relation tuple whose concrete subject is userID across all namespaces AND ALL
+// TENANTS of the caller's project, returning the count removed. It is
+// intentionally project-wide (tenant_id on the request is ignored) so
+// offboarding cannot leave the user with live grants in a sibling tenant, and it
+// reaches grants held via group usersets that a per-subject sweep would miss.
+//
+// It does NOT delete the user's PII — membership/invitation/workspace rows are
+// left intact. Full subject erasure (deleting those rows) and grant export for a
+// data-subject request are a separate concern, tracked in issue #14; do not rely
+// on this RPC alone for GDPR/COPPA "right to erasure".
 func (s *Service) DeprovisionUser(ctx context.Context, p Principal, userID string) (int, error) {
 	if userID == "" {
 		return 0, fmt.Errorf("%w: user_id is required", ErrInvalidArgument)

@@ -2,6 +2,7 @@ package authz
 
 import (
 	"context"
+	"errors"
 	"testing"
 )
 
@@ -125,12 +126,28 @@ func TestExpandUnion(t *testing.T) {
 	r.add("workspace", "w1", "member", user("bob"))
 	e := NewEngine(nil, r)
 
-	tree, err := e.Expand(context.Background(), "p", "", "workspace", "w1", "member")
+	tree, err := e.Expand(context.Background(), "p", "", "workspace", "w1", "member", 0)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(tree.Union) == 0 {
 		t.Fatal("member expansion should be a union node")
+	}
+}
+
+// TestExpandNodeCap: a tiny node cap makes Expand fail with ErrExpandTooLarge
+// instead of materializing an unbounded tree; an unbounded cap (0) succeeds.
+func TestExpandNodeCap(t *testing.T) {
+	r := &fakeReader{}
+	for _, u := range []string{"a", "b", "c", "d", "e", "f"} {
+		r.add("workspace", "w1", "owner", user(u))
+	}
+	e := NewEngine(nil, r)
+	if _, err := e.Expand(context.Background(), "p", "", "workspace", "w1", "member", 0); err != nil {
+		t.Fatalf("unbounded expand should succeed: %v", err)
+	}
+	if _, err := e.Expand(context.Background(), "p", "", "workspace", "w1", "member", 2); !errors.Is(err, ErrExpandTooLarge) {
+		t.Fatalf("tiny cap should trip ErrExpandTooLarge, got %v", err)
 	}
 }
 
@@ -231,7 +248,7 @@ func TestCheckWildcardPublic(t *testing.T) {
 			t.Errorf("wildcard grant should admit %q", u)
 		}
 	}
-	tree, err := e.Expand(context.Background(), "p", "", "resource", "pub", "viewer")
+	tree, err := e.Expand(context.Background(), "p", "", "resource", "pub", "viewer", 0)
 	if err != nil {
 		t.Fatal(err)
 	}
