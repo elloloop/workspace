@@ -30,6 +30,15 @@ type Repository interface {
 	// behind user deprovisioning/erasure: a leaving or erased user must lose
 	// access in every sibling tenant, not just one.
 	DeleteAllSubjectTuplesInProject(ctx context.Context, projectID, userID string) (int, error)
+	// ListSubjectTuplesInProject returns every tuple whose concrete subject is
+	// userID, across all namespaces AND all tenants of the project — the read
+	// sibling of DeleteAllSubjectTuplesInProject, backing subject data export.
+	// Expired tuples are excluded.
+	ListSubjectTuplesInProject(ctx context.Context, projectID, userID string) ([]TupleAt, error)
+	// ListTuplesForSubjectSetsInProject returns every tuple whose subject is one
+	// of the given usersets, across all tenants of the project (one level of
+	// group-mediated grant resolution for export). Expired tuples are excluded.
+	ListTuplesForSubjectSetsInProject(ctx context.Context, projectID string, sets []authz.SubjectSet) ([]TupleAt, error)
 
 	// ── Projects ─────────────────────────────────────────────────────
 	// Projects are the configuration/model boundary. A project carries its
@@ -70,6 +79,12 @@ type Repository interface {
 	// non-empty it restricts to groups owned by that workspace.
 	ListGroups(ctx context.Context, projectID, tenantID, workspaceID string) ([]*Group, error)
 	DeleteGroup(ctx context.Context, projectID, tenantID, id string) error
+}
+
+// TupleAt is a stored relation tuple together with the tenant it lives in.
+type TupleAt struct {
+	TenantID string
+	Tuple    authz.Tuple
 }
 
 // TupleFilter selects stored tuples by exact match on its non-empty fields.

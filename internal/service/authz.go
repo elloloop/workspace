@@ -136,6 +136,62 @@ func (s *Service) DeprovisionUser(ctx context.Context, p Principal, userID strin
 	return s.repo.DeleteAllSubjectTuplesInProject(ctx, p.ProjectID, userID)
 }
 
+// SubjectGrant is one authorization grant a subject holds (for export). ViaGroup
+// is empty for a DIRECT grant; otherwise it is the group id whose membership
+// confers the grant.
+type SubjectGrant struct {
+	TenantID  string
+	Namespace string
+	ObjectID  string
+	Relation  string
+	ViaGroup  string
+}
+
+// ExportSubjectGrants returns every grant userID holds in the caller's project,
+// across ALL tenants — direct tuples (which include the user's group
+// memberships) plus one level of group-mediated grants — for a GDPR/COPPA
+// data-subject access request. Read-only; it is an admin/export path and is not
+// gated on project suspension (a suspended project's subjects must still be able
+// to exercise access requests).
+func (s *Service) ExportSubjectGrants(ctx context.Context, p Principal, userID string) ([]SubjectGrant, error) {
+	if userID == "" {
+		return nil, fmt.Errorf("%w: user_id is required", ErrInvalidArgument)
+	}
+	direct, err := s.repo.ListSubjectTuplesInProject(ctx, p.ProjectID, userID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]SubjectGrant, 0, len(direct))
+	var groupSets []authz.SubjectSet
+	for _, ta := range direct {
+		out = append(out, SubjectGrant{
+			TenantID:  ta.TenantID,
+			Namespace: ta.Tuple.Namespace,
+			ObjectID:  ta.Tuple.ObjectID,
+			Relation:  ta.Tuple.Relation,
+		})
+		if ta.Tuple.Namespace == "group" && ta.Tuple.Relation == "member" {
+			groupSets = append(groupSets, authz.SubjectSet{Namespace: "group", ObjectID: ta.Tuple.ObjectID, Relation: "member"})
+		}
+	}
+	if len(groupSets) > 0 {
+		viaGroup, err := s.repo.ListTuplesForSubjectSetsInProject(ctx, p.ProjectID, groupSets)
+		if err != nil {
+			return nil, err
+		}
+		for _, ta := range viaGroup {
+			out = append(out, SubjectGrant{
+				TenantID:  ta.TenantID,
+				Namespace: ta.Tuple.Namespace,
+				ObjectID:  ta.Tuple.ObjectID,
+				Relation:  ta.Tuple.Relation,
+				ViaGroup:  ta.Tuple.Subject.Set.ObjectID,
+			})
+		}
+	}
+	return out, nil
+}
+
 func validateTuple(t authz.Tuple) error {
 	if t.Namespace == "" || t.ObjectID == "" || t.Relation == "" {
 		return fmt.Errorf("%w: tuple namespace, object_id, relation are required", ErrInvalidArgument)

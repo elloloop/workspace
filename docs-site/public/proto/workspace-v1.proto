@@ -612,6 +612,25 @@ message DeprovisionUserRequest {
 }
 message DeprovisionUserResponse { int64 deleted_count = 1; }
 
+// ExportSubjectGrants returns every authorization grant a user holds in a
+// project — across ALL tenants (mirroring DeprovisionUser's erase scope) — for
+// GDPR/COPPA data-subject access requests. Read-only.
+message ExportSubjectGrantsRequest {
+  string project_id = 1;
+  string user_id = 2;
+}
+// SubjectGrant is one access grant the subject holds. via_group is empty for a
+// DIRECT grant (a tuple whose subject is the user, including the user's group
+// memberships); otherwise it is the group id whose membership confers the grant.
+message SubjectGrant {
+  string tenant_id = 1;
+  string namespace = 2;
+  string object_id = 3;
+  string relation = 4;
+  string via_group = 5;
+}
+message ExportSubjectGrantsResponse { repeated SubjectGrant grants = 1; }
+
 service AuthzService {
   rpc WriteRelationTuples(WriteRelationTuplesRequest) returns (WriteRelationTuplesResponse);
   rpc ReadRelationTuples(ReadRelationTuplesRequest) returns (ReadRelationTuplesResponse);
@@ -620,6 +639,7 @@ service AuthzService {
   rpc Expand(ExpandRequest) returns (ExpandResponse);
   rpc ListObjects(ListObjectsRequest) returns (ListObjectsResponse);
   rpc DeprovisionUser(DeprovisionUserRequest) returns (DeprovisionUserResponse);
+  rpc ExportSubjectGrants(ExportSubjectGrantsRequest) returns (ExportSubjectGrantsResponse);
 }
 
 // ═══════════════════════════════════════════════════════════════════════

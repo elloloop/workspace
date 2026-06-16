@@ -654,6 +654,31 @@ components:
           $ref: '#/components/schemas/workspace.v1.UsersetTree'
       title: ExpandResponse
       additionalProperties: false
+    workspace.v1.ExportSubjectGrantsRequest:
+      type: object
+      properties:
+        projectId:
+          type: string
+          title: project_id
+        userId:
+          type: string
+          title: user_id
+      title: ExportSubjectGrantsRequest
+      additionalProperties: false
+      description: |-
+        ExportSubjectGrants returns every authorization grant a user holds in a
+         project — across ALL tenants (mirroring DeprovisionUser's erase scope) — for
+         GDPR/COPPA data-subject access requests. Read-only.
+    workspace.v1.ExportSubjectGrantsResponse:
+      type: object
+      properties:
+        grants:
+          type: array
+          items:
+            $ref: '#/components/schemas/workspace.v1.SubjectGrant'
+          title: grants
+      title: ExportSubjectGrantsResponse
+      additionalProperties: false
     workspace.v1.GetGroupRequest:
       type: object
       properties:
@@ -1264,6 +1289,30 @@ components:
         Subject is the right-hand side of a tuple: a concrete user, a userset, or
          the public wildcard (matches every user — link-sharing / published
          content).
+    workspace.v1.SubjectGrant:
+      type: object
+      properties:
+        tenantId:
+          type: string
+          title: tenant_id
+        namespace:
+          type: string
+          title: namespace
+        objectId:
+          type: string
+          title: object_id
+        relation:
+          type: string
+          title: relation
+        viaGroup:
+          type: string
+          title: via_group
+      title: SubjectGrant
+      additionalProperties: false
+      description: |-
+        SubjectGrant is one access grant the subject holds. via_group is empty for a
+         DIRECT grant (a tuple whose subject is the user, including the user's group
+         memberships); otherwise it is the group id whose membership confers the grant.
     workspace.v1.SubjectSet:
       type: object
       properties:
@@ -2640,6 +2689,41 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/workspace.v1.DeprovisionUserResponse'
+  /workspace.v1.AuthzService/ExportSubjectGrants:
+    post:
+      tags:
+        - workspace.v1.AuthzService
+      summary: ExportSubjectGrants
+      operationId: workspace.v1.AuthzService.ExportSubjectGrants
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          required: true
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+        - name: Connect-Timeout-Ms
+          in: header
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/workspace.v1.ExportSubjectGrantsRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/workspace.v1.ExportSubjectGrantsResponse'
   /workspace.v1.AdminService/CreateProject:
     post:
       tags:
