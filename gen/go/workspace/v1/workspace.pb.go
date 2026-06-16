@@ -4969,6 +4969,184 @@ func (x *DeprovisionUserResponse) GetDeletedCount() int64 {
 	return 0
 }
 
+// ExportSubjectGrants returns every authorization grant a user holds in a
+// project — across ALL tenants (mirroring DeprovisionUser's erase scope) — for
+// GDPR/COPPA data-subject access requests. Read-only.
+type ExportSubjectGrantsRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ProjectId     string                 `protobuf:"bytes,1,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
+	UserId        string                 `protobuf:"bytes,2,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ExportSubjectGrantsRequest) Reset() {
+	*x = ExportSubjectGrantsRequest{}
+	mi := &file_workspace_v1_workspace_proto_msgTypes[72]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ExportSubjectGrantsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ExportSubjectGrantsRequest) ProtoMessage() {}
+
+func (x *ExportSubjectGrantsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_workspace_v1_workspace_proto_msgTypes[72]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ExportSubjectGrantsRequest.ProtoReflect.Descriptor instead.
+func (*ExportSubjectGrantsRequest) Descriptor() ([]byte, []int) {
+	return file_workspace_v1_workspace_proto_rawDescGZIP(), []int{72}
+}
+
+func (x *ExportSubjectGrantsRequest) GetProjectId() string {
+	if x != nil {
+		return x.ProjectId
+	}
+	return ""
+}
+
+func (x *ExportSubjectGrantsRequest) GetUserId() string {
+	if x != nil {
+		return x.UserId
+	}
+	return ""
+}
+
+// SubjectGrant is one access grant the subject holds. via_group is empty for a
+// DIRECT grant (a tuple whose subject is the user, including the user's group
+// memberships); otherwise it is the group id whose membership confers the grant.
+type SubjectGrant struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	TenantId      string                 `protobuf:"bytes,1,opt,name=tenant_id,json=tenantId,proto3" json:"tenant_id,omitempty"`
+	Namespace     string                 `protobuf:"bytes,2,opt,name=namespace,proto3" json:"namespace,omitempty"`
+	ObjectId      string                 `protobuf:"bytes,3,opt,name=object_id,json=objectId,proto3" json:"object_id,omitempty"`
+	Relation      string                 `protobuf:"bytes,4,opt,name=relation,proto3" json:"relation,omitempty"`
+	ViaGroup      string                 `protobuf:"bytes,5,opt,name=via_group,json=viaGroup,proto3" json:"via_group,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SubjectGrant) Reset() {
+	*x = SubjectGrant{}
+	mi := &file_workspace_v1_workspace_proto_msgTypes[73]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SubjectGrant) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SubjectGrant) ProtoMessage() {}
+
+func (x *SubjectGrant) ProtoReflect() protoreflect.Message {
+	mi := &file_workspace_v1_workspace_proto_msgTypes[73]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SubjectGrant.ProtoReflect.Descriptor instead.
+func (*SubjectGrant) Descriptor() ([]byte, []int) {
+	return file_workspace_v1_workspace_proto_rawDescGZIP(), []int{73}
+}
+
+func (x *SubjectGrant) GetTenantId() string {
+	if x != nil {
+		return x.TenantId
+	}
+	return ""
+}
+
+func (x *SubjectGrant) GetNamespace() string {
+	if x != nil {
+		return x.Namespace
+	}
+	return ""
+}
+
+func (x *SubjectGrant) GetObjectId() string {
+	if x != nil {
+		return x.ObjectId
+	}
+	return ""
+}
+
+func (x *SubjectGrant) GetRelation() string {
+	if x != nil {
+		return x.Relation
+	}
+	return ""
+}
+
+func (x *SubjectGrant) GetViaGroup() string {
+	if x != nil {
+		return x.ViaGroup
+	}
+	return ""
+}
+
+type ExportSubjectGrantsResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Grants        []*SubjectGrant        `protobuf:"bytes,1,rep,name=grants,proto3" json:"grants,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ExportSubjectGrantsResponse) Reset() {
+	*x = ExportSubjectGrantsResponse{}
+	mi := &file_workspace_v1_workspace_proto_msgTypes[74]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ExportSubjectGrantsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ExportSubjectGrantsResponse) ProtoMessage() {}
+
+func (x *ExportSubjectGrantsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_workspace_v1_workspace_proto_msgTypes[74]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ExportSubjectGrantsResponse.ProtoReflect.Descriptor instead.
+func (*ExportSubjectGrantsResponse) Descriptor() ([]byte, []int) {
+	return file_workspace_v1_workspace_proto_rawDescGZIP(), []int{74}
+}
+
+func (x *ExportSubjectGrantsResponse) GetGrants() []*SubjectGrant {
+	if x != nil {
+		return x.Grants
+	}
+	return nil
+}
+
 type Project struct {
 	state  protoimpl.MessageState `protogen:"open.v1"`
 	Id     string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
@@ -4985,7 +5163,7 @@ type Project struct {
 
 func (x *Project) Reset() {
 	*x = Project{}
-	mi := &file_workspace_v1_workspace_proto_msgTypes[72]
+	mi := &file_workspace_v1_workspace_proto_msgTypes[75]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4997,7 +5175,7 @@ func (x *Project) String() string {
 func (*Project) ProtoMessage() {}
 
 func (x *Project) ProtoReflect() protoreflect.Message {
-	mi := &file_workspace_v1_workspace_proto_msgTypes[72]
+	mi := &file_workspace_v1_workspace_proto_msgTypes[75]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5010,7 +5188,7 @@ func (x *Project) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Project.ProtoReflect.Descriptor instead.
 func (*Project) Descriptor() ([]byte, []int) {
-	return file_workspace_v1_workspace_proto_rawDescGZIP(), []int{72}
+	return file_workspace_v1_workspace_proto_rawDescGZIP(), []int{75}
 }
 
 func (x *Project) GetId() string {
@@ -5066,7 +5244,7 @@ type CreateProjectRequest struct {
 
 func (x *CreateProjectRequest) Reset() {
 	*x = CreateProjectRequest{}
-	mi := &file_workspace_v1_workspace_proto_msgTypes[73]
+	mi := &file_workspace_v1_workspace_proto_msgTypes[76]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5078,7 +5256,7 @@ func (x *CreateProjectRequest) String() string {
 func (*CreateProjectRequest) ProtoMessage() {}
 
 func (x *CreateProjectRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_workspace_v1_workspace_proto_msgTypes[73]
+	mi := &file_workspace_v1_workspace_proto_msgTypes[76]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5091,7 +5269,7 @@ func (x *CreateProjectRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateProjectRequest.ProtoReflect.Descriptor instead.
 func (*CreateProjectRequest) Descriptor() ([]byte, []int) {
-	return file_workspace_v1_workspace_proto_rawDescGZIP(), []int{73}
+	return file_workspace_v1_workspace_proto_rawDescGZIP(), []int{76}
 }
 
 func (x *CreateProjectRequest) GetId() string {
@@ -5124,7 +5302,7 @@ type CreateProjectResponse struct {
 
 func (x *CreateProjectResponse) Reset() {
 	*x = CreateProjectResponse{}
-	mi := &file_workspace_v1_workspace_proto_msgTypes[74]
+	mi := &file_workspace_v1_workspace_proto_msgTypes[77]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5136,7 +5314,7 @@ func (x *CreateProjectResponse) String() string {
 func (*CreateProjectResponse) ProtoMessage() {}
 
 func (x *CreateProjectResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_workspace_v1_workspace_proto_msgTypes[74]
+	mi := &file_workspace_v1_workspace_proto_msgTypes[77]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5149,7 +5327,7 @@ func (x *CreateProjectResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateProjectResponse.ProtoReflect.Descriptor instead.
 func (*CreateProjectResponse) Descriptor() ([]byte, []int) {
-	return file_workspace_v1_workspace_proto_rawDescGZIP(), []int{74}
+	return file_workspace_v1_workspace_proto_rawDescGZIP(), []int{77}
 }
 
 func (x *CreateProjectResponse) GetProject() *Project {
@@ -5168,7 +5346,7 @@ type GetProjectRequest struct {
 
 func (x *GetProjectRequest) Reset() {
 	*x = GetProjectRequest{}
-	mi := &file_workspace_v1_workspace_proto_msgTypes[75]
+	mi := &file_workspace_v1_workspace_proto_msgTypes[78]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5180,7 +5358,7 @@ func (x *GetProjectRequest) String() string {
 func (*GetProjectRequest) ProtoMessage() {}
 
 func (x *GetProjectRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_workspace_v1_workspace_proto_msgTypes[75]
+	mi := &file_workspace_v1_workspace_proto_msgTypes[78]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5193,7 +5371,7 @@ func (x *GetProjectRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetProjectRequest.ProtoReflect.Descriptor instead.
 func (*GetProjectRequest) Descriptor() ([]byte, []int) {
-	return file_workspace_v1_workspace_proto_rawDescGZIP(), []int{75}
+	return file_workspace_v1_workspace_proto_rawDescGZIP(), []int{78}
 }
 
 func (x *GetProjectRequest) GetId() string {
@@ -5212,7 +5390,7 @@ type GetProjectResponse struct {
 
 func (x *GetProjectResponse) Reset() {
 	*x = GetProjectResponse{}
-	mi := &file_workspace_v1_workspace_proto_msgTypes[76]
+	mi := &file_workspace_v1_workspace_proto_msgTypes[79]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5224,7 +5402,7 @@ func (x *GetProjectResponse) String() string {
 func (*GetProjectResponse) ProtoMessage() {}
 
 func (x *GetProjectResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_workspace_v1_workspace_proto_msgTypes[76]
+	mi := &file_workspace_v1_workspace_proto_msgTypes[79]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5237,7 +5415,7 @@ func (x *GetProjectResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetProjectResponse.ProtoReflect.Descriptor instead.
 func (*GetProjectResponse) Descriptor() ([]byte, []int) {
-	return file_workspace_v1_workspace_proto_rawDescGZIP(), []int{76}
+	return file_workspace_v1_workspace_proto_rawDescGZIP(), []int{79}
 }
 
 func (x *GetProjectResponse) GetProject() *Project {
@@ -5259,7 +5437,7 @@ type UpdateProjectRequest struct {
 
 func (x *UpdateProjectRequest) Reset() {
 	*x = UpdateProjectRequest{}
-	mi := &file_workspace_v1_workspace_proto_msgTypes[77]
+	mi := &file_workspace_v1_workspace_proto_msgTypes[80]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5271,7 +5449,7 @@ func (x *UpdateProjectRequest) String() string {
 func (*UpdateProjectRequest) ProtoMessage() {}
 
 func (x *UpdateProjectRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_workspace_v1_workspace_proto_msgTypes[77]
+	mi := &file_workspace_v1_workspace_proto_msgTypes[80]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5284,7 +5462,7 @@ func (x *UpdateProjectRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateProjectRequest.ProtoReflect.Descriptor instead.
 func (*UpdateProjectRequest) Descriptor() ([]byte, []int) {
-	return file_workspace_v1_workspace_proto_rawDescGZIP(), []int{77}
+	return file_workspace_v1_workspace_proto_rawDescGZIP(), []int{80}
 }
 
 func (x *UpdateProjectRequest) GetId() string {
@@ -5324,7 +5502,7 @@ type UpdateProjectResponse struct {
 
 func (x *UpdateProjectResponse) Reset() {
 	*x = UpdateProjectResponse{}
-	mi := &file_workspace_v1_workspace_proto_msgTypes[78]
+	mi := &file_workspace_v1_workspace_proto_msgTypes[81]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5336,7 +5514,7 @@ func (x *UpdateProjectResponse) String() string {
 func (*UpdateProjectResponse) ProtoMessage() {}
 
 func (x *UpdateProjectResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_workspace_v1_workspace_proto_msgTypes[78]
+	mi := &file_workspace_v1_workspace_proto_msgTypes[81]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5349,7 +5527,7 @@ func (x *UpdateProjectResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateProjectResponse.ProtoReflect.Descriptor instead.
 func (*UpdateProjectResponse) Descriptor() ([]byte, []int) {
-	return file_workspace_v1_workspace_proto_rawDescGZIP(), []int{78}
+	return file_workspace_v1_workspace_proto_rawDescGZIP(), []int{81}
 }
 
 func (x *UpdateProjectResponse) GetProject() *Project {
@@ -5367,7 +5545,7 @@ type ListProjectsRequest struct {
 
 func (x *ListProjectsRequest) Reset() {
 	*x = ListProjectsRequest{}
-	mi := &file_workspace_v1_workspace_proto_msgTypes[79]
+	mi := &file_workspace_v1_workspace_proto_msgTypes[82]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5379,7 +5557,7 @@ func (x *ListProjectsRequest) String() string {
 func (*ListProjectsRequest) ProtoMessage() {}
 
 func (x *ListProjectsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_workspace_v1_workspace_proto_msgTypes[79]
+	mi := &file_workspace_v1_workspace_proto_msgTypes[82]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5392,7 +5570,7 @@ func (x *ListProjectsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListProjectsRequest.ProtoReflect.Descriptor instead.
 func (*ListProjectsRequest) Descriptor() ([]byte, []int) {
-	return file_workspace_v1_workspace_proto_rawDescGZIP(), []int{79}
+	return file_workspace_v1_workspace_proto_rawDescGZIP(), []int{82}
 }
 
 type ListProjectsResponse struct {
@@ -5404,7 +5582,7 @@ type ListProjectsResponse struct {
 
 func (x *ListProjectsResponse) Reset() {
 	*x = ListProjectsResponse{}
-	mi := &file_workspace_v1_workspace_proto_msgTypes[80]
+	mi := &file_workspace_v1_workspace_proto_msgTypes[83]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5416,7 +5594,7 @@ func (x *ListProjectsResponse) String() string {
 func (*ListProjectsResponse) ProtoMessage() {}
 
 func (x *ListProjectsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_workspace_v1_workspace_proto_msgTypes[80]
+	mi := &file_workspace_v1_workspace_proto_msgTypes[83]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5429,7 +5607,7 @@ func (x *ListProjectsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListProjectsResponse.ProtoReflect.Descriptor instead.
 func (*ListProjectsResponse) Descriptor() ([]byte, []int) {
-	return file_workspace_v1_workspace_proto_rawDescGZIP(), []int{80}
+	return file_workspace_v1_workspace_proto_rawDescGZIP(), []int{83}
 }
 
 func (x *ListProjectsResponse) GetProjects() []*Project {
@@ -5818,7 +5996,19 @@ const file_workspace_v1_workspace_proto_rawDesc = "" +
 	"\ttenant_id\x18\x02 \x01(\tR\btenantId\x12\x17\n" +
 	"\auser_id\x18\x03 \x01(\tR\x06userId\">\n" +
 	"\x17DeprovisionUserResponse\x12#\n" +
-	"\rdeleted_count\x18\x01 \x01(\x03R\fdeletedCount\"\xf7\x01\n" +
+	"\rdeleted_count\x18\x01 \x01(\x03R\fdeletedCount\"T\n" +
+	"\x1aExportSubjectGrantsRequest\x12\x1d\n" +
+	"\n" +
+	"project_id\x18\x01 \x01(\tR\tprojectId\x12\x17\n" +
+	"\auser_id\x18\x02 \x01(\tR\x06userId\"\x9f\x01\n" +
+	"\fSubjectGrant\x12\x1b\n" +
+	"\ttenant_id\x18\x01 \x01(\tR\btenantId\x12\x1c\n" +
+	"\tnamespace\x18\x02 \x01(\tR\tnamespace\x12\x1b\n" +
+	"\tobject_id\x18\x03 \x01(\tR\bobjectId\x12\x1a\n" +
+	"\brelation\x18\x04 \x01(\tR\brelation\x12\x1b\n" +
+	"\tvia_group\x18\x05 \x01(\tR\bviaGroup\"Q\n" +
+	"\x1bExportSubjectGrantsResponse\x122\n" +
+	"\x06grants\x18\x01 \x03(\v2\x1a.workspace.v1.SubjectGrantR\x06grants\"\xf7\x01\n" +
 	"\aProject\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x123\n" +
@@ -5904,7 +6094,7 @@ const file_workspace_v1_workspace_proto_rawDesc = "" +
 	"\vDeleteGroup\x12 .workspace.v1.DeleteGroupRequest\x1a!.workspace.v1.DeleteGroupResponse\x12[\n" +
 	"\x0eAddGroupMember\x12#.workspace.v1.AddGroupMemberRequest\x1a$.workspace.v1.AddGroupMemberResponse\x12d\n" +
 	"\x11RemoveGroupMember\x12&.workspace.v1.RemoveGroupMemberRequest\x1a'.workspace.v1.RemoveGroupMemberResponse\x12a\n" +
-	"\x10ListGroupMembers\x12%.workspace.v1.ListGroupMembersRequest\x1a&.workspace.v1.ListGroupMembersResponse2\xef\x04\n" +
+	"\x10ListGroupMembers\x12%.workspace.v1.ListGroupMembersRequest\x1a&.workspace.v1.ListGroupMembersResponse2\xdb\x05\n" +
 	"\fAuthzService\x12j\n" +
 	"\x13WriteRelationTuples\x12(.workspace.v1.WriteRelationTuplesRequest\x1a).workspace.v1.WriteRelationTuplesResponse\x12g\n" +
 	"\x12ReadRelationTuples\x12'.workspace.v1.ReadRelationTuplesRequest\x1a(.workspace.v1.ReadRelationTuplesResponse\x12@\n" +
@@ -5913,7 +6103,8 @@ const file_workspace_v1_workspace_proto_rawDesc = "" +
 	"BatchCheck\x12\x1f.workspace.v1.BatchCheckRequest\x1a .workspace.v1.BatchCheckResponse\x12C\n" +
 	"\x06Expand\x12\x1b.workspace.v1.ExpandRequest\x1a\x1c.workspace.v1.ExpandResponse\x12R\n" +
 	"\vListObjects\x12 .workspace.v1.ListObjectsRequest\x1a!.workspace.v1.ListObjectsResponse\x12^\n" +
-	"\x0fDeprovisionUser\x12$.workspace.v1.DeprovisionUserRequest\x1a%.workspace.v1.DeprovisionUserResponse2\xea\x02\n" +
+	"\x0fDeprovisionUser\x12$.workspace.v1.DeprovisionUserRequest\x1a%.workspace.v1.DeprovisionUserResponse\x12j\n" +
+	"\x13ExportSubjectGrants\x12(.workspace.v1.ExportSubjectGrantsRequest\x1a).workspace.v1.ExportSubjectGrantsResponse2\xea\x02\n" +
 	"\fAdminService\x12X\n" +
 	"\rCreateProject\x12\".workspace.v1.CreateProjectRequest\x1a#.workspace.v1.CreateProjectResponse\x12O\n" +
 	"\n" +
@@ -5934,7 +6125,7 @@ func file_workspace_v1_workspace_proto_rawDescGZIP() []byte {
 }
 
 var file_workspace_v1_workspace_proto_enumTypes = make([]protoimpl.EnumInfo, 7)
-var file_workspace_v1_workspace_proto_msgTypes = make([]protoimpl.MessageInfo, 81)
+var file_workspace_v1_workspace_proto_msgTypes = make([]protoimpl.MessageInfo, 84)
 var file_workspace_v1_workspace_proto_goTypes = []any{
 	(WorkspaceType)(0),                  // 0: workspace.v1.WorkspaceType
 	(Role)(0),                           // 1: workspace.v1.Role
@@ -6015,30 +6206,33 @@ var file_workspace_v1_workspace_proto_goTypes = []any{
 	(*ListObjectsResponse)(nil),         // 76: workspace.v1.ListObjectsResponse
 	(*DeprovisionUserRequest)(nil),      // 77: workspace.v1.DeprovisionUserRequest
 	(*DeprovisionUserResponse)(nil),     // 78: workspace.v1.DeprovisionUserResponse
-	(*Project)(nil),                     // 79: workspace.v1.Project
-	(*CreateProjectRequest)(nil),        // 80: workspace.v1.CreateProjectRequest
-	(*CreateProjectResponse)(nil),       // 81: workspace.v1.CreateProjectResponse
-	(*GetProjectRequest)(nil),           // 82: workspace.v1.GetProjectRequest
-	(*GetProjectResponse)(nil),          // 83: workspace.v1.GetProjectResponse
-	(*UpdateProjectRequest)(nil),        // 84: workspace.v1.UpdateProjectRequest
-	(*UpdateProjectResponse)(nil),       // 85: workspace.v1.UpdateProjectResponse
-	(*ListProjectsRequest)(nil),         // 86: workspace.v1.ListProjectsRequest
-	(*ListProjectsResponse)(nil),        // 87: workspace.v1.ListProjectsResponse
-	(*timestamppb.Timestamp)(nil),       // 88: google.protobuf.Timestamp
-	(*structpb.Struct)(nil),             // 89: google.protobuf.Struct
+	(*ExportSubjectGrantsRequest)(nil),  // 79: workspace.v1.ExportSubjectGrantsRequest
+	(*SubjectGrant)(nil),                // 80: workspace.v1.SubjectGrant
+	(*ExportSubjectGrantsResponse)(nil), // 81: workspace.v1.ExportSubjectGrantsResponse
+	(*Project)(nil),                     // 82: workspace.v1.Project
+	(*CreateProjectRequest)(nil),        // 83: workspace.v1.CreateProjectRequest
+	(*CreateProjectResponse)(nil),       // 84: workspace.v1.CreateProjectResponse
+	(*GetProjectRequest)(nil),           // 85: workspace.v1.GetProjectRequest
+	(*GetProjectResponse)(nil),          // 86: workspace.v1.GetProjectResponse
+	(*UpdateProjectRequest)(nil),        // 87: workspace.v1.UpdateProjectRequest
+	(*UpdateProjectResponse)(nil),       // 88: workspace.v1.UpdateProjectResponse
+	(*ListProjectsRequest)(nil),         // 89: workspace.v1.ListProjectsRequest
+	(*ListProjectsResponse)(nil),        // 90: workspace.v1.ListProjectsResponse
+	(*timestamppb.Timestamp)(nil),       // 91: google.protobuf.Timestamp
+	(*structpb.Struct)(nil),             // 92: google.protobuf.Struct
 }
 var file_workspace_v1_workspace_proto_depIdxs = []int32{
 	0,  // 0: workspace.v1.Workspace.type:type_name -> workspace.v1.WorkspaceType
-	88, // 1: workspace.v1.Workspace.created_at:type_name -> google.protobuf.Timestamp
-	88, // 2: workspace.v1.Workspace.updated_at:type_name -> google.protobuf.Timestamp
+	91, // 1: workspace.v1.Workspace.created_at:type_name -> google.protobuf.Timestamp
+	91, // 2: workspace.v1.Workspace.updated_at:type_name -> google.protobuf.Timestamp
 	1,  // 3: workspace.v1.Membership.role:type_name -> workspace.v1.Role
 	2,  // 4: workspace.v1.Membership.status:type_name -> workspace.v1.MembershipStatus
-	88, // 5: workspace.v1.Membership.created_at:type_name -> google.protobuf.Timestamp
-	88, // 6: workspace.v1.Membership.updated_at:type_name -> google.protobuf.Timestamp
+	91, // 5: workspace.v1.Membership.created_at:type_name -> google.protobuf.Timestamp
+	91, // 6: workspace.v1.Membership.updated_at:type_name -> google.protobuf.Timestamp
 	1,  // 7: workspace.v1.Invitation.role:type_name -> workspace.v1.Role
 	3,  // 8: workspace.v1.Invitation.status:type_name -> workspace.v1.InvitationStatus
-	88, // 9: workspace.v1.Invitation.created_at:type_name -> google.protobuf.Timestamp
-	88, // 10: workspace.v1.Invitation.expires_at:type_name -> google.protobuf.Timestamp
+	91, // 9: workspace.v1.Invitation.created_at:type_name -> google.protobuf.Timestamp
+	91, // 10: workspace.v1.Invitation.expires_at:type_name -> google.protobuf.Timestamp
 	7,  // 11: workspace.v1.CreateWorkspaceResponse.workspace:type_name -> workspace.v1.Workspace
 	7,  // 12: workspace.v1.GetWorkspaceResponse.workspace:type_name -> workspace.v1.Workspace
 	7,  // 13: workspace.v1.ListWorkspacesResponse.workspaces:type_name -> workspace.v1.Workspace
@@ -6055,8 +6249,8 @@ var file_workspace_v1_workspace_proto_depIdxs = []int32{
 	9,  // 24: workspace.v1.CreateInvitationResponse.invitation:type_name -> workspace.v1.Invitation
 	8,  // 25: workspace.v1.AcceptInvitationResponse.membership:type_name -> workspace.v1.Membership
 	9,  // 26: workspace.v1.ListInvitationsResponse.invitations:type_name -> workspace.v1.Invitation
-	88, // 27: workspace.v1.Group.created_at:type_name -> google.protobuf.Timestamp
-	88, // 28: workspace.v1.Group.updated_at:type_name -> google.protobuf.Timestamp
+	91, // 27: workspace.v1.Group.created_at:type_name -> google.protobuf.Timestamp
+	91, // 28: workspace.v1.Group.updated_at:type_name -> google.protobuf.Timestamp
 	42, // 29: workspace.v1.CreateGroupResponse.group:type_name -> workspace.v1.Group
 	42, // 30: workspace.v1.GetGroupResponse.group:type_name -> workspace.v1.Group
 	42, // 31: workspace.v1.ListGroupsResponse.groups:type_name -> workspace.v1.Group
@@ -6065,14 +6259,14 @@ var file_workspace_v1_workspace_proto_depIdxs = []int32{
 	43, // 34: workspace.v1.ListGroupMembersResponse.members:type_name -> workspace.v1.GroupMember
 	58, // 35: workspace.v1.Subject.set:type_name -> workspace.v1.SubjectSet
 	59, // 36: workspace.v1.RelationTuple.subject:type_name -> workspace.v1.Subject
-	88, // 37: workspace.v1.RelationTuple.expires_at:type_name -> google.protobuf.Timestamp
-	89, // 38: workspace.v1.RelationTuple.condition_params:type_name -> google.protobuf.Struct
+	91, // 37: workspace.v1.RelationTuple.expires_at:type_name -> google.protobuf.Timestamp
+	92, // 38: workspace.v1.RelationTuple.condition_params:type_name -> google.protobuf.Struct
 	5,  // 39: workspace.v1.TupleUpdate.op:type_name -> workspace.v1.TupleUpdate.Op
 	60, // 40: workspace.v1.TupleUpdate.tuple:type_name -> workspace.v1.RelationTuple
 	61, // 41: workspace.v1.WriteRelationTuplesRequest.updates:type_name -> workspace.v1.TupleUpdate
 	60, // 42: workspace.v1.ReadRelationTuplesResponse.tuples:type_name -> workspace.v1.RelationTuple
 	58, // 43: workspace.v1.CheckRequest.subject_set:type_name -> workspace.v1.SubjectSet
-	89, // 44: workspace.v1.CheckRequest.context:type_name -> google.protobuf.Struct
+	92, // 44: workspace.v1.CheckRequest.context:type_name -> google.protobuf.Struct
 	68, // 45: workspace.v1.BatchCheckRequest.items:type_name -> workspace.v1.BatchCheckItem
 	70, // 46: workspace.v1.BatchCheckResponse.results:type_name -> workspace.v1.BatchCheckResult
 	6,  // 47: workspace.v1.UsersetTree.type:type_name -> workspace.v1.UsersetTree.NodeType
@@ -6080,87 +6274,90 @@ var file_workspace_v1_workspace_proto_depIdxs = []int32{
 	73, // 49: workspace.v1.UsersetTree.children:type_name -> workspace.v1.UsersetTree
 	58, // 50: workspace.v1.UsersetTree.expanded:type_name -> workspace.v1.SubjectSet
 	73, // 51: workspace.v1.ExpandResponse.tree:type_name -> workspace.v1.UsersetTree
-	4,  // 52: workspace.v1.Project.status:type_name -> workspace.v1.ProjectStatus
-	88, // 53: workspace.v1.Project.created_at:type_name -> google.protobuf.Timestamp
-	88, // 54: workspace.v1.Project.updated_at:type_name -> google.protobuf.Timestamp
-	79, // 55: workspace.v1.CreateProjectResponse.project:type_name -> workspace.v1.Project
-	79, // 56: workspace.v1.GetProjectResponse.project:type_name -> workspace.v1.Project
-	4,  // 57: workspace.v1.UpdateProjectRequest.status:type_name -> workspace.v1.ProjectStatus
-	79, // 58: workspace.v1.UpdateProjectResponse.project:type_name -> workspace.v1.Project
-	79, // 59: workspace.v1.ListProjectsResponse.projects:type_name -> workspace.v1.Project
-	10, // 60: workspace.v1.WorkspaceService.CreateWorkspace:input_type -> workspace.v1.CreateWorkspaceRequest
-	12, // 61: workspace.v1.WorkspaceService.GetWorkspace:input_type -> workspace.v1.GetWorkspaceRequest
-	14, // 62: workspace.v1.WorkspaceService.ListWorkspaces:input_type -> workspace.v1.ListWorkspacesRequest
-	16, // 63: workspace.v1.WorkspaceService.UpdateWorkspace:input_type -> workspace.v1.UpdateWorkspaceRequest
-	18, // 64: workspace.v1.WorkspaceService.TransferOwnership:input_type -> workspace.v1.TransferOwnershipRequest
-	20, // 65: workspace.v1.WorkspaceService.DeleteWorkspace:input_type -> workspace.v1.DeleteWorkspaceRequest
-	22, // 66: workspace.v1.WorkspaceService.AddMember:input_type -> workspace.v1.AddMemberRequest
-	24, // 67: workspace.v1.WorkspaceService.UpdateMemberRole:input_type -> workspace.v1.UpdateMemberRoleRequest
-	26, // 68: workspace.v1.WorkspaceService.RemoveMember:input_type -> workspace.v1.RemoveMemberRequest
-	28, // 69: workspace.v1.WorkspaceService.SuspendMember:input_type -> workspace.v1.SuspendMemberRequest
-	30, // 70: workspace.v1.WorkspaceService.ReinstateMember:input_type -> workspace.v1.ReinstateMemberRequest
-	32, // 71: workspace.v1.WorkspaceService.ListMembers:input_type -> workspace.v1.ListMembersRequest
-	34, // 72: workspace.v1.WorkspaceService.CreateInvitation:input_type -> workspace.v1.CreateInvitationRequest
-	36, // 73: workspace.v1.WorkspaceService.AcceptInvitation:input_type -> workspace.v1.AcceptInvitationRequest
-	38, // 74: workspace.v1.WorkspaceService.ListInvitations:input_type -> workspace.v1.ListInvitationsRequest
-	40, // 75: workspace.v1.WorkspaceService.RevokeInvitation:input_type -> workspace.v1.RevokeInvitationRequest
-	44, // 76: workspace.v1.GroupService.CreateGroup:input_type -> workspace.v1.CreateGroupRequest
-	46, // 77: workspace.v1.GroupService.GetGroup:input_type -> workspace.v1.GetGroupRequest
-	48, // 78: workspace.v1.GroupService.ListGroups:input_type -> workspace.v1.ListGroupsRequest
-	50, // 79: workspace.v1.GroupService.DeleteGroup:input_type -> workspace.v1.DeleteGroupRequest
-	52, // 80: workspace.v1.GroupService.AddGroupMember:input_type -> workspace.v1.AddGroupMemberRequest
-	54, // 81: workspace.v1.GroupService.RemoveGroupMember:input_type -> workspace.v1.RemoveGroupMemberRequest
-	56, // 82: workspace.v1.GroupService.ListGroupMembers:input_type -> workspace.v1.ListGroupMembersRequest
-	62, // 83: workspace.v1.AuthzService.WriteRelationTuples:input_type -> workspace.v1.WriteRelationTuplesRequest
-	64, // 84: workspace.v1.AuthzService.ReadRelationTuples:input_type -> workspace.v1.ReadRelationTuplesRequest
-	66, // 85: workspace.v1.AuthzService.Check:input_type -> workspace.v1.CheckRequest
-	69, // 86: workspace.v1.AuthzService.BatchCheck:input_type -> workspace.v1.BatchCheckRequest
-	72, // 87: workspace.v1.AuthzService.Expand:input_type -> workspace.v1.ExpandRequest
-	75, // 88: workspace.v1.AuthzService.ListObjects:input_type -> workspace.v1.ListObjectsRequest
-	77, // 89: workspace.v1.AuthzService.DeprovisionUser:input_type -> workspace.v1.DeprovisionUserRequest
-	80, // 90: workspace.v1.AdminService.CreateProject:input_type -> workspace.v1.CreateProjectRequest
-	82, // 91: workspace.v1.AdminService.GetProject:input_type -> workspace.v1.GetProjectRequest
-	84, // 92: workspace.v1.AdminService.UpdateProject:input_type -> workspace.v1.UpdateProjectRequest
-	86, // 93: workspace.v1.AdminService.ListProjects:input_type -> workspace.v1.ListProjectsRequest
-	11, // 94: workspace.v1.WorkspaceService.CreateWorkspace:output_type -> workspace.v1.CreateWorkspaceResponse
-	13, // 95: workspace.v1.WorkspaceService.GetWorkspace:output_type -> workspace.v1.GetWorkspaceResponse
-	15, // 96: workspace.v1.WorkspaceService.ListWorkspaces:output_type -> workspace.v1.ListWorkspacesResponse
-	17, // 97: workspace.v1.WorkspaceService.UpdateWorkspace:output_type -> workspace.v1.UpdateWorkspaceResponse
-	19, // 98: workspace.v1.WorkspaceService.TransferOwnership:output_type -> workspace.v1.TransferOwnershipResponse
-	21, // 99: workspace.v1.WorkspaceService.DeleteWorkspace:output_type -> workspace.v1.DeleteWorkspaceResponse
-	23, // 100: workspace.v1.WorkspaceService.AddMember:output_type -> workspace.v1.AddMemberResponse
-	25, // 101: workspace.v1.WorkspaceService.UpdateMemberRole:output_type -> workspace.v1.UpdateMemberRoleResponse
-	27, // 102: workspace.v1.WorkspaceService.RemoveMember:output_type -> workspace.v1.RemoveMemberResponse
-	29, // 103: workspace.v1.WorkspaceService.SuspendMember:output_type -> workspace.v1.SuspendMemberResponse
-	31, // 104: workspace.v1.WorkspaceService.ReinstateMember:output_type -> workspace.v1.ReinstateMemberResponse
-	33, // 105: workspace.v1.WorkspaceService.ListMembers:output_type -> workspace.v1.ListMembersResponse
-	35, // 106: workspace.v1.WorkspaceService.CreateInvitation:output_type -> workspace.v1.CreateInvitationResponse
-	37, // 107: workspace.v1.WorkspaceService.AcceptInvitation:output_type -> workspace.v1.AcceptInvitationResponse
-	39, // 108: workspace.v1.WorkspaceService.ListInvitations:output_type -> workspace.v1.ListInvitationsResponse
-	41, // 109: workspace.v1.WorkspaceService.RevokeInvitation:output_type -> workspace.v1.RevokeInvitationResponse
-	45, // 110: workspace.v1.GroupService.CreateGroup:output_type -> workspace.v1.CreateGroupResponse
-	47, // 111: workspace.v1.GroupService.GetGroup:output_type -> workspace.v1.GetGroupResponse
-	49, // 112: workspace.v1.GroupService.ListGroups:output_type -> workspace.v1.ListGroupsResponse
-	51, // 113: workspace.v1.GroupService.DeleteGroup:output_type -> workspace.v1.DeleteGroupResponse
-	53, // 114: workspace.v1.GroupService.AddGroupMember:output_type -> workspace.v1.AddGroupMemberResponse
-	55, // 115: workspace.v1.GroupService.RemoveGroupMember:output_type -> workspace.v1.RemoveGroupMemberResponse
-	57, // 116: workspace.v1.GroupService.ListGroupMembers:output_type -> workspace.v1.ListGroupMembersResponse
-	63, // 117: workspace.v1.AuthzService.WriteRelationTuples:output_type -> workspace.v1.WriteRelationTuplesResponse
-	65, // 118: workspace.v1.AuthzService.ReadRelationTuples:output_type -> workspace.v1.ReadRelationTuplesResponse
-	67, // 119: workspace.v1.AuthzService.Check:output_type -> workspace.v1.CheckResponse
-	71, // 120: workspace.v1.AuthzService.BatchCheck:output_type -> workspace.v1.BatchCheckResponse
-	74, // 121: workspace.v1.AuthzService.Expand:output_type -> workspace.v1.ExpandResponse
-	76, // 122: workspace.v1.AuthzService.ListObjects:output_type -> workspace.v1.ListObjectsResponse
-	78, // 123: workspace.v1.AuthzService.DeprovisionUser:output_type -> workspace.v1.DeprovisionUserResponse
-	81, // 124: workspace.v1.AdminService.CreateProject:output_type -> workspace.v1.CreateProjectResponse
-	83, // 125: workspace.v1.AdminService.GetProject:output_type -> workspace.v1.GetProjectResponse
-	85, // 126: workspace.v1.AdminService.UpdateProject:output_type -> workspace.v1.UpdateProjectResponse
-	87, // 127: workspace.v1.AdminService.ListProjects:output_type -> workspace.v1.ListProjectsResponse
-	94, // [94:128] is the sub-list for method output_type
-	60, // [60:94] is the sub-list for method input_type
-	60, // [60:60] is the sub-list for extension type_name
-	60, // [60:60] is the sub-list for extension extendee
-	0,  // [0:60] is the sub-list for field type_name
+	80, // 52: workspace.v1.ExportSubjectGrantsResponse.grants:type_name -> workspace.v1.SubjectGrant
+	4,  // 53: workspace.v1.Project.status:type_name -> workspace.v1.ProjectStatus
+	91, // 54: workspace.v1.Project.created_at:type_name -> google.protobuf.Timestamp
+	91, // 55: workspace.v1.Project.updated_at:type_name -> google.protobuf.Timestamp
+	82, // 56: workspace.v1.CreateProjectResponse.project:type_name -> workspace.v1.Project
+	82, // 57: workspace.v1.GetProjectResponse.project:type_name -> workspace.v1.Project
+	4,  // 58: workspace.v1.UpdateProjectRequest.status:type_name -> workspace.v1.ProjectStatus
+	82, // 59: workspace.v1.UpdateProjectResponse.project:type_name -> workspace.v1.Project
+	82, // 60: workspace.v1.ListProjectsResponse.projects:type_name -> workspace.v1.Project
+	10, // 61: workspace.v1.WorkspaceService.CreateWorkspace:input_type -> workspace.v1.CreateWorkspaceRequest
+	12, // 62: workspace.v1.WorkspaceService.GetWorkspace:input_type -> workspace.v1.GetWorkspaceRequest
+	14, // 63: workspace.v1.WorkspaceService.ListWorkspaces:input_type -> workspace.v1.ListWorkspacesRequest
+	16, // 64: workspace.v1.WorkspaceService.UpdateWorkspace:input_type -> workspace.v1.UpdateWorkspaceRequest
+	18, // 65: workspace.v1.WorkspaceService.TransferOwnership:input_type -> workspace.v1.TransferOwnershipRequest
+	20, // 66: workspace.v1.WorkspaceService.DeleteWorkspace:input_type -> workspace.v1.DeleteWorkspaceRequest
+	22, // 67: workspace.v1.WorkspaceService.AddMember:input_type -> workspace.v1.AddMemberRequest
+	24, // 68: workspace.v1.WorkspaceService.UpdateMemberRole:input_type -> workspace.v1.UpdateMemberRoleRequest
+	26, // 69: workspace.v1.WorkspaceService.RemoveMember:input_type -> workspace.v1.RemoveMemberRequest
+	28, // 70: workspace.v1.WorkspaceService.SuspendMember:input_type -> workspace.v1.SuspendMemberRequest
+	30, // 71: workspace.v1.WorkspaceService.ReinstateMember:input_type -> workspace.v1.ReinstateMemberRequest
+	32, // 72: workspace.v1.WorkspaceService.ListMembers:input_type -> workspace.v1.ListMembersRequest
+	34, // 73: workspace.v1.WorkspaceService.CreateInvitation:input_type -> workspace.v1.CreateInvitationRequest
+	36, // 74: workspace.v1.WorkspaceService.AcceptInvitation:input_type -> workspace.v1.AcceptInvitationRequest
+	38, // 75: workspace.v1.WorkspaceService.ListInvitations:input_type -> workspace.v1.ListInvitationsRequest
+	40, // 76: workspace.v1.WorkspaceService.RevokeInvitation:input_type -> workspace.v1.RevokeInvitationRequest
+	44, // 77: workspace.v1.GroupService.CreateGroup:input_type -> workspace.v1.CreateGroupRequest
+	46, // 78: workspace.v1.GroupService.GetGroup:input_type -> workspace.v1.GetGroupRequest
+	48, // 79: workspace.v1.GroupService.ListGroups:input_type -> workspace.v1.ListGroupsRequest
+	50, // 80: workspace.v1.GroupService.DeleteGroup:input_type -> workspace.v1.DeleteGroupRequest
+	52, // 81: workspace.v1.GroupService.AddGroupMember:input_type -> workspace.v1.AddGroupMemberRequest
+	54, // 82: workspace.v1.GroupService.RemoveGroupMember:input_type -> workspace.v1.RemoveGroupMemberRequest
+	56, // 83: workspace.v1.GroupService.ListGroupMembers:input_type -> workspace.v1.ListGroupMembersRequest
+	62, // 84: workspace.v1.AuthzService.WriteRelationTuples:input_type -> workspace.v1.WriteRelationTuplesRequest
+	64, // 85: workspace.v1.AuthzService.ReadRelationTuples:input_type -> workspace.v1.ReadRelationTuplesRequest
+	66, // 86: workspace.v1.AuthzService.Check:input_type -> workspace.v1.CheckRequest
+	69, // 87: workspace.v1.AuthzService.BatchCheck:input_type -> workspace.v1.BatchCheckRequest
+	72, // 88: workspace.v1.AuthzService.Expand:input_type -> workspace.v1.ExpandRequest
+	75, // 89: workspace.v1.AuthzService.ListObjects:input_type -> workspace.v1.ListObjectsRequest
+	77, // 90: workspace.v1.AuthzService.DeprovisionUser:input_type -> workspace.v1.DeprovisionUserRequest
+	79, // 91: workspace.v1.AuthzService.ExportSubjectGrants:input_type -> workspace.v1.ExportSubjectGrantsRequest
+	83, // 92: workspace.v1.AdminService.CreateProject:input_type -> workspace.v1.CreateProjectRequest
+	85, // 93: workspace.v1.AdminService.GetProject:input_type -> workspace.v1.GetProjectRequest
+	87, // 94: workspace.v1.AdminService.UpdateProject:input_type -> workspace.v1.UpdateProjectRequest
+	89, // 95: workspace.v1.AdminService.ListProjects:input_type -> workspace.v1.ListProjectsRequest
+	11, // 96: workspace.v1.WorkspaceService.CreateWorkspace:output_type -> workspace.v1.CreateWorkspaceResponse
+	13, // 97: workspace.v1.WorkspaceService.GetWorkspace:output_type -> workspace.v1.GetWorkspaceResponse
+	15, // 98: workspace.v1.WorkspaceService.ListWorkspaces:output_type -> workspace.v1.ListWorkspacesResponse
+	17, // 99: workspace.v1.WorkspaceService.UpdateWorkspace:output_type -> workspace.v1.UpdateWorkspaceResponse
+	19, // 100: workspace.v1.WorkspaceService.TransferOwnership:output_type -> workspace.v1.TransferOwnershipResponse
+	21, // 101: workspace.v1.WorkspaceService.DeleteWorkspace:output_type -> workspace.v1.DeleteWorkspaceResponse
+	23, // 102: workspace.v1.WorkspaceService.AddMember:output_type -> workspace.v1.AddMemberResponse
+	25, // 103: workspace.v1.WorkspaceService.UpdateMemberRole:output_type -> workspace.v1.UpdateMemberRoleResponse
+	27, // 104: workspace.v1.WorkspaceService.RemoveMember:output_type -> workspace.v1.RemoveMemberResponse
+	29, // 105: workspace.v1.WorkspaceService.SuspendMember:output_type -> workspace.v1.SuspendMemberResponse
+	31, // 106: workspace.v1.WorkspaceService.ReinstateMember:output_type -> workspace.v1.ReinstateMemberResponse
+	33, // 107: workspace.v1.WorkspaceService.ListMembers:output_type -> workspace.v1.ListMembersResponse
+	35, // 108: workspace.v1.WorkspaceService.CreateInvitation:output_type -> workspace.v1.CreateInvitationResponse
+	37, // 109: workspace.v1.WorkspaceService.AcceptInvitation:output_type -> workspace.v1.AcceptInvitationResponse
+	39, // 110: workspace.v1.WorkspaceService.ListInvitations:output_type -> workspace.v1.ListInvitationsResponse
+	41, // 111: workspace.v1.WorkspaceService.RevokeInvitation:output_type -> workspace.v1.RevokeInvitationResponse
+	45, // 112: workspace.v1.GroupService.CreateGroup:output_type -> workspace.v1.CreateGroupResponse
+	47, // 113: workspace.v1.GroupService.GetGroup:output_type -> workspace.v1.GetGroupResponse
+	49, // 114: workspace.v1.GroupService.ListGroups:output_type -> workspace.v1.ListGroupsResponse
+	51, // 115: workspace.v1.GroupService.DeleteGroup:output_type -> workspace.v1.DeleteGroupResponse
+	53, // 116: workspace.v1.GroupService.AddGroupMember:output_type -> workspace.v1.AddGroupMemberResponse
+	55, // 117: workspace.v1.GroupService.RemoveGroupMember:output_type -> workspace.v1.RemoveGroupMemberResponse
+	57, // 118: workspace.v1.GroupService.ListGroupMembers:output_type -> workspace.v1.ListGroupMembersResponse
+	63, // 119: workspace.v1.AuthzService.WriteRelationTuples:output_type -> workspace.v1.WriteRelationTuplesResponse
+	65, // 120: workspace.v1.AuthzService.ReadRelationTuples:output_type -> workspace.v1.ReadRelationTuplesResponse
+	67, // 121: workspace.v1.AuthzService.Check:output_type -> workspace.v1.CheckResponse
+	71, // 122: workspace.v1.AuthzService.BatchCheck:output_type -> workspace.v1.BatchCheckResponse
+	74, // 123: workspace.v1.AuthzService.Expand:output_type -> workspace.v1.ExpandResponse
+	76, // 124: workspace.v1.AuthzService.ListObjects:output_type -> workspace.v1.ListObjectsResponse
+	78, // 125: workspace.v1.AuthzService.DeprovisionUser:output_type -> workspace.v1.DeprovisionUserResponse
+	81, // 126: workspace.v1.AuthzService.ExportSubjectGrants:output_type -> workspace.v1.ExportSubjectGrantsResponse
+	84, // 127: workspace.v1.AdminService.CreateProject:output_type -> workspace.v1.CreateProjectResponse
+	86, // 128: workspace.v1.AdminService.GetProject:output_type -> workspace.v1.GetProjectResponse
+	88, // 129: workspace.v1.AdminService.UpdateProject:output_type -> workspace.v1.UpdateProjectResponse
+	90, // 130: workspace.v1.AdminService.ListProjects:output_type -> workspace.v1.ListProjectsResponse
+	96, // [96:131] is the sub-list for method output_type
+	61, // [61:96] is the sub-list for method input_type
+	61, // [61:61] is the sub-list for extension type_name
+	61, // [61:61] is the sub-list for extension extendee
+	0,  // [0:61] is the sub-list for field type_name
 }
 
 func init() { file_workspace_v1_workspace_proto_init() }
@@ -6183,7 +6380,7 @@ func file_workspace_v1_workspace_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_workspace_v1_workspace_proto_rawDesc), len(file_workspace_v1_workspace_proto_rawDesc)),
 			NumEnums:      7,
-			NumMessages:   81,
+			NumMessages:   84,
 			NumExtensions: 0,
 			NumServices:   4,
 		},

@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/elloloop/workspace/internal/service"
@@ -565,6 +566,96 @@ func (s *Store) DeleteAllSubjectTuplesInProject(ctx context.Context, projectID, 
 		return 0, err
 	}
 	return int(tag.RowsAffected()), nil
+}
+
+const tupleAtCols = `tenant_id, namespace, object_id, relation, subject_kind, subject_user_id,
+	subject_namespace, subject_object_id, subject_relation, expires_at, condition_name, condition_params`
+
+func scanTupleAt(row pgx.Row) (service.TupleAt, error) {
+	var ta service.TupleAt
+	var t authz.Tuple
+	var kind, uid, sns, soid, srel, condName string
+	var condParams []byte
+	var expires *time.Time
+	if err := row.Scan(&ta.TenantID, &t.Namespace, &t.ObjectID, &t.Relation, &kind, &uid, &sns, &soid, &srel, &expires, &condName, &condParams); err != nil {
+		return ta, err
+	}
+	t.ExpiresAt = expires
+	switch kind {
+	case "set":
+		t.Subject.Set = &authz.SubjectSet{Namespace: sns, ObjectID: soid, Relation: srel}
+	case "wildcard":
+		t.Subject.Wildcard = true
+	default:
+		t.Subject.UserID = uid
+	}
+	if condName != "" {
+		var params map[string]any
+		if len(condParams) > 0 {
+			if err := json.Unmarshal(condParams, &params); err != nil {
+				return ta, err
+			}
+		}
+		t.Subject.Condition = &authz.Condition{Name: condName, Params: params}
+	}
+	ta.Tuple = t
+	return ta, nil
+}
+
+func (s *Store) ListSubjectTuplesInProject(ctx context.Context, projectID, userID string) ([]service.TupleAt, error) {
+	rows, err := s.pool.Query(ctx,
+		`SELECT `+tupleAtCols+`
+		   FROM relation_tuples
+		  WHERE project_id=$1 AND subject_kind='user' AND subject_user_id=$2
+		    AND (expires_at IS NULL OR expires_at > now())
+		  ORDER BY tenant_id, namespace, object_id, relation`,
+		projectID, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return collectTupleAt(rows)
+}
+
+func (s *Store) ListTuplesForSubjectSetsInProject(ctx context.Context, projectID string, sets []authz.SubjectSet) ([]service.TupleAt, error) {
+	if len(sets) == 0 {
+		return nil, nil
+	}
+	args := []any{projectID}
+	var vals strings.Builder
+	for i, st := range sets {
+		if i > 0 {
+			vals.WriteByte(',')
+		}
+		base := len(args)
+		fmt.Fprintf(&vals, "($%d,$%d,$%d)", base+1, base+2, base+3)
+		args = append(args, st.Namespace, st.ObjectID, st.Relation)
+	}
+	rows, err := s.pool.Query(ctx,
+		`SELECT `+tupleAtCols+`
+		   FROM relation_tuples
+		  WHERE project_id=$1 AND subject_kind='set'
+		    AND (subject_namespace, subject_object_id, subject_relation) IN (`+vals.String()+`)
+		    AND (expires_at IS NULL OR expires_at > now())
+		  ORDER BY tenant_id, namespace, object_id, relation`,
+		args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return collectTupleAt(rows)
+}
+
+func collectTupleAt(rows pgx.Rows) ([]service.TupleAt, error) {
+	var out []service.TupleAt
+	for rows.Next() {
+		ta, err := scanTupleAt(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, ta)
+	}
+	return out, rows.Err()
 }
 
 // ── workspaces ──────────────────────────────────────────────────────────────

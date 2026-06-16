@@ -37,6 +37,7 @@ func Run(t *testing.T, newRepo func() service.Repository) {
 		{"TenantIsolation", testTenantIsolation},
 		{"Projects", testProjects},
 		{"Deprovision", testDeprovision},
+		{"SubjectExport", testSubjectExport},
 		{"NotFound", testNotFound},
 	}
 	for _, tc := range tests {

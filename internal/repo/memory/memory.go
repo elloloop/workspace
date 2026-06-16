@@ -206,6 +206,70 @@ func (s *Store) DeleteAllSubjectTuplesInProject(_ context.Context, projectID, us
 	return n, nil
 }
 
+// tenantOfScope extracts the tenant from a "projectID\x00tenantID" scope key.
+func tenantOfScope(sk string) string {
+	if i := strings.IndexByte(sk, '\x00'); i >= 0 {
+		return sk[i+1:]
+	}
+	return ""
+}
+
+func (s *Store) ListSubjectTuplesInProject(_ context.Context, projectID, userID string) ([]service.TupleAt, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	now := time.Now()
+	prefix := projectID + "\x00"
+	var out []service.TupleAt
+	for sk, m := range s.tuples {
+		if !strings.HasPrefix(sk, prefix) {
+			continue
+		}
+		for _, t := range m {
+			if t.Subject.Set == nil && !t.Subject.Wildcard && t.Subject.UserID == userID && t.ActiveAt(now) {
+				out = append(out, service.TupleAt{TenantID: tenantOfScope(sk), Tuple: t})
+			}
+		}
+	}
+	sortTupleAt(out)
+	return out, nil
+}
+
+func (s *Store) ListTuplesForSubjectSetsInProject(_ context.Context, projectID string, sets []authz.SubjectSet) ([]service.TupleAt, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if len(sets) == 0 {
+		return nil, nil
+	}
+	want := make(map[authz.SubjectSet]bool, len(sets))
+	for _, st := range sets {
+		want[st] = true
+	}
+	now := time.Now()
+	prefix := projectID + "\x00"
+	var out []service.TupleAt
+	for sk, m := range s.tuples {
+		if !strings.HasPrefix(sk, prefix) {
+			continue
+		}
+		for _, t := range m {
+			if t.Subject.Set != nil && want[*t.Subject.Set] && t.ActiveAt(now) {
+				out = append(out, service.TupleAt{TenantID: tenantOfScope(sk), Tuple: t})
+			}
+		}
+	}
+	sortTupleAt(out)
+	return out, nil
+}
+
+func sortTupleAt(ts []service.TupleAt) {
+	sort.Slice(ts, func(i, j int) bool {
+		if ts[i].TenantID != ts[j].TenantID {
+			return ts[i].TenantID < ts[j].TenantID
+		}
+		return tupleKey(ts[i].Tuple) < tupleKey(ts[j].Tuple)
+	})
+}
+
 // ── workspaces ────────────────────────────────────────────────────────────
 
 func (s *Store) CreateWorkspace(_ context.Context, w *service.Workspace) error {

@@ -241,3 +241,22 @@ func (h *Handler) DeprovisionUser(ctx context.Context, req *connect.Request[work
 	}
 	return connect.NewResponse(&workspacev1.DeprovisionUserResponse{DeletedCount: int64(n)}), nil
 }
+
+func (h *Handler) ExportSubjectGrants(ctx context.Context, req *connect.Request[workspacev1.ExportSubjectGrantsRequest]) (*connect.Response[workspacev1.ExportSubjectGrantsResponse], error) {
+	p := service.Principal{ProjectID: h.projectOr(req.Msg.ProjectId)}
+	grants, err := h.svc.ExportSubjectGrants(ctx, p, req.Msg.UserId)
+	if err != nil {
+		return nil, errToConnect(err)
+	}
+	out := make([]*workspacev1.SubjectGrant, 0, len(grants))
+	for _, g := range grants {
+		out = append(out, &workspacev1.SubjectGrant{
+			TenantId:  g.TenantID,
+			Namespace: g.Namespace,
+			ObjectId:  g.ObjectID,
+			Relation:  g.Relation,
+			ViaGroup:  g.ViaGroup,
+		})
+	}
+	return connect.NewResponse(&workspacev1.ExportSubjectGrantsResponse{Grants: out}), nil
+}

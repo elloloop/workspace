@@ -124,6 +124,9 @@ const (
 	// AuthzServiceDeprovisionUserProcedure is the fully-qualified name of the AuthzService's
 	// DeprovisionUser RPC.
 	AuthzServiceDeprovisionUserProcedure = "/workspace.v1.AuthzService/DeprovisionUser"
+	// AuthzServiceExportSubjectGrantsProcedure is the fully-qualified name of the AuthzService's
+	// ExportSubjectGrants RPC.
+	AuthzServiceExportSubjectGrantsProcedure = "/workspace.v1.AuthzService/ExportSubjectGrants"
 	// AdminServiceCreateProjectProcedure is the fully-qualified name of the AdminService's
 	// CreateProject RPC.
 	AdminServiceCreateProjectProcedure = "/workspace.v1.AdminService/CreateProject"
@@ -832,6 +835,7 @@ type AuthzServiceClient interface {
 	Expand(context.Context, *connect.Request[v1.ExpandRequest]) (*connect.Response[v1.ExpandResponse], error)
 	ListObjects(context.Context, *connect.Request[v1.ListObjectsRequest]) (*connect.Response[v1.ListObjectsResponse], error)
 	DeprovisionUser(context.Context, *connect.Request[v1.DeprovisionUserRequest]) (*connect.Response[v1.DeprovisionUserResponse], error)
+	ExportSubjectGrants(context.Context, *connect.Request[v1.ExportSubjectGrantsRequest]) (*connect.Response[v1.ExportSubjectGrantsResponse], error)
 }
 
 // NewAuthzServiceClient constructs a client for the workspace.v1.AuthzService service. By default,
@@ -887,6 +891,12 @@ func NewAuthzServiceClient(httpClient connect.HTTPClient, baseURL string, opts .
 			connect.WithSchema(authzServiceMethods.ByName("DeprovisionUser")),
 			connect.WithClientOptions(opts...),
 		),
+		exportSubjectGrants: connect.NewClient[v1.ExportSubjectGrantsRequest, v1.ExportSubjectGrantsResponse](
+			httpClient,
+			baseURL+AuthzServiceExportSubjectGrantsProcedure,
+			connect.WithSchema(authzServiceMethods.ByName("ExportSubjectGrants")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -899,6 +909,7 @@ type authzServiceClient struct {
 	expand              *connect.Client[v1.ExpandRequest, v1.ExpandResponse]
 	listObjects         *connect.Client[v1.ListObjectsRequest, v1.ListObjectsResponse]
 	deprovisionUser     *connect.Client[v1.DeprovisionUserRequest, v1.DeprovisionUserResponse]
+	exportSubjectGrants *connect.Client[v1.ExportSubjectGrantsRequest, v1.ExportSubjectGrantsResponse]
 }
 
 // WriteRelationTuples calls workspace.v1.AuthzService.WriteRelationTuples.
@@ -936,6 +947,11 @@ func (c *authzServiceClient) DeprovisionUser(ctx context.Context, req *connect.R
 	return c.deprovisionUser.CallUnary(ctx, req)
 }
 
+// ExportSubjectGrants calls workspace.v1.AuthzService.ExportSubjectGrants.
+func (c *authzServiceClient) ExportSubjectGrants(ctx context.Context, req *connect.Request[v1.ExportSubjectGrantsRequest]) (*connect.Response[v1.ExportSubjectGrantsResponse], error) {
+	return c.exportSubjectGrants.CallUnary(ctx, req)
+}
+
 // AuthzServiceHandler is an implementation of the workspace.v1.AuthzService service.
 type AuthzServiceHandler interface {
 	WriteRelationTuples(context.Context, *connect.Request[v1.WriteRelationTuplesRequest]) (*connect.Response[v1.WriteRelationTuplesResponse], error)
@@ -945,6 +961,7 @@ type AuthzServiceHandler interface {
 	Expand(context.Context, *connect.Request[v1.ExpandRequest]) (*connect.Response[v1.ExpandResponse], error)
 	ListObjects(context.Context, *connect.Request[v1.ListObjectsRequest]) (*connect.Response[v1.ListObjectsResponse], error)
 	DeprovisionUser(context.Context, *connect.Request[v1.DeprovisionUserRequest]) (*connect.Response[v1.DeprovisionUserResponse], error)
+	ExportSubjectGrants(context.Context, *connect.Request[v1.ExportSubjectGrantsRequest]) (*connect.Response[v1.ExportSubjectGrantsResponse], error)
 }
 
 // NewAuthzServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -996,6 +1013,12 @@ func NewAuthzServiceHandler(svc AuthzServiceHandler, opts ...connect.HandlerOpti
 		connect.WithSchema(authzServiceMethods.ByName("DeprovisionUser")),
 		connect.WithHandlerOptions(opts...),
 	)
+	authzServiceExportSubjectGrantsHandler := connect.NewUnaryHandler(
+		AuthzServiceExportSubjectGrantsProcedure,
+		svc.ExportSubjectGrants,
+		connect.WithSchema(authzServiceMethods.ByName("ExportSubjectGrants")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/workspace.v1.AuthzService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case AuthzServiceWriteRelationTuplesProcedure:
@@ -1012,6 +1035,8 @@ func NewAuthzServiceHandler(svc AuthzServiceHandler, opts ...connect.HandlerOpti
 			authzServiceListObjectsHandler.ServeHTTP(w, r)
 		case AuthzServiceDeprovisionUserProcedure:
 			authzServiceDeprovisionUserHandler.ServeHTTP(w, r)
+		case AuthzServiceExportSubjectGrantsProcedure:
+			authzServiceExportSubjectGrantsHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -1047,6 +1072,10 @@ func (UnimplementedAuthzServiceHandler) ListObjects(context.Context, *connect.Re
 
 func (UnimplementedAuthzServiceHandler) DeprovisionUser(context.Context, *connect.Request[v1.DeprovisionUserRequest]) (*connect.Response[v1.DeprovisionUserResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("workspace.v1.AuthzService.DeprovisionUser is not implemented"))
+}
+
+func (UnimplementedAuthzServiceHandler) ExportSubjectGrants(context.Context, *connect.Request[v1.ExportSubjectGrantsRequest]) (*connect.Response[v1.ExportSubjectGrantsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("workspace.v1.AuthzService.ExportSubjectGrants is not implemented"))
 }
 
 // AdminServiceClient is a client for the workspace.v1.AdminService service.
