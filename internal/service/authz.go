@@ -56,39 +56,62 @@ func (s *Service) ReadTuples(ctx context.Context, p Principal, f TupleFilter) ([
 // Check evaluates a permission for the caller's project and tenant. reqContext
 // carries request-time attributes (e.g. age, consent, ip) that conditional
 // grants (caveats) are evaluated against; pass nil when there is no context.
-func (s *Service) Check(ctx context.Context, p Principal, namespace, objectID, relation, subjectUserID string, reqContext map[string]any) (bool, error) {
+func (s *Service) Check(ctx context.Context, p Principal, namespace, objectID, relation, subjectUserID string, reqContext map[string]any) (allowed bool, err error) {
 	if namespace == "" || objectID == "" || relation == "" || subjectUserID == "" {
 		return false, fmt.Errorf("%w: namespace, object_id, relation, subject_user_id are required", ErrInvalidArgument)
 	}
-	res, err := s.resolver.resolve(ctx, p.ProjectID)
-	if err != nil {
-		return false, err
+	// Emit an audit record for the final decision (after validation), never
+	// affecting the result. The nil guard keeps this free when disabled.
+	if s.decisionLog != nil {
+		defer func() {
+			s.decisionLog.Log(ctx, DecisionRecord{
+				ProjectID: p.ProjectID, TenantID: p.TenantID,
+				Namespace: namespace, ObjectID: objectID, Relation: relation,
+				SubjectUserID: subjectUserID, Allowed: allowed, Err: errString(err), DecidedAt: s.now(),
+			})
+		}()
+	}
+	res, rerr := s.resolver.resolve(ctx, p.ProjectID)
+	if rerr != nil {
+		return false, rerr
 	}
 	if res.suspended {
 		return false, nil // a suspended project denies every check
 	}
-	return s.engine.CheckWithModel(ctx, res.modelOrDefault(), p.ProjectID, p.TenantID, namespace, objectID, relation, subjectUserID, reqContext)
+	allowed, err = s.engine.CheckWithModel(ctx, res.modelOrDefault(), p.ProjectID, p.TenantID, namespace, objectID, relation, subjectUserID, reqContext)
+	return allowed, err
 }
 
 // CheckSet evaluates whether a USERSET (e.g. group:cohort-7#member) has the
 // relation — "does the queried userset intersect the relation's effective
 // userset". It mirrors Check (same suspension fail-closed) but for a set-valued
 // query subject rather than a concrete user.
-func (s *Service) CheckSet(ctx context.Context, p Principal, namespace, objectID, relation string, set authz.SubjectSet) (bool, error) {
+func (s *Service) CheckSet(ctx context.Context, p Principal, namespace, objectID, relation string, set authz.SubjectSet) (allowed bool, err error) {
 	if namespace == "" || objectID == "" || relation == "" {
 		return false, fmt.Errorf("%w: namespace, object_id, relation are required", ErrInvalidArgument)
 	}
 	if set.Namespace == "" || set.ObjectID == "" || set.Relation == "" {
 		return false, fmt.Errorf("%w: subject_set requires namespace, object_id, and relation", ErrInvalidArgument)
 	}
-	res, err := s.resolver.resolve(ctx, p.ProjectID)
-	if err != nil {
-		return false, err
+	if s.decisionLog != nil {
+		ss := set
+		defer func() {
+			s.decisionLog.Log(ctx, DecisionRecord{
+				ProjectID: p.ProjectID, TenantID: p.TenantID,
+				Namespace: namespace, ObjectID: objectID, Relation: relation,
+				SubjectSet: &ss, Allowed: allowed, Err: errString(err), DecidedAt: s.now(),
+			})
+		}()
+	}
+	res, rerr := s.resolver.resolve(ctx, p.ProjectID)
+	if rerr != nil {
+		return false, rerr
 	}
 	if res.suspended {
 		return false, nil // a suspended project denies every check
 	}
-	return s.engine.CheckSetWithModel(ctx, res.modelOrDefault(), p.ProjectID, p.TenantID, namespace, objectID, relation, set)
+	allowed, err = s.engine.CheckSetWithModel(ctx, res.modelOrDefault(), p.ProjectID, p.TenantID, namespace, objectID, relation, set)
+	return allowed, err
 }
 
 // Expand returns the userset tree for the caller's project and tenant.
