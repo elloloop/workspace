@@ -17,6 +17,9 @@ type GroupMember struct {
 // member of that workspace; standalone groups (workspaceID == "") may be
 // created by any authenticated user.
 func (s *Service) CreateGroup(ctx context.Context, p Principal, displayName, slug, workspaceID string) (*Group, error) {
+	if err := s.ensureProjectActive(ctx, p); err != nil {
+		return nil, err
+	}
 	displayName = trimName(displayName)
 	if displayName == "" {
 		return nil, fmt.Errorf("%w: display_name is required", ErrInvalidArgument)
@@ -92,6 +95,9 @@ func (s *Service) DeleteGroup(ctx context.Context, p Principal, id string) error
 }
 
 func (s *Service) AddGroupMember(ctx context.Context, p Principal, groupID string, member GroupMember) error {
+	if err := s.ensureProjectActive(ctx, p); err != nil {
+		return err
+	}
 	g, err := s.repo.GetGroup(ctx, p.ProjectID, p.TenantID, groupID)
 	if err != nil {
 		return err

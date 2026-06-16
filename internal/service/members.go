@@ -34,6 +34,11 @@ func (s *Service) AddMember(ctx context.Context, p Principal, workspaceID, userI
 
 // putMember writes the membership row and the backing role tuple.
 func (s *Service) putMember(ctx context.Context, p Principal, workspaceID, userID string, role Role) (*Membership, error) {
+	// A suspended project's data plane rejects writes (consistent with the authz
+	// plane), so it cannot accept new membership grants.
+	if err := s.ensureProjectActive(ctx, p); err != nil {
+		return nil, err
+	}
 	now := s.now()
 	m := &Membership{
 		ProjectID:   p.ProjectID,

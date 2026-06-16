@@ -17,6 +17,7 @@ const adminSecret = "test-admin-secret-0123456789abcdef-32+" //nolint:gosec // t
 
 type adminHarness struct {
 	ws    workspacev1connect.WorkspaceServiceClient
+	grp   workspacev1connect.GroupServiceClient
 	authz workspacev1connect.AuthzServiceClient
 	admin workspacev1connect.AdminServiceClient
 }
@@ -39,6 +40,7 @@ func newAdminHarness(t *testing.T) *adminHarness {
 	c := hs.Client()
 	return &adminHarness{
 		ws:    workspacev1connect.NewWorkspaceServiceClient(c, hs.URL),
+		grp:   workspacev1connect.NewGroupServiceClient(c, hs.URL),
 		authz: workspacev1connect.NewAuthzServiceClient(c, hs.URL),
 		admin: workspacev1connect.NewAdminServiceClient(c, hs.URL),
 	}

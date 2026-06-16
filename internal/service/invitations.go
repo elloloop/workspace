@@ -13,6 +13,9 @@ const InvitationTTL = 7 * 24 * time.Hour
 // admin. The returned Invitation carries the one-time plaintext token (only
 // here); the store keeps only its hash.
 func (s *Service) CreateInvitation(ctx context.Context, p Principal, workspaceID, email string, role Role) (*Invitation, string, error) {
+	if err := s.ensureProjectActive(ctx, p); err != nil {
+		return nil, "", err
+	}
 	if !role.Valid() || role == RoleOwner {
 		return nil, "", fmt.Errorf("%w: role must be admin, member, or guest", ErrInvalidArgument)
 	}

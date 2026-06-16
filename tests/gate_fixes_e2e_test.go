@@ -77,6 +77,56 @@ func TestSuspendedProjectDeniesAndUpdateIsPatch(t *testing.T) {
 	mustCheck(true)
 }
 
+// TestSuspendedProjectRejectsManagementWrites: a suspended project rejects
+// membership/workspace/group writes too (not just the authz plane) — the
+// management RPCs go through ensureProjectActive and fail closed.
+func TestSuspendedProjectRejectsManagementWrites(t *testing.T) {
+	h := newAdminHarness(t)
+	ctx := context.Background()
+
+	if _, err := h.admin.CreateProject(ctx, reqAdmin(&workspacev1.CreateProjectRequest{Id: "p3", Name: "Co"})); err != nil {
+		t.Fatalf("CreateProject: %v", err)
+	}
+	// While active, alice creates a workspace (she becomes owner).
+	created, err := h.ws.CreateWorkspace(ctx, req(&workspacev1.CreateWorkspaceRequest{
+		ActingUserId: "alice", DisplayName: "Acme", ProjectId: "p3",
+	}))
+	if err != nil {
+		t.Fatalf("CreateWorkspace (active): %v", err)
+	}
+	wsID := created.Msg.Workspace.Id
+
+	// Suspend p3.
+	if _, err := h.admin.UpdateProject(ctx, reqAdmin(&workspacev1.UpdateProjectRequest{
+		Id: "p3", Status: workspacev1.ProjectStatus_PROJECT_STATUS_SUSPENDED,
+	})); err != nil {
+		t.Fatalf("suspend: %v", err)
+	}
+
+	wantFailedPrecondition := func(label string, err error) {
+		t.Helper()
+		if err == nil || connect.CodeOf(err) != connect.CodeFailedPrecondition {
+			t.Fatalf("%s on suspended project: want FailedPrecondition, got %v", label, err)
+		}
+	}
+	_, err = h.ws.CreateWorkspace(ctx, req(&workspacev1.CreateWorkspaceRequest{ActingUserId: "alice", DisplayName: "X", ProjectId: "p3"}))
+	wantFailedPrecondition("CreateWorkspace", err)
+	_, err = h.ws.AddMember(ctx, req(&workspacev1.AddMemberRequest{ActingUserId: "alice", WorkspaceId: wsID, UserId: "bob", Role: workspacev1.Role_ROLE_MEMBER, ProjectId: "p3"}))
+	wantFailedPrecondition("AddMember", err)
+	_, err = h.grp.CreateGroup(ctx, req(&workspacev1.CreateGroupRequest{ActingUserId: "alice", DisplayName: "G", ProjectId: "p3"}))
+	wantFailedPrecondition("CreateGroup", err)
+
+	// Reinstate restores writes.
+	if _, err := h.admin.UpdateProject(ctx, reqAdmin(&workspacev1.UpdateProjectRequest{
+		Id: "p3", Status: workspacev1.ProjectStatus_PROJECT_STATUS_ACTIVE,
+	})); err != nil {
+		t.Fatalf("reinstate: %v", err)
+	}
+	if _, err := h.ws.CreateWorkspace(ctx, req(&workspacev1.CreateWorkspaceRequest{ActingUserId: "alice", DisplayName: "Y", ProjectId: "p3"})); err != nil {
+		t.Fatalf("CreateWorkspace after reinstate: %v", err)
+	}
+}
+
 // TestDefaultTenantWiring: with GATEWAY_DEFAULT_TENANT_ID configured, a request
 // that omits tenant_id lands in the configured default tenant.
 func TestDefaultTenantWiring(t *testing.T) {

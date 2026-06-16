@@ -40,6 +40,9 @@ func (s *Service) EnsurePersonalWorkspace(ctx context.Context, p Principal) (*Wo
 
 // CreateWorkspace creates a TEAM workspace owned by the caller.
 func (s *Service) CreateWorkspace(ctx context.Context, p Principal, displayName, slug string) (*Workspace, error) {
+	if err := s.ensureProjectActive(ctx, p); err != nil {
+		return nil, err
+	}
 	displayName = trimName(displayName)
 	if displayName == "" {
 		return nil, fmt.Errorf("%w: display_name is required", ErrInvalidArgument)
