@@ -3610,13 +3610,19 @@ func (*Subject_Set) isSubject_Kind() {}
 func (*Subject_Wildcard) isSubject_Kind() {}
 
 type RelationTuple struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	ProjectId     string                 `protobuf:"bytes,1,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
-	Namespace     string                 `protobuf:"bytes,2,opt,name=namespace,proto3" json:"namespace,omitempty"`
-	ObjectId      string                 `protobuf:"bytes,3,opt,name=object_id,json=objectId,proto3" json:"object_id,omitempty"`
-	Relation      string                 `protobuf:"bytes,4,opt,name=relation,proto3" json:"relation,omitempty"`
-	Subject       *Subject               `protobuf:"bytes,5,opt,name=subject,proto3" json:"subject,omitempty"`
-	TenantId      string                 `protobuf:"bytes,6,opt,name=tenant_id,json=tenantId,proto3" json:"tenant_id,omitempty"`
+	state     protoimpl.MessageState `protogen:"open.v1"`
+	ProjectId string                 `protobuf:"bytes,1,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
+	Namespace string                 `protobuf:"bytes,2,opt,name=namespace,proto3" json:"namespace,omitempty"`
+	ObjectId  string                 `protobuf:"bytes,3,opt,name=object_id,json=objectId,proto3" json:"object_id,omitempty"`
+	Relation  string                 `protobuf:"bytes,4,opt,name=relation,proto3" json:"relation,omitempty"`
+	Subject   *Subject               `protobuf:"bytes,5,opt,name=subject,proto3" json:"subject,omitempty"`
+	TenantId  string                 `protobuf:"bytes,6,opt,name=tenant_id,json=tenantId,proto3" json:"tenant_id,omitempty"`
+	// expires_at, when set, makes the grant time-bounded: the tuple stops
+	// granting access once this instant passes (enforced at read time, so Check
+	// and tuple-to-userset walks both honor it). Unset = never expires. Expiry
+	// is mutable metadata, NOT part of tuple identity: re-writing the same tuple
+	// with a new expires_at updates it; deletes still match by identity.
+	ExpiresAt     *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=expires_at,json=expiresAt,proto3" json:"expires_at,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -3691,6 +3697,13 @@ func (x *RelationTuple) GetTenantId() string {
 		return x.TenantId
 	}
 	return ""
+}
+
+func (x *RelationTuple) GetExpiresAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.ExpiresAt
+	}
+	return nil
 }
 
 type TupleUpdate struct {
@@ -5285,7 +5298,7 @@ const file_workspace_v1_workspace_proto_rawDesc = "" +
 	"\auser_id\x18\x01 \x01(\tH\x00R\x06userId\x12,\n" +
 	"\x03set\x18\x02 \x01(\v2\x18.workspace.v1.SubjectSetH\x00R\x03set\x12\x1c\n" +
 	"\bwildcard\x18\x03 \x01(\bH\x00R\bwildcardB\x06\n" +
-	"\x04kind\"\xd3\x01\n" +
+	"\x04kind\"\x8e\x02\n" +
 	"\rRelationTuple\x12\x1d\n" +
 	"\n" +
 	"project_id\x18\x01 \x01(\tR\tprojectId\x12\x1c\n" +
@@ -5293,7 +5306,9 @@ const file_workspace_v1_workspace_proto_rawDesc = "" +
 	"\tobject_id\x18\x03 \x01(\tR\bobjectId\x12\x1a\n" +
 	"\brelation\x18\x04 \x01(\tR\brelation\x12/\n" +
 	"\asubject\x18\x05 \x01(\v2\x15.workspace.v1.SubjectR\asubject\x12\x1b\n" +
-	"\ttenant_id\x18\x06 \x01(\tR\btenantId\"\xa6\x01\n" +
+	"\ttenant_id\x18\x06 \x01(\tR\btenantId\x129\n" +
+	"\n" +
+	"expires_at\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\texpiresAt\"\xa6\x01\n" +
 	"\vTupleUpdate\x12,\n" +
 	"\x02op\x18\x01 \x01(\x0e2\x1c.workspace.v1.TupleUpdate.OpR\x02op\x121\n" +
 	"\x05tuple\x18\x02 \x01(\v2\x1b.workspace.v1.RelationTupleR\x05tuple\"6\n" +
@@ -5601,92 +5616,93 @@ var file_workspace_v1_workspace_proto_depIdxs = []int32{
 	41, // 33: workspace.v1.ListGroupMembersResponse.members:type_name -> workspace.v1.GroupMember
 	56, // 34: workspace.v1.Subject.set:type_name -> workspace.v1.SubjectSet
 	57, // 35: workspace.v1.RelationTuple.subject:type_name -> workspace.v1.Subject
-	5,  // 36: workspace.v1.TupleUpdate.op:type_name -> workspace.v1.TupleUpdate.Op
-	58, // 37: workspace.v1.TupleUpdate.tuple:type_name -> workspace.v1.RelationTuple
-	59, // 38: workspace.v1.WriteRelationTuplesRequest.updates:type_name -> workspace.v1.TupleUpdate
-	58, // 39: workspace.v1.ReadRelationTuplesResponse.tuples:type_name -> workspace.v1.RelationTuple
-	6,  // 40: workspace.v1.UsersetTree.type:type_name -> workspace.v1.UsersetTree.NodeType
-	56, // 41: workspace.v1.UsersetTree.sets:type_name -> workspace.v1.SubjectSet
-	67, // 42: workspace.v1.UsersetTree.children:type_name -> workspace.v1.UsersetTree
-	56, // 43: workspace.v1.UsersetTree.expanded:type_name -> workspace.v1.SubjectSet
-	67, // 44: workspace.v1.ExpandResponse.tree:type_name -> workspace.v1.UsersetTree
-	4,  // 45: workspace.v1.Project.status:type_name -> workspace.v1.ProjectStatus
-	82, // 46: workspace.v1.Project.created_at:type_name -> google.protobuf.Timestamp
-	82, // 47: workspace.v1.Project.updated_at:type_name -> google.protobuf.Timestamp
-	73, // 48: workspace.v1.CreateProjectResponse.project:type_name -> workspace.v1.Project
-	73, // 49: workspace.v1.GetProjectResponse.project:type_name -> workspace.v1.Project
-	4,  // 50: workspace.v1.UpdateProjectRequest.status:type_name -> workspace.v1.ProjectStatus
-	73, // 51: workspace.v1.UpdateProjectResponse.project:type_name -> workspace.v1.Project
-	73, // 52: workspace.v1.ListProjectsResponse.projects:type_name -> workspace.v1.Project
-	10, // 53: workspace.v1.WorkspaceService.CreateWorkspace:input_type -> workspace.v1.CreateWorkspaceRequest
-	12, // 54: workspace.v1.WorkspaceService.GetWorkspace:input_type -> workspace.v1.GetWorkspaceRequest
-	14, // 55: workspace.v1.WorkspaceService.ListWorkspaces:input_type -> workspace.v1.ListWorkspacesRequest
-	16, // 56: workspace.v1.WorkspaceService.UpdateWorkspace:input_type -> workspace.v1.UpdateWorkspaceRequest
-	18, // 57: workspace.v1.WorkspaceService.DeleteWorkspace:input_type -> workspace.v1.DeleteWorkspaceRequest
-	20, // 58: workspace.v1.WorkspaceService.AddMember:input_type -> workspace.v1.AddMemberRequest
-	22, // 59: workspace.v1.WorkspaceService.UpdateMemberRole:input_type -> workspace.v1.UpdateMemberRoleRequest
-	24, // 60: workspace.v1.WorkspaceService.RemoveMember:input_type -> workspace.v1.RemoveMemberRequest
-	26, // 61: workspace.v1.WorkspaceService.SuspendMember:input_type -> workspace.v1.SuspendMemberRequest
-	28, // 62: workspace.v1.WorkspaceService.ReinstateMember:input_type -> workspace.v1.ReinstateMemberRequest
-	30, // 63: workspace.v1.WorkspaceService.ListMembers:input_type -> workspace.v1.ListMembersRequest
-	32, // 64: workspace.v1.WorkspaceService.CreateInvitation:input_type -> workspace.v1.CreateInvitationRequest
-	34, // 65: workspace.v1.WorkspaceService.AcceptInvitation:input_type -> workspace.v1.AcceptInvitationRequest
-	36, // 66: workspace.v1.WorkspaceService.ListInvitations:input_type -> workspace.v1.ListInvitationsRequest
-	38, // 67: workspace.v1.WorkspaceService.RevokeInvitation:input_type -> workspace.v1.RevokeInvitationRequest
-	42, // 68: workspace.v1.GroupService.CreateGroup:input_type -> workspace.v1.CreateGroupRequest
-	44, // 69: workspace.v1.GroupService.GetGroup:input_type -> workspace.v1.GetGroupRequest
-	46, // 70: workspace.v1.GroupService.ListGroups:input_type -> workspace.v1.ListGroupsRequest
-	48, // 71: workspace.v1.GroupService.DeleteGroup:input_type -> workspace.v1.DeleteGroupRequest
-	50, // 72: workspace.v1.GroupService.AddGroupMember:input_type -> workspace.v1.AddGroupMemberRequest
-	52, // 73: workspace.v1.GroupService.RemoveGroupMember:input_type -> workspace.v1.RemoveGroupMemberRequest
-	54, // 74: workspace.v1.GroupService.ListGroupMembers:input_type -> workspace.v1.ListGroupMembersRequest
-	60, // 75: workspace.v1.AuthzService.WriteRelationTuples:input_type -> workspace.v1.WriteRelationTuplesRequest
-	62, // 76: workspace.v1.AuthzService.ReadRelationTuples:input_type -> workspace.v1.ReadRelationTuplesRequest
-	64, // 77: workspace.v1.AuthzService.Check:input_type -> workspace.v1.CheckRequest
-	66, // 78: workspace.v1.AuthzService.Expand:input_type -> workspace.v1.ExpandRequest
-	69, // 79: workspace.v1.AuthzService.ListObjects:input_type -> workspace.v1.ListObjectsRequest
-	71, // 80: workspace.v1.AuthzService.DeprovisionUser:input_type -> workspace.v1.DeprovisionUserRequest
-	74, // 81: workspace.v1.AdminService.CreateProject:input_type -> workspace.v1.CreateProjectRequest
-	76, // 82: workspace.v1.AdminService.GetProject:input_type -> workspace.v1.GetProjectRequest
-	78, // 83: workspace.v1.AdminService.UpdateProject:input_type -> workspace.v1.UpdateProjectRequest
-	80, // 84: workspace.v1.AdminService.ListProjects:input_type -> workspace.v1.ListProjectsRequest
-	11, // 85: workspace.v1.WorkspaceService.CreateWorkspace:output_type -> workspace.v1.CreateWorkspaceResponse
-	13, // 86: workspace.v1.WorkspaceService.GetWorkspace:output_type -> workspace.v1.GetWorkspaceResponse
-	15, // 87: workspace.v1.WorkspaceService.ListWorkspaces:output_type -> workspace.v1.ListWorkspacesResponse
-	17, // 88: workspace.v1.WorkspaceService.UpdateWorkspace:output_type -> workspace.v1.UpdateWorkspaceResponse
-	19, // 89: workspace.v1.WorkspaceService.DeleteWorkspace:output_type -> workspace.v1.DeleteWorkspaceResponse
-	21, // 90: workspace.v1.WorkspaceService.AddMember:output_type -> workspace.v1.AddMemberResponse
-	23, // 91: workspace.v1.WorkspaceService.UpdateMemberRole:output_type -> workspace.v1.UpdateMemberRoleResponse
-	25, // 92: workspace.v1.WorkspaceService.RemoveMember:output_type -> workspace.v1.RemoveMemberResponse
-	27, // 93: workspace.v1.WorkspaceService.SuspendMember:output_type -> workspace.v1.SuspendMemberResponse
-	29, // 94: workspace.v1.WorkspaceService.ReinstateMember:output_type -> workspace.v1.ReinstateMemberResponse
-	31, // 95: workspace.v1.WorkspaceService.ListMembers:output_type -> workspace.v1.ListMembersResponse
-	33, // 96: workspace.v1.WorkspaceService.CreateInvitation:output_type -> workspace.v1.CreateInvitationResponse
-	35, // 97: workspace.v1.WorkspaceService.AcceptInvitation:output_type -> workspace.v1.AcceptInvitationResponse
-	37, // 98: workspace.v1.WorkspaceService.ListInvitations:output_type -> workspace.v1.ListInvitationsResponse
-	39, // 99: workspace.v1.WorkspaceService.RevokeInvitation:output_type -> workspace.v1.RevokeInvitationResponse
-	43, // 100: workspace.v1.GroupService.CreateGroup:output_type -> workspace.v1.CreateGroupResponse
-	45, // 101: workspace.v1.GroupService.GetGroup:output_type -> workspace.v1.GetGroupResponse
-	47, // 102: workspace.v1.GroupService.ListGroups:output_type -> workspace.v1.ListGroupsResponse
-	49, // 103: workspace.v1.GroupService.DeleteGroup:output_type -> workspace.v1.DeleteGroupResponse
-	51, // 104: workspace.v1.GroupService.AddGroupMember:output_type -> workspace.v1.AddGroupMemberResponse
-	53, // 105: workspace.v1.GroupService.RemoveGroupMember:output_type -> workspace.v1.RemoveGroupMemberResponse
-	55, // 106: workspace.v1.GroupService.ListGroupMembers:output_type -> workspace.v1.ListGroupMembersResponse
-	61, // 107: workspace.v1.AuthzService.WriteRelationTuples:output_type -> workspace.v1.WriteRelationTuplesResponse
-	63, // 108: workspace.v1.AuthzService.ReadRelationTuples:output_type -> workspace.v1.ReadRelationTuplesResponse
-	65, // 109: workspace.v1.AuthzService.Check:output_type -> workspace.v1.CheckResponse
-	68, // 110: workspace.v1.AuthzService.Expand:output_type -> workspace.v1.ExpandResponse
-	70, // 111: workspace.v1.AuthzService.ListObjects:output_type -> workspace.v1.ListObjectsResponse
-	72, // 112: workspace.v1.AuthzService.DeprovisionUser:output_type -> workspace.v1.DeprovisionUserResponse
-	75, // 113: workspace.v1.AdminService.CreateProject:output_type -> workspace.v1.CreateProjectResponse
-	77, // 114: workspace.v1.AdminService.GetProject:output_type -> workspace.v1.GetProjectResponse
-	79, // 115: workspace.v1.AdminService.UpdateProject:output_type -> workspace.v1.UpdateProjectResponse
-	81, // 116: workspace.v1.AdminService.ListProjects:output_type -> workspace.v1.ListProjectsResponse
-	85, // [85:117] is the sub-list for method output_type
-	53, // [53:85] is the sub-list for method input_type
-	53, // [53:53] is the sub-list for extension type_name
-	53, // [53:53] is the sub-list for extension extendee
-	0,  // [0:53] is the sub-list for field type_name
+	82, // 36: workspace.v1.RelationTuple.expires_at:type_name -> google.protobuf.Timestamp
+	5,  // 37: workspace.v1.TupleUpdate.op:type_name -> workspace.v1.TupleUpdate.Op
+	58, // 38: workspace.v1.TupleUpdate.tuple:type_name -> workspace.v1.RelationTuple
+	59, // 39: workspace.v1.WriteRelationTuplesRequest.updates:type_name -> workspace.v1.TupleUpdate
+	58, // 40: workspace.v1.ReadRelationTuplesResponse.tuples:type_name -> workspace.v1.RelationTuple
+	6,  // 41: workspace.v1.UsersetTree.type:type_name -> workspace.v1.UsersetTree.NodeType
+	56, // 42: workspace.v1.UsersetTree.sets:type_name -> workspace.v1.SubjectSet
+	67, // 43: workspace.v1.UsersetTree.children:type_name -> workspace.v1.UsersetTree
+	56, // 44: workspace.v1.UsersetTree.expanded:type_name -> workspace.v1.SubjectSet
+	67, // 45: workspace.v1.ExpandResponse.tree:type_name -> workspace.v1.UsersetTree
+	4,  // 46: workspace.v1.Project.status:type_name -> workspace.v1.ProjectStatus
+	82, // 47: workspace.v1.Project.created_at:type_name -> google.protobuf.Timestamp
+	82, // 48: workspace.v1.Project.updated_at:type_name -> google.protobuf.Timestamp
+	73, // 49: workspace.v1.CreateProjectResponse.project:type_name -> workspace.v1.Project
+	73, // 50: workspace.v1.GetProjectResponse.project:type_name -> workspace.v1.Project
+	4,  // 51: workspace.v1.UpdateProjectRequest.status:type_name -> workspace.v1.ProjectStatus
+	73, // 52: workspace.v1.UpdateProjectResponse.project:type_name -> workspace.v1.Project
+	73, // 53: workspace.v1.ListProjectsResponse.projects:type_name -> workspace.v1.Project
+	10, // 54: workspace.v1.WorkspaceService.CreateWorkspace:input_type -> workspace.v1.CreateWorkspaceRequest
+	12, // 55: workspace.v1.WorkspaceService.GetWorkspace:input_type -> workspace.v1.GetWorkspaceRequest
+	14, // 56: workspace.v1.WorkspaceService.ListWorkspaces:input_type -> workspace.v1.ListWorkspacesRequest
+	16, // 57: workspace.v1.WorkspaceService.UpdateWorkspace:input_type -> workspace.v1.UpdateWorkspaceRequest
+	18, // 58: workspace.v1.WorkspaceService.DeleteWorkspace:input_type -> workspace.v1.DeleteWorkspaceRequest
+	20, // 59: workspace.v1.WorkspaceService.AddMember:input_type -> workspace.v1.AddMemberRequest
+	22, // 60: workspace.v1.WorkspaceService.UpdateMemberRole:input_type -> workspace.v1.UpdateMemberRoleRequest
+	24, // 61: workspace.v1.WorkspaceService.RemoveMember:input_type -> workspace.v1.RemoveMemberRequest
+	26, // 62: workspace.v1.WorkspaceService.SuspendMember:input_type -> workspace.v1.SuspendMemberRequest
+	28, // 63: workspace.v1.WorkspaceService.ReinstateMember:input_type -> workspace.v1.ReinstateMemberRequest
+	30, // 64: workspace.v1.WorkspaceService.ListMembers:input_type -> workspace.v1.ListMembersRequest
+	32, // 65: workspace.v1.WorkspaceService.CreateInvitation:input_type -> workspace.v1.CreateInvitationRequest
+	34, // 66: workspace.v1.WorkspaceService.AcceptInvitation:input_type -> workspace.v1.AcceptInvitationRequest
+	36, // 67: workspace.v1.WorkspaceService.ListInvitations:input_type -> workspace.v1.ListInvitationsRequest
+	38, // 68: workspace.v1.WorkspaceService.RevokeInvitation:input_type -> workspace.v1.RevokeInvitationRequest
+	42, // 69: workspace.v1.GroupService.CreateGroup:input_type -> workspace.v1.CreateGroupRequest
+	44, // 70: workspace.v1.GroupService.GetGroup:input_type -> workspace.v1.GetGroupRequest
+	46, // 71: workspace.v1.GroupService.ListGroups:input_type -> workspace.v1.ListGroupsRequest
+	48, // 72: workspace.v1.GroupService.DeleteGroup:input_type -> workspace.v1.DeleteGroupRequest
+	50, // 73: workspace.v1.GroupService.AddGroupMember:input_type -> workspace.v1.AddGroupMemberRequest
+	52, // 74: workspace.v1.GroupService.RemoveGroupMember:input_type -> workspace.v1.RemoveGroupMemberRequest
+	54, // 75: workspace.v1.GroupService.ListGroupMembers:input_type -> workspace.v1.ListGroupMembersRequest
+	60, // 76: workspace.v1.AuthzService.WriteRelationTuples:input_type -> workspace.v1.WriteRelationTuplesRequest
+	62, // 77: workspace.v1.AuthzService.ReadRelationTuples:input_type -> workspace.v1.ReadRelationTuplesRequest
+	64, // 78: workspace.v1.AuthzService.Check:input_type -> workspace.v1.CheckRequest
+	66, // 79: workspace.v1.AuthzService.Expand:input_type -> workspace.v1.ExpandRequest
+	69, // 80: workspace.v1.AuthzService.ListObjects:input_type -> workspace.v1.ListObjectsRequest
+	71, // 81: workspace.v1.AuthzService.DeprovisionUser:input_type -> workspace.v1.DeprovisionUserRequest
+	74, // 82: workspace.v1.AdminService.CreateProject:input_type -> workspace.v1.CreateProjectRequest
+	76, // 83: workspace.v1.AdminService.GetProject:input_type -> workspace.v1.GetProjectRequest
+	78, // 84: workspace.v1.AdminService.UpdateProject:input_type -> workspace.v1.UpdateProjectRequest
+	80, // 85: workspace.v1.AdminService.ListProjects:input_type -> workspace.v1.ListProjectsRequest
+	11, // 86: workspace.v1.WorkspaceService.CreateWorkspace:output_type -> workspace.v1.CreateWorkspaceResponse
+	13, // 87: workspace.v1.WorkspaceService.GetWorkspace:output_type -> workspace.v1.GetWorkspaceResponse
+	15, // 88: workspace.v1.WorkspaceService.ListWorkspaces:output_type -> workspace.v1.ListWorkspacesResponse
+	17, // 89: workspace.v1.WorkspaceService.UpdateWorkspace:output_type -> workspace.v1.UpdateWorkspaceResponse
+	19, // 90: workspace.v1.WorkspaceService.DeleteWorkspace:output_type -> workspace.v1.DeleteWorkspaceResponse
+	21, // 91: workspace.v1.WorkspaceService.AddMember:output_type -> workspace.v1.AddMemberResponse
+	23, // 92: workspace.v1.WorkspaceService.UpdateMemberRole:output_type -> workspace.v1.UpdateMemberRoleResponse
+	25, // 93: workspace.v1.WorkspaceService.RemoveMember:output_type -> workspace.v1.RemoveMemberResponse
+	27, // 94: workspace.v1.WorkspaceService.SuspendMember:output_type -> workspace.v1.SuspendMemberResponse
+	29, // 95: workspace.v1.WorkspaceService.ReinstateMember:output_type -> workspace.v1.ReinstateMemberResponse
+	31, // 96: workspace.v1.WorkspaceService.ListMembers:output_type -> workspace.v1.ListMembersResponse
+	33, // 97: workspace.v1.WorkspaceService.CreateInvitation:output_type -> workspace.v1.CreateInvitationResponse
+	35, // 98: workspace.v1.WorkspaceService.AcceptInvitation:output_type -> workspace.v1.AcceptInvitationResponse
+	37, // 99: workspace.v1.WorkspaceService.ListInvitations:output_type -> workspace.v1.ListInvitationsResponse
+	39, // 100: workspace.v1.WorkspaceService.RevokeInvitation:output_type -> workspace.v1.RevokeInvitationResponse
+	43, // 101: workspace.v1.GroupService.CreateGroup:output_type -> workspace.v1.CreateGroupResponse
+	45, // 102: workspace.v1.GroupService.GetGroup:output_type -> workspace.v1.GetGroupResponse
+	47, // 103: workspace.v1.GroupService.ListGroups:output_type -> workspace.v1.ListGroupsResponse
+	49, // 104: workspace.v1.GroupService.DeleteGroup:output_type -> workspace.v1.DeleteGroupResponse
+	51, // 105: workspace.v1.GroupService.AddGroupMember:output_type -> workspace.v1.AddGroupMemberResponse
+	53, // 106: workspace.v1.GroupService.RemoveGroupMember:output_type -> workspace.v1.RemoveGroupMemberResponse
+	55, // 107: workspace.v1.GroupService.ListGroupMembers:output_type -> workspace.v1.ListGroupMembersResponse
+	61, // 108: workspace.v1.AuthzService.WriteRelationTuples:output_type -> workspace.v1.WriteRelationTuplesResponse
+	63, // 109: workspace.v1.AuthzService.ReadRelationTuples:output_type -> workspace.v1.ReadRelationTuplesResponse
+	65, // 110: workspace.v1.AuthzService.Check:output_type -> workspace.v1.CheckResponse
+	68, // 111: workspace.v1.AuthzService.Expand:output_type -> workspace.v1.ExpandResponse
+	70, // 112: workspace.v1.AuthzService.ListObjects:output_type -> workspace.v1.ListObjectsResponse
+	72, // 113: workspace.v1.AuthzService.DeprovisionUser:output_type -> workspace.v1.DeprovisionUserResponse
+	75, // 114: workspace.v1.AdminService.CreateProject:output_type -> workspace.v1.CreateProjectResponse
+	77, // 115: workspace.v1.AdminService.GetProject:output_type -> workspace.v1.GetProjectResponse
+	79, // 116: workspace.v1.AdminService.UpdateProject:output_type -> workspace.v1.UpdateProjectResponse
+	81, // 117: workspace.v1.AdminService.ListProjects:output_type -> workspace.v1.ListProjectsResponse
+	86, // [86:118] is the sub-list for method output_type
+	54, // [54:86] is the sub-list for method input_type
+	54, // [54:54] is the sub-list for extension type_name
+	54, // [54:54] is the sub-list for extension extendee
+	0,  // [0:54] is the sub-list for field type_name
 }
 
 func init() { file_workspace_v1_workspace_proto_init() }

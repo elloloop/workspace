@@ -3,8 +3,10 @@ package connect
 import (
 	"context"
 	"errors"
+	"time"
 
 	"connectrpc.com/connect"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	workspacev1 "github.com/elloloop/workspace/gen/go/workspace/v1"
 	"github.com/elloloop/workspace/internal/service"
@@ -56,7 +58,10 @@ func tupleFromProto(t *workspacev1.RelationTuple) (authz.Tuple, error) {
 	if err != nil {
 		return authz.Tuple{}, err
 	}
-	return authz.Tuple{Namespace: t.Namespace, ObjectID: t.ObjectId, Relation: t.Relation, Subject: subj}, nil
+	return authz.Tuple{
+		Namespace: t.Namespace, ObjectID: t.ObjectId, Relation: t.Relation,
+		Subject: subj, ExpiresAt: optTime(t.ExpiresAt),
+	}, nil
 }
 
 func tupleToProto(projectID, tenantID string, t authz.Tuple) *workspacev1.RelationTuple {
@@ -67,7 +72,25 @@ func tupleToProto(projectID, tenantID string, t authz.Tuple) *workspacev1.Relati
 		ObjectId:  t.ObjectID,
 		Relation:  t.Relation,
 		Subject:   subjectToProto(t.Subject),
+		ExpiresAt: optTimestamp(t.ExpiresAt),
 	}
+}
+
+// optTime converts an optional proto timestamp to *time.Time (nil = unset).
+func optTime(ts *timestamppb.Timestamp) *time.Time {
+	if ts == nil {
+		return nil
+	}
+	t := ts.AsTime()
+	return &t
+}
+
+// optTimestamp converts an optional *time.Time to a proto timestamp.
+func optTimestamp(t *time.Time) *timestamppb.Timestamp {
+	if t == nil {
+		return nil
+	}
+	return timestamppb.New(*t)
 }
 
 func (h *Handler) WriteRelationTuples(ctx context.Context, req *connect.Request[workspacev1.WriteRelationTuplesRequest]) (*connect.Response[workspacev1.WriteRelationTuplesResponse], error) {

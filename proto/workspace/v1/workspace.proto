@@ -438,6 +438,12 @@ message RelationTuple {
   string relation = 4;
   Subject subject = 5;
   string tenant_id = 6;
+  // expires_at, when set, makes the grant time-bounded: the tuple stops
+  // granting access once this instant passes (enforced at read time, so Check
+  // and tuple-to-userset walks both honor it). Unset = never expires. Expiry
+  // is mutable metadata, NOT part of tuple identity: re-writing the same tuple
+  // with a new expires_at updates it; deletes still match by identity.
+  google.protobuf.Timestamp expires_at = 7;
 }
 
 message TupleUpdate {

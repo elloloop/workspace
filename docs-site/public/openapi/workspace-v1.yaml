@@ -989,6 +989,15 @@ components:
         tenantId:
           type: string
           title: tenant_id
+        expiresAt:
+          title: expires_at
+          description: |-
+            expires_at, when set, makes the grant time-bounded: the tuple stops
+             granting access once this instant passes (enforced at read time, so Check
+             and tuple-to-userset walks both honor it). Unset = never expires. Expiry
+             is mutable metadata, NOT part of tuple identity: re-writing the same tuple
+             with a new expires_at updates it; deletes still match by identity.
+          $ref: '#/components/schemas/google.protobuf.Timestamp'
       title: RelationTuple
       additionalProperties: false
     workspace.v1.RemoveGroupMemberRequest:
