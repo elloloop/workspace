@@ -18,13 +18,18 @@ import (
 // Config is the embedder-facing subset of service configuration.
 type Config struct {
 	DefaultProjectID string
-	AllowedOrigins   []string
+	// DefaultTenantID is applied when a request omits tenant_id.
+	DefaultTenantID string
+	AllowedOrigins  []string
 	// ServiceAuthTokens are the accepted service credentials. Empty disables
 	// the requirement (trusted network / mesh).
 	ServiceAuthTokens []string
 	// AdminAPISecret gates the AdminService (project configuration). Empty
 	// disables the admin RPCs.
 	AdminAPISecret string
+	// MaxListObjects caps a ListObjects candidate set; non-positive uses the
+	// service default.
+	MaxListObjects int
 }
 
 // Options configures New. Repo defaults to an in-memory store; Logger
@@ -58,9 +63,11 @@ func New(ctx context.Context, opts Options) (*Server, error) {
 		Logger:            logger,
 		Repo:              repo,
 		DefaultProjectID:  projectID,
+		DefaultTenantID:   opts.Config.DefaultTenantID,
 		AllowedOrigins:    opts.Config.AllowedOrigins,
 		ServiceAuthTokens: opts.Config.ServiceAuthTokens,
 		AdminAPISecret:    opts.Config.AdminAPISecret,
+		MaxListObjects:    opts.Config.MaxListObjects,
 	})
 	if err != nil {
 		return nil, err

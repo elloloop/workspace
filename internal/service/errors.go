@@ -10,4 +10,5 @@ var (
 	ErrInvalidArgument    = errors.New("invalid argument")
 	ErrPermissionDenied   = errors.New("permission denied")
 	ErrFailedPrecondition = errors.New("failed precondition")
+	ErrResourceExhausted  = errors.New("resource exhausted")
 )

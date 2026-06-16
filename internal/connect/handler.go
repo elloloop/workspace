@@ -23,19 +23,27 @@ import (
 type Handler struct {
 	svc              *service.Service
 	defaultProjectID string
+	// defaultTenantID is applied when a request omits tenant_id (the project's
+	// default tenant), symmetric with defaultProjectID.
+	defaultTenantID string
 	// adminSecret gates the AdminService (project configuration). Empty
 	// disables the admin RPCs entirely, mirroring identity.
 	adminSecret string
 }
 
-// NewHandler builds the Connect handler for svc. defaultProjectID is applied
-// when a request omits project_id (single-project deployments). adminSecret
-// gates the AdminService; empty disables it.
-func NewHandler(svc *service.Service, defaultProjectID, adminSecret string) *Handler {
+// NewHandler builds the Connect handler for svc. defaultProjectID/defaultTenantID
+// are applied when a request omits project_id/tenant_id (single-shard
+// deployments). adminSecret gates the AdminService; empty disables it.
+func NewHandler(svc *service.Service, defaultProjectID, defaultTenantID, adminSecret string) *Handler {
 	if defaultProjectID == "" {
 		defaultProjectID = "default"
 	}
-	return &Handler{svc: svc, defaultProjectID: defaultProjectID, adminSecret: adminSecret}
+	return &Handler{
+		svc:              svc,
+		defaultProjectID: defaultProjectID,
+		defaultTenantID:  defaultTenantID,
+		adminSecret:      adminSecret,
+	}
 }
 
 // acting builds the Principal a management RPC acts as. acting_user_id is
@@ -46,13 +54,13 @@ func (h *Handler) acting(actingUserID, projectID, tenantID string) (service.Prin
 	if actingUserID == "" {
 		return service.Principal{}, connect.NewError(connect.CodeInvalidArgument, errors.New("acting_user_id is required"))
 	}
-	return service.Principal{UserID: actingUserID, ProjectID: h.projectOr(projectID), TenantID: tenantID}, nil
+	return service.Principal{UserID: actingUserID, ProjectID: h.projectOr(projectID), TenantID: h.tenantOr(tenantID)}, nil
 }
 
 // scope is the Principal for an authz RPC: only the project/tenant matter; the
 // subject is a request argument, not the caller.
 func (h *Handler) scope(projectID, tenantID string) service.Principal {
-	return service.Principal{ProjectID: h.projectOr(projectID), TenantID: tenantID}
+	return service.Principal{ProjectID: h.projectOr(projectID), TenantID: h.tenantOr(tenantID)}
 }
 
 func (h *Handler) projectOr(projectID string) string {
@@ -60,6 +68,13 @@ func (h *Handler) projectOr(projectID string) string {
 		return h.defaultProjectID
 	}
 	return projectID
+}
+
+func (h *Handler) tenantOr(tenantID string) string {
+	if tenantID == "" {
+		return h.defaultTenantID
+	}
+	return tenantID
 }
 
 // errToConnect maps service sentinel errors to Connect status codes.
@@ -77,6 +92,8 @@ func errToConnect(err error) error {
 		return connect.NewError(connect.CodePermissionDenied, err)
 	case errors.Is(err, service.ErrFailedPrecondition):
 		return connect.NewError(connect.CodeFailedPrecondition, err)
+	case errors.Is(err, service.ErrResourceExhausted):
+		return connect.NewError(connect.CodeResourceExhausted, err)
 	default:
 		return connect.NewError(connect.CodeInternal, err)
 	}

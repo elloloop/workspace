@@ -42,10 +42,14 @@ func projectStatusToProto(s service.ProjectStatus) workspacev1.ProjectStatus {
 }
 
 func projectStatusFromProto(s workspacev1.ProjectStatus) service.ProjectStatus {
-	if s == workspacev1.ProjectStatus_PROJECT_STATUS_SUSPENDED {
+	switch s {
+	case workspacev1.ProjectStatus_PROJECT_STATUS_ACTIVE:
+		return service.ProjectActive
+	case workspacev1.ProjectStatus_PROJECT_STATUS_SUSPENDED:
 		return service.ProjectSuspended
+	default:
+		return "" // unspecified — UpdateProject leaves the status unchanged
 	}
-	return service.ProjectActive
 }
 
 func projectToProto(p *service.Project) (*workspacev1.Project, error) {

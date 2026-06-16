@@ -26,19 +26,36 @@ type Principal struct {
 // Service implements the product surface (workspaces, groups, invitations)
 // on top of the Repository and the authz Engine. It is transport-agnostic;
 // the Connect handlers translate to/from proto and map errors to codes.
+// DefaultMaxListObjects bounds a ListObjects candidate set when not overridden.
+const DefaultMaxListObjects = 1000
+
 type Service struct {
-	repo     Repository
-	engine   *authz.Engine
-	resolver *modelResolver
-	now      func() time.Time
-	newID    func() string
+	repo           Repository
+	engine         *authz.Engine
+	resolver       *modelResolver
+	now            func() time.Time
+	newID          func() string
+	maxListObjects int
+}
+
+// Option configures a Service at construction.
+type Option func(*Service)
+
+// WithMaxListObjects caps the candidate set a ListObjects call will scan; a
+// non-positive value keeps the default.
+func WithMaxListObjects(n int) Option {
+	return func(s *Service) {
+		if n > 0 {
+			s.maxListObjects = n
+		}
+	}
 }
 
 // New builds a Service. clock and idgen are injectable for deterministic
 // tests; nil falls back to time.Now and a random hex id. The engine resolves
 // each project's authorization model from the repository, falling back to the
 // built-in default for unconfigured projects.
-func New(repo Repository, clock func() time.Time, idgen func() string) *Service {
+func New(repo Repository, clock func() time.Time, idgen func() string, opts ...Option) *Service {
 	if clock == nil {
 		clock = time.Now
 	}
@@ -46,13 +63,18 @@ func New(repo Repository, clock func() time.Time, idgen func() string) *Service 
 		idgen = func() string { return randHex(16) }
 	}
 	resolver := newModelResolver(repo)
-	return &Service{
-		repo:     repo,
-		engine:   authz.NewEngine(resolver, repo),
-		resolver: resolver,
-		now:      clock,
-		newID:    idgen,
+	s := &Service{
+		repo:           repo,
+		engine:         authz.NewEngine(resolver, repo),
+		resolver:       resolver,
+		now:            clock,
+		newID:          idgen,
+		maxListObjects: DefaultMaxListObjects,
 	}
+	for _, opt := range opts {
+		opt(s)
+	}
+	return s
 }
 
 // Engine exposes the authz engine for the AuthzService handler.

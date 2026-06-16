@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/elloloop/workspace/pkg/authz"
@@ -28,7 +29,23 @@ func (s *Service) WriteTuples(ctx context.Context, p Principal, ops []TupleOp) e
 			inserts = append(inserts, op.Tuple)
 		}
 	}
+	if err := s.ensureProjectActive(ctx, p); err != nil {
+		return err
+	}
 	return s.repo.WriteTuples(ctx, p.ProjectID, p.TenantID, inserts, deletes)
+}
+
+// ensureProjectActive fails closed when the caller's project is suspended, so a
+// suspended project's data plane stops authorizing and accepting writes.
+func (s *Service) ensureProjectActive(ctx context.Context, p Principal) error {
+	suspended, err := s.resolver.suspended(ctx, p.ProjectID)
+	if err != nil {
+		return err
+	}
+	if suspended {
+		return fmt.Errorf("%w: project %q is suspended", ErrFailedPrecondition, p.ProjectID)
+	}
+	return nil
 }
 
 // ReadTuples returns stored tuples in the caller's project/tenant matching f.
@@ -41,6 +58,11 @@ func (s *Service) Check(ctx context.Context, p Principal, namespace, objectID, r
 	if namespace == "" || objectID == "" || relation == "" || subjectUserID == "" {
 		return false, fmt.Errorf("%w: namespace, object_id, relation, subject_user_id are required", ErrInvalidArgument)
 	}
+	if suspended, err := s.resolver.suspended(ctx, p.ProjectID); err != nil {
+		return false, err
+	} else if suspended {
+		return false, nil // a suspended project denies every check
+	}
 	return s.engine.Check(ctx, p.ProjectID, p.TenantID, namespace, objectID, relation, subjectUserID)
 }
 
@@ -48,6 +70,9 @@ func (s *Service) Check(ctx context.Context, p Principal, namespace, objectID, r
 func (s *Service) Expand(ctx context.Context, p Principal, namespace, objectID, relation string) (authz.Tree, error) {
 	if namespace == "" || objectID == "" || relation == "" {
 		return authz.Tree{}, fmt.Errorf("%w: namespace, object_id, relation are required", ErrInvalidArgument)
+	}
+	if err := s.ensureProjectActive(ctx, p); err != nil {
+		return authz.Tree{}, err
 	}
 	return s.engine.Expand(ctx, p.ProjectID, p.TenantID, namespace, objectID, relation)
 }
@@ -58,7 +83,14 @@ func (s *Service) ListObjects(ctx context.Context, p Principal, namespace, relat
 	if namespace == "" || relation == "" || subjectUserID == "" {
 		return nil, fmt.Errorf("%w: namespace, relation, subject_user_id are required", ErrInvalidArgument)
 	}
-	return s.engine.ListObjects(ctx, p.ProjectID, p.TenantID, namespace, relation, subjectUserID)
+	if err := s.ensureProjectActive(ctx, p); err != nil {
+		return nil, err
+	}
+	ids, err := s.engine.ListObjects(ctx, p.ProjectID, p.TenantID, namespace, relation, subjectUserID, s.maxListObjects)
+	if errors.Is(err, authz.ErrTooManyObjects) {
+		return nil, fmt.Errorf("%w: namespace has more than %d objects; narrow the query (pagination is a tracked follow-up)", ErrResourceExhausted, s.maxListObjects)
+	}
+	return ids, err
 }
 
 // DeprovisionUser deletes every relation tuple whose concrete subject is

@@ -169,7 +169,13 @@ func (e *Engine) evalTupleToUserset(ctx context.Context, m Model, projectID, ten
 // the candidate set to objects that have any stored tuple in the namespace
 // (via an ObjectLister reader) and evaluates Check on each. A reverse-index
 // optimization for large namespaces is a tracked follow-up.
-func (e *Engine) ListObjects(ctx context.Context, projectID, tenantID, namespace, relation, userID string) ([]string, error) {
+// ErrTooManyObjects is returned by ListObjects when the candidate set exceeds
+// the caller-supplied cap. ListObjects is a full scan + per-object Check, so an
+// unbounded namespace would otherwise run for minutes and exhaust the pool; the
+// cap bounds the work. (A reverse index / pagination is the tracked follow-up.)
+var ErrTooManyObjects = errors.New("authz: too many candidate objects for ListObjects")
+
+func (e *Engine) ListObjects(ctx context.Context, projectID, tenantID, namespace, relation, userID string, maxObjects int) ([]string, error) {
 	lister, ok := e.reader.(ObjectLister)
 	if !ok {
 		return nil, errors.New("authz: tuple store does not support ListObjects")
@@ -177,6 +183,9 @@ func (e *Engine) ListObjects(ctx context.Context, projectID, tenantID, namespace
 	ids, err := lister.ListObjectIDs(ctx, projectID, tenantID, namespace)
 	if err != nil {
 		return nil, err
+	}
+	if maxObjects > 0 && len(ids) > maxObjects {
+		return nil, ErrTooManyObjects
 	}
 	out := make([]string, 0, len(ids))
 	for _, id := range ids {

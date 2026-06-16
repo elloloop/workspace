@@ -21,13 +21,18 @@ type Deps struct {
 	Logger           *zap.Logger
 	Repo             service.Repository
 	DefaultProjectID string
-	AllowedOrigins   []string
+	// DefaultTenantID is applied when a request omits tenant_id.
+	DefaultTenantID string
+	AllowedOrigins  []string
 	// ServiceAuthTokens are the accepted service credentials. Empty disables
 	// the requirement (trusted network / mesh); see middleware.ServiceAuth.
 	ServiceAuthTokens []string
 	// AdminAPISecret gates the AdminService (project configuration). Empty
 	// disables the admin RPCs.
 	AdminAPISecret string
+	// MaxListObjects caps a ListObjects candidate set; non-positive uses the
+	// service default.
+	MaxListObjects int
 }
 
 // New builds the full HTTP handler: the four Connect services plus health
@@ -39,11 +44,11 @@ func New(ctx context.Context, d Deps) (http.Handler, error) {
 	if logger == nil {
 		logger = zap.NewNop()
 	}
-	svc := service.New(d.Repo, nil, nil)
+	svc := service.New(d.Repo, nil, nil, service.WithMaxListObjects(d.MaxListObjects))
 	if err := svc.EnsureDefaultProject(ctx, d.DefaultProjectID); err != nil {
 		return nil, err
 	}
-	h := connecthandler.NewHandler(svc, d.DefaultProjectID, d.AdminAPISecret)
+	h := connecthandler.NewHandler(svc, d.DefaultProjectID, d.DefaultTenantID, d.AdminAPISecret)
 
 	mux := http.NewServeMux()
 	wsPath, wsHandler := workspacev1connect.NewWorkspaceServiceHandler(h)

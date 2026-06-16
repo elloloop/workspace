@@ -41,7 +41,14 @@ type Config struct {
 
 	AllowedOrigins   []string
 	HTTPMaxBodyBytes int64
+
+	// MaxListObjects caps the candidate set a single ListObjects call scans,
+	// bounding its full-scan + per-object Check cost.
+	MaxListObjects int
 }
+
+// DefaultMaxListObjects bounds a ListObjects request when not overridden.
+const DefaultMaxListObjects = 1000
 
 // Load reads configuration from the environment, applying defaults.
 func Load() (*Config, error) {
@@ -56,6 +63,7 @@ func Load() (*Config, error) {
 		AdminAPISecret:      envStr("GATEWAY_ADMIN_API_SECRET", ""),
 		AllowedOrigins:      envCSV("GATEWAY_ALLOWED_ORIGINS"),
 		HTTPMaxBodyBytes:    int64(envInt("GATEWAY_HTTP_MAX_BODY_BYTES", 1<<20)),
+		MaxListObjects:      envInt("GATEWAY_MAX_LIST_OBJECTS", DefaultMaxListObjects),
 	}
 	if err := c.Validate(); err != nil {
 		return nil, err

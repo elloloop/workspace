@@ -57,9 +57,11 @@ func main() {
 		Repo:   repo,
 		Config: workspaceserver.Config{
 			DefaultProjectID:  cfg.DefaultProjectID,
+			DefaultTenantID:   cfg.DefaultTenantID,
 			AllowedOrigins:    cfg.AllowedOrigins,
 			ServiceAuthTokens: cfg.ServiceAuthTokens,
 			AdminAPISecret:    cfg.AdminAPISecret,
+			MaxListObjects:    cfg.MaxListObjects,
 		},
 	})
 	if err != nil {

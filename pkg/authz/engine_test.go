@@ -226,7 +226,7 @@ func TestListObjects(t *testing.T) {
 	r.add("resource", "c3", "viewer", user("alice"))
 	e := NewEngine(nil, r)
 
-	got, err := e.ListObjects(context.Background(), "p", "", "resource", "viewer", "bob")
+	got, err := e.ListObjects(context.Background(), "p", "", "resource", "viewer", "bob", 0)
 	if err != nil {
 		t.Fatal(err)
 	}
