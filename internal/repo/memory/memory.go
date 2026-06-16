@@ -39,10 +39,14 @@ var _ service.Repository = (*Store)(nil)
 // ── tuple keys ────────────────────────────────────────────────────────────
 
 func subjectKey(s authz.Subject) string {
-	if s.Set != nil {
+	switch {
+	case s.Wildcard:
+		return "w:*"
+	case s.Set != nil:
 		return "s:" + s.Set.Namespace + "/" + s.Set.ObjectID + "/" + s.Set.Relation
+	default:
+		return "u:" + s.UserID
 	}
-	return "u:" + s.UserID
 }
 
 func tupleKey(t authz.Tuple) string {

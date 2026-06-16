@@ -56,12 +56,20 @@ func validateTuple(t authz.Tuple) error {
 	if t.Namespace == "" || t.ObjectID == "" || t.Relation == "" {
 		return fmt.Errorf("%w: tuple namespace, object_id, relation are required", ErrInvalidArgument)
 	}
-	hasUser := t.Subject.UserID != ""
-	hasSet := t.Subject.Set != nil
-	if hasUser == hasSet {
-		return fmt.Errorf("%w: tuple subject must be exactly one of user_id or subject set", ErrInvalidArgument)
+	var set int
+	if t.Subject.UserID != "" {
+		set++
 	}
-	if hasSet && (t.Subject.Set.Namespace == "" || t.Subject.Set.ObjectID == "") {
+	if t.Subject.Set != nil {
+		set++
+	}
+	if t.Subject.Wildcard {
+		set++
+	}
+	if set != 1 {
+		return fmt.Errorf("%w: tuple subject must be exactly one of user_id, subject set, or wildcard", ErrInvalidArgument)
+	}
+	if t.Subject.Set != nil && (t.Subject.Set.Namespace == "" || t.Subject.Set.ObjectID == "") {
 		return fmt.Errorf("%w: subject set requires namespace and object_id", ErrInvalidArgument)
 	}
 	return nil

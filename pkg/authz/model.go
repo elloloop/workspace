@@ -10,10 +10,16 @@
 // built-in defaults that back this service's product surface.
 package authz
 
-// Subject is the right-hand side of a tuple: exactly one field is set.
+import "context"
+
+// Subject is the right-hand side of a tuple: exactly one of UserID, Set, or
+// Wildcard is set. Wildcard is the public "everyone" subject (Zanzibar's
+// `user:*`): a stored wildcard tuple grants the relation to ANY user, which
+// backs link-sharing and published/public content.
 type Subject struct {
-	UserID string
-	Set    *SubjectSet
+	UserID   string
+	Set      *SubjectSet
+	Wildcard bool
 }
 
 // SubjectSet references the userset namespace:object#relation.
@@ -39,6 +45,16 @@ type Rewrite struct {
 	// directly stored tuples for the relation.
 	Union []Rewrite
 
+	// Intersection holds child rewrites; the relation grants access only if
+	// EVERY child does (Zanzibar's intersection). An empty slice is ignored.
+	Intersection []Rewrite
+
+	// Exclusion, when set, grants access if Include grants it AND Exclude
+	// does NOT (Zanzibar's difference / "A but not B"). This is what lets a
+	// suspended/blocked subject be denied without mutating their base grant,
+	// e.g. active_member = member AND NOT suspended.
+	Exclusion *Exclusion
+
 	// Computed, when set, evaluates another relation on the SAME object.
 	Computed string
 
@@ -48,10 +64,22 @@ type Rewrite struct {
 	ComputedRelation string
 }
 
+// Exclusion is the difference rewrite: Include minus Exclude.
+type Exclusion struct {
+	Include Rewrite
+	Exclude Rewrite
+}
+
 // this is the leaf rewrite: evaluate the relation's own stored tuples.
 func this() Rewrite { return Rewrite{} }
 
 func union(rs ...Rewrite) Rewrite { return Rewrite{Union: rs} }
+
+func intersection(rs ...Rewrite) Rewrite { return Rewrite{Intersection: rs} }
+
+func exclusion(include, exclude Rewrite) Rewrite {
+	return Rewrite{Exclusion: &Exclusion{Include: include, Exclude: exclude}}
+}
 
 func computed(rel string) Rewrite { return Rewrite{Computed: rel} }
 
@@ -60,7 +88,8 @@ func tupleToUserset(tupleset, computedRel string) Rewrite {
 }
 
 func (r Rewrite) isThis() bool {
-	return len(r.Union) == 0 && r.Computed == "" && r.TuplesetRelation == ""
+	return len(r.Union) == 0 && len(r.Intersection) == 0 && r.Exclusion == nil &&
+		r.Computed == "" && r.TuplesetRelation == ""
 }
 
 // Namespace maps each relation name to its rewrite rule.
@@ -96,6 +125,28 @@ func DefaultModel() Model {
 		},
 	}
 }
+
+// ModelResolver returns the authorization model for a project. It lets each
+// project carry its own namespaces/relations (configured out of band) while
+// the engine stays generic. Implementations MUST fall back to DefaultModel
+// for projects with no configured model, so an unconfigured project behaves
+// exactly like the built-in defaults.
+type ModelResolver interface {
+	ModelFor(ctx context.Context, projectID string) (Model, error)
+}
+
+// StaticResolver returns the same model for every project. A nil/empty model
+// falls back to DefaultModel, so StaticResolver(nil) is the built-in default.
+func StaticResolver(m Model) ModelResolver {
+	if len(m) == 0 {
+		m = DefaultModel()
+	}
+	return staticResolver{m: m}
+}
+
+type staticResolver struct{ m Model }
+
+func (r staticResolver) ModelFor(context.Context, string) (Model, error) { return r.m, nil }
 
 func (m Model) rewrite(namespace, relation string) Rewrite {
 	if ns, ok := m[namespace]; ok {

@@ -135,10 +135,14 @@ func isUniqueViolation(err error) bool {
 // ── relation tuples ─────────────────────────────────────────────────────────
 
 func tupleCols(t authz.Tuple) (kind, userID, ns, objID, rel string) {
-	if t.Subject.Set != nil {
+	switch {
+	case t.Subject.Wildcard:
+		return "wildcard", "", "", "", ""
+	case t.Subject.Set != nil:
 		return "set", "", t.Subject.Set.Namespace, t.Subject.Set.ObjectID, t.Subject.Set.Relation
+	default:
+		return "user", t.Subject.UserID, "", "", ""
 	}
-	return "user", t.Subject.UserID, "", "", ""
 }
 
 func (s *Store) WriteTuples(ctx context.Context, projectID string, inserts, deletes []authz.Tuple) error {
@@ -180,9 +184,12 @@ func scanTuple(row pgx.Row) (authz.Tuple, error) {
 	if err := row.Scan(&t.Namespace, &t.ObjectID, &t.Relation, &kind, &uid, &sns, &soid, &srel); err != nil {
 		return t, err
 	}
-	if kind == "set" {
+	switch kind {
+	case "set":
 		t.Subject.Set = &authz.SubjectSet{Namespace: sns, ObjectID: soid, Relation: srel}
-	} else {
+	case "wildcard":
+		t.Subject.Wildcard = true
+	default:
 		t.Subject.UserID = uid
 	}
 	return t, nil

@@ -42,7 +42,7 @@ func New(repo Repository, clock func() time.Time, idgen func() string) *Service 
 	}
 	return &Service{
 		repo:   repo,
-		engine: authz.NewEngine(authz.DefaultModel(), repo),
+		engine: authz.NewEngine(authz.StaticResolver(authz.DefaultModel()), repo),
 		now:    clock,
 		newID:  idgen,
 	}
