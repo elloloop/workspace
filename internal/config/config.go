@@ -51,10 +51,17 @@ type Config struct {
 	// MaxBatchCheckItems caps the number of items in a single BatchCheck
 	// request, bounding per-request cost.
 	MaxBatchCheckItems int
+	// AdminRateLimitPerMinute throttles the admin API per caller (online
+	// brute-force protection); non-positive disables the limiter.
+	AdminRateLimitPerMinute int
 }
 
 // DefaultMaxListObjects bounds a ListObjects request when not overridden.
 const DefaultMaxListObjects = 1000
+
+// DefaultAdminRateLimitPerMinute throttles the admin API per caller when not
+// overridden.
+const DefaultAdminRateLimitPerMinute = 30
 
 // DefaultMaxExpandNodes bounds an Expand result tree when not overridden.
 const DefaultMaxExpandNodes = 10000
@@ -65,19 +72,20 @@ const DefaultMaxBatchCheckItems = 1000
 // Load reads configuration from the environment, applying defaults.
 func Load() (*Config, error) {
 	c := &Config{
-		ConnectPort:         envInt("GATEWAY_CONNECT_PORT", 8080),
-		MetricsPort:         envInt("GATEWAY_METRICS_PORT", 9090),
-		DefaultProjectID:    envStr("GATEWAY_DEFAULT_PROJECT_ID", DefaultProjectIDFallback),
-		DefaultTenantID:     envStr("GATEWAY_DEFAULT_TENANT_ID", ""),
-		PostgresDSN:         envStr("GATEWAY_POSTGRES_DSN", ""),
-		PostgresAutoMigrate: envBool("GATEWAY_POSTGRES_AUTO_MIGRATE", true),
-		ServiceAuthTokens:   envCSV("GATEWAY_SERVICE_AUTH_TOKENS"),
-		AdminAPISecret:      envStr("GATEWAY_ADMIN_API_SECRET", ""),
-		AllowedOrigins:      envCSV("GATEWAY_ALLOWED_ORIGINS"),
-		HTTPMaxBodyBytes:    int64(envInt("GATEWAY_HTTP_MAX_BODY_BYTES", 1<<20)),
-		MaxListObjects:      envInt("GATEWAY_MAX_LIST_OBJECTS", DefaultMaxListObjects),
-		MaxExpandNodes:      envInt("GATEWAY_MAX_EXPAND_NODES", DefaultMaxExpandNodes),
-		MaxBatchCheckItems:  envInt("GATEWAY_MAX_BATCH_CHECK_ITEMS", DefaultMaxBatchCheckItems),
+		ConnectPort:             envInt("GATEWAY_CONNECT_PORT", 8080),
+		MetricsPort:             envInt("GATEWAY_METRICS_PORT", 9090),
+		DefaultProjectID:        envStr("GATEWAY_DEFAULT_PROJECT_ID", DefaultProjectIDFallback),
+		DefaultTenantID:         envStr("GATEWAY_DEFAULT_TENANT_ID", ""),
+		PostgresDSN:             envStr("GATEWAY_POSTGRES_DSN", ""),
+		PostgresAutoMigrate:     envBool("GATEWAY_POSTGRES_AUTO_MIGRATE", true),
+		ServiceAuthTokens:       envCSV("GATEWAY_SERVICE_AUTH_TOKENS"),
+		AdminAPISecret:          envStr("GATEWAY_ADMIN_API_SECRET", ""),
+		AllowedOrigins:          envCSV("GATEWAY_ALLOWED_ORIGINS"),
+		HTTPMaxBodyBytes:        int64(envInt("GATEWAY_HTTP_MAX_BODY_BYTES", 1<<20)),
+		MaxListObjects:          envInt("GATEWAY_MAX_LIST_OBJECTS", DefaultMaxListObjects),
+		MaxExpandNodes:          envInt("GATEWAY_MAX_EXPAND_NODES", DefaultMaxExpandNodes),
+		MaxBatchCheckItems:      envInt("GATEWAY_MAX_BATCH_CHECK_ITEMS", DefaultMaxBatchCheckItems),
+		AdminRateLimitPerMinute: envInt("GATEWAY_ADMIN_RATE_LIMIT_PER_MINUTE", DefaultAdminRateLimitPerMinute),
 	}
 	if err := c.Validate(); err != nil {
 		return nil, err

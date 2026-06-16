@@ -39,6 +39,9 @@ type Deps struct {
 	// MaxBatchCheckItems caps a single BatchCheck request; non-positive uses
 	// the configured default.
 	MaxBatchCheckItems int
+	// AdminRateLimitPerMinute throttles the admin API per caller; non-positive
+	// disables the limiter.
+	AdminRateLimitPerMinute int
 }
 
 // New builds the full HTTP handler: the four Connect services plus health
@@ -56,7 +59,7 @@ func New(ctx context.Context, d Deps) (http.Handler, error) {
 	if err := svc.EnsureDefaultProject(ctx, d.DefaultProjectID); err != nil {
 		return nil, err
 	}
-	h := connecthandler.NewHandler(svc, d.DefaultProjectID, d.DefaultTenantID, d.AdminAPISecret, d.MaxBatchCheckItems)
+	h := connecthandler.NewHandler(svc, d.DefaultProjectID, d.DefaultTenantID, d.AdminAPISecret, d.MaxBatchCheckItems, d.AdminRateLimitPerMinute)
 
 	mux := http.NewServeMux()
 	wsPath, wsHandler := workspacev1connect.NewWorkspaceServiceHandler(h)

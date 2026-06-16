@@ -32,13 +32,17 @@ type Handler struct {
 	adminSecret string
 	// maxBatchCheckItems caps a single BatchCheck request.
 	maxBatchCheckItems int
+	// adminLimiter throttles the AdminService per caller; nil disables it.
+	adminLimiter *rateLimiter
 }
 
 // NewHandler builds the Connect handler for svc. defaultProjectID/defaultTenantID
 // are applied when a request omits project_id/tenant_id (single-shard
 // deployments). adminSecret gates the AdminService; empty disables it.
 // maxBatchCheckItems caps BatchCheck request size; non-positive uses the default.
-func NewHandler(svc *service.Service, defaultProjectID, defaultTenantID, adminSecret string, maxBatchCheckItems int) *Handler {
+// adminRateLimitPerMinute throttles the admin surface per caller; non-positive
+// disables the limiter.
+func NewHandler(svc *service.Service, defaultProjectID, defaultTenantID, adminSecret string, maxBatchCheckItems, adminRateLimitPerMinute int) *Handler {
 	if defaultProjectID == "" {
 		defaultProjectID = "default"
 	}
@@ -51,6 +55,7 @@ func NewHandler(svc *service.Service, defaultProjectID, defaultTenantID, adminSe
 		defaultTenantID:    defaultTenantID,
 		adminSecret:        adminSecret,
 		maxBatchCheckItems: maxBatchCheckItems,
+		adminLimiter:       newRateLimiter(adminRateLimitPerMinute, nil),
 	}
 }
 
