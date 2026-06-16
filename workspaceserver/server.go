@@ -33,6 +33,9 @@ type Config struct {
 	// MaxExpandNodes caps an Expand result tree; non-positive uses the service
 	// default.
 	MaxExpandNodes int
+	// MaxBatchCheckItems caps a single BatchCheck request; non-positive uses
+	// the configured default.
+	MaxBatchCheckItems int
 }
 
 // Options configures New. Repo defaults to an in-memory store; Logger
@@ -63,15 +66,16 @@ func New(ctx context.Context, opts Options) (*Server, error) {
 		projectID = "default"
 	}
 	handler, err := app.New(ctx, app.Deps{
-		Logger:            logger,
-		Repo:              repo,
-		DefaultProjectID:  projectID,
-		DefaultTenantID:   opts.Config.DefaultTenantID,
-		AllowedOrigins:    opts.Config.AllowedOrigins,
-		ServiceAuthTokens: opts.Config.ServiceAuthTokens,
-		AdminAPISecret:    opts.Config.AdminAPISecret,
-		MaxListObjects:    opts.Config.MaxListObjects,
-		MaxExpandNodes:    opts.Config.MaxExpandNodes,
+		Logger:             logger,
+		Repo:               repo,
+		DefaultProjectID:   projectID,
+		DefaultTenantID:    opts.Config.DefaultTenantID,
+		AllowedOrigins:     opts.Config.AllowedOrigins,
+		ServiceAuthTokens:  opts.Config.ServiceAuthTokens,
+		AdminAPISecret:     opts.Config.AdminAPISecret,
+		MaxListObjects:     opts.Config.MaxListObjects,
+		MaxExpandNodes:     opts.Config.MaxExpandNodes,
+		MaxBatchCheckItems: opts.Config.MaxBatchCheckItems,
 	})
 	if err != nil {
 		return nil, err

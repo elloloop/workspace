@@ -36,6 +36,9 @@ type Deps struct {
 	// MaxExpandNodes caps an Expand result tree; non-positive uses the service
 	// default.
 	MaxExpandNodes int
+	// MaxBatchCheckItems caps a single BatchCheck request; non-positive uses
+	// the configured default.
+	MaxBatchCheckItems int
 }
 
 // New builds the full HTTP handler: the four Connect services plus health
@@ -53,7 +56,7 @@ func New(ctx context.Context, d Deps) (http.Handler, error) {
 	if err := svc.EnsureDefaultProject(ctx, d.DefaultProjectID); err != nil {
 		return nil, err
 	}
-	h := connecthandler.NewHandler(svc, d.DefaultProjectID, d.DefaultTenantID, d.AdminAPISecret)
+	h := connecthandler.NewHandler(svc, d.DefaultProjectID, d.DefaultTenantID, d.AdminAPISecret, d.MaxBatchCheckItems)
 
 	mux := http.NewServeMux()
 	wsPath, wsHandler := workspacev1connect.NewWorkspaceServiceHandler(h)

@@ -12,6 +12,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	workspacev1 "github.com/elloloop/workspace/gen/go/workspace/v1"
+	"github.com/elloloop/workspace/internal/config"
 	"github.com/elloloop/workspace/internal/service"
 )
 
@@ -29,20 +30,27 @@ type Handler struct {
 	// adminSecret gates the AdminService (project configuration). Empty
 	// disables the admin RPCs entirely, mirroring identity.
 	adminSecret string
+	// maxBatchCheckItems caps a single BatchCheck request.
+	maxBatchCheckItems int
 }
 
 // NewHandler builds the Connect handler for svc. defaultProjectID/defaultTenantID
 // are applied when a request omits project_id/tenant_id (single-shard
 // deployments). adminSecret gates the AdminService; empty disables it.
-func NewHandler(svc *service.Service, defaultProjectID, defaultTenantID, adminSecret string) *Handler {
+// maxBatchCheckItems caps BatchCheck request size; non-positive uses the default.
+func NewHandler(svc *service.Service, defaultProjectID, defaultTenantID, adminSecret string, maxBatchCheckItems int) *Handler {
 	if defaultProjectID == "" {
 		defaultProjectID = "default"
 	}
+	if maxBatchCheckItems <= 0 {
+		maxBatchCheckItems = config.DefaultMaxBatchCheckItems
+	}
 	return &Handler{
-		svc:              svc,
-		defaultProjectID: defaultProjectID,
-		defaultTenantID:  defaultTenantID,
-		adminSecret:      adminSecret,
+		svc:                svc,
+		defaultProjectID:   defaultProjectID,
+		defaultTenantID:    defaultTenantID,
+		adminSecret:        adminSecret,
+		maxBatchCheckItems: maxBatchCheckItems,
 	}
 }
 

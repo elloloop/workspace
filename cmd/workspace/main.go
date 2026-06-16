@@ -56,13 +56,14 @@ func main() {
 		Logger: logger,
 		Repo:   repo,
 		Config: workspaceserver.Config{
-			DefaultProjectID:  cfg.DefaultProjectID,
-			DefaultTenantID:   cfg.DefaultTenantID,
-			AllowedOrigins:    cfg.AllowedOrigins,
-			ServiceAuthTokens: cfg.ServiceAuthTokens,
-			AdminAPISecret:    cfg.AdminAPISecret,
-			MaxListObjects:    cfg.MaxListObjects,
-			MaxExpandNodes:    cfg.MaxExpandNodes,
+			DefaultProjectID:   cfg.DefaultProjectID,
+			DefaultTenantID:    cfg.DefaultTenantID,
+			AllowedOrigins:     cfg.AllowedOrigins,
+			ServiceAuthTokens:  cfg.ServiceAuthTokens,
+			AdminAPISecret:     cfg.AdminAPISecret,
+			MaxListObjects:     cfg.MaxListObjects,
+			MaxExpandNodes:     cfg.MaxExpandNodes,
+			MaxBatchCheckItems: cfg.MaxBatchCheckItems,
 		},
 	})
 	if err != nil {
