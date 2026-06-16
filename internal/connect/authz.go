@@ -136,7 +136,22 @@ func (h *Handler) ReadRelationTuples(ctx context.Context, req *connect.Request[w
 
 func (h *Handler) Check(ctx context.Context, req *connect.Request[workspacev1.CheckRequest]) (*connect.Response[workspacev1.CheckResponse], error) {
 	p := h.scope(req.Msg.ProjectId, req.Msg.TenantId)
-	allowed, err := h.svc.Check(ctx, p, req.Msg.Namespace, req.Msg.ObjectId, req.Msg.Relation, req.Msg.SubjectUserId)
+	userID, set := req.Msg.SubjectUserId, req.Msg.SubjectSet
+	if (userID == "") == (set == nil) {
+		return nil, connect.NewError(connect.CodeInvalidArgument,
+			errors.New("exactly one of subject_user_id or subject_set is required"))
+	}
+
+	var (
+		allowed bool
+		err     error
+	)
+	if set != nil {
+		allowed, err = h.svc.CheckSet(ctx, p, req.Msg.Namespace, req.Msg.ObjectId, req.Msg.Relation,
+			authz.SubjectSet{Namespace: set.Namespace, ObjectID: set.ObjectId, Relation: set.Relation})
+	} else {
+		allowed, err = h.svc.Check(ctx, p, req.Msg.Namespace, req.Msg.ObjectId, req.Msg.Relation, userID)
+	}
 	if err != nil {
 		return nil, errToConnect(err)
 	}
