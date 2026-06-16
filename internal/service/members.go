@@ -159,13 +159,19 @@ func (s *Service) ReinstateMember(ctx context.Context, p Principal, workspaceID,
 	if m.Status != StatusSuspended {
 		return m, nil
 	}
-	if err := s.repo.WriteTuples(ctx, p.ProjectID, p.TenantID,
-		[]authz.Tuple{userTuple("workspace", workspaceID, string(m.Role), userID)}, nil); err != nil {
-		return nil, err
-	}
+	// Persist the membership row BEFORE writing the access-granting tuple: these
+	// are two non-atomic repo calls, so order them fail-closed — a crash between
+	// them leaves the row active but no tuple (Check denies) rather than granting
+	// access against a still-suspended row. (A single transactional membership+
+	// tuple write is the tracked follow-up; SuspendMember is already fail-closed
+	// because it removes the tuple first.)
 	m.Status = StatusActive
 	m.UpdatedAt = s.now()
 	if err := s.repo.PutMembership(ctx, m); err != nil {
+		return nil, err
+	}
+	if err := s.repo.WriteTuples(ctx, p.ProjectID, p.TenantID,
+		[]authz.Tuple{userTuple("workspace", workspaceID, string(m.Role), userID)}, nil); err != nil {
 		return nil, err
 	}
 	return m, nil
