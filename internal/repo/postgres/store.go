@@ -187,12 +187,18 @@ END $$;
 -- Drop a stale personal-workspace unique index (old (project_id, owner_user_id)
 -- definition) so the tenant-scoped one below actually replaces it; CREATE … IF
 -- NOT EXISTS alone would skip an index that already exists under this name.
-DO $$ BEGIN
-	IF EXISTS (SELECT 1 FROM pg_class WHERE relname='workspaces_personal_uniq' AND relkind='i') THEN
-		IF NOT EXISTS (SELECT 1 FROM pg_index i JOIN pg_attribute a ON a.attrelid=i.indrelid AND a.attnum=ANY(i.indkey)
-			WHERE i.indexrelid='workspaces_personal_uniq'::regclass AND a.attname='tenant_id') THEN
-			DROP INDEX workspaces_personal_uniq;
-		END IF;
+-- Resolve the index in the CURRENT schema only (to_regclass on the qualified
+-- name) so a same-named index in another schema of the same database neither
+-- triggers nor aborts this block.
+DO $$
+DECLARE idx regclass := to_regclass(current_schema() || '.workspaces_personal_uniq');
+BEGIN
+	IF idx IS NOT NULL AND NOT EXISTS (
+		SELECT 1 FROM pg_index i JOIN pg_attribute a
+		  ON a.attrelid = i.indrelid AND a.attnum = ANY(i.indkey)
+		WHERE i.indexrelid = idx AND a.attname = 'tenant_id'
+	) THEN
+		EXECUTE 'DROP INDEX ' || idx::text;
 	END IF;
 END $$;
 CREATE UNIQUE INDEX IF NOT EXISTS workspaces_personal_uniq

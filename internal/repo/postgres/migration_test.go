@@ -138,3 +138,48 @@ func TestMigrateUpgradesPreTenantSchema(t *testing.T) {
 		}
 	}
 }
+
+// TestMigrateIgnoresSameNamedIndexInOtherSchema pins the schema-qualification
+// fix: a workspaces_personal_uniq index in a DIFFERENT schema of the same
+// database must not trigger or abort the migration's drop-stale-index block.
+func TestMigrateIgnoresSameNamedIndexInOtherSchema(t *testing.T) {
+	dsn := os.Getenv("WORKSPACES_TEST_POSTGRES_DSN")
+	if dsn == "" {
+		dsn = os.Getenv("GATEWAY_TEST_POSTGRES_DSN")
+	}
+	if dsn == "" {
+		t.Skip("set WORKSPACES_TEST_POSTGRES_DSN or GATEWAY_TEST_POSTGRES_DSN to run the migration schema-isolation test")
+	}
+	ctx := context.Background()
+	store, err := postgres.Open(ctx, dsn)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	t.Cleanup(store.Close)
+	p := store.Pool()
+
+	// A sibling schema holds a same-named index with the OLD (2-column) shape.
+	const sibling = "ws_sibling_idxtest"
+	if _, err := p.Exec(ctx, `DROP SCHEMA IF EXISTS `+sibling+` CASCADE;
+		CREATE SCHEMA `+sibling+`;
+		CREATE TABLE `+sibling+`.workspaces (project_id text, owner_user_id text, type text);
+		CREATE UNIQUE INDEX workspaces_personal_uniq ON `+sibling+`.workspaces (project_id, owner_user_id) WHERE type='personal';`); err != nil {
+		t.Fatalf("sibling schema setup: %v", err)
+	}
+	t.Cleanup(func() { _, _ = p.Exec(context.Background(), `DROP SCHEMA IF EXISTS `+sibling+` CASCADE`) })
+
+	// Migrate in the current schema must succeed despite the sibling index.
+	if err := store.Migrate(ctx); err != nil {
+		t.Fatalf("Migrate aborted on a same-named index in another schema: %v", err)
+	}
+	// The sibling index is untouched (still the old 2-column definition).
+	var cols int
+	if err := p.QueryRow(ctx,
+		`SELECT count(*) FROM pg_index i JOIN pg_attribute a ON a.attrelid=i.indrelid AND a.attnum=ANY(i.indkey)
+		 WHERE i.indexrelid=('`+sibling+`.workspaces_personal_uniq')::regclass`).Scan(&cols); err != nil {
+		t.Fatalf("sibling index check: %v", err)
+	}
+	if cols != 2 {
+		t.Fatalf("sibling index was modified (indexed cols=%d, want 2)", cols)
+	}
+}
