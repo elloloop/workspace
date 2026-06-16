@@ -23,6 +23,12 @@ func (h *Handler) requireAdmin(req connect.AnyRequest) error {
 	if h.adminSecret == "" {
 		return connect.NewError(connect.CodeUnimplemented, errors.New("admin API is disabled (no admin secret configured)"))
 	}
+	// Throttle per caller BEFORE the secret compare, so a wrong-secret flood is
+	// rate limited (online brute-force protection) — both failed and successful
+	// attempts count against the limit.
+	if !h.adminLimiter.allow(callerKey(req)) {
+		return connect.NewError(connect.CodeResourceExhausted, errors.New("admin API rate limit exceeded"))
+	}
 	got := req.Header().Get(adminSecretHeader)
 	if subtle.ConstantTimeCompare([]byte(got), []byte(h.adminSecret)) != 1 {
 		return connect.NewError(connect.CodeUnauthenticated, errors.New("invalid or missing admin secret"))

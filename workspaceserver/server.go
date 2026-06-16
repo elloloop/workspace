@@ -36,6 +36,9 @@ type Config struct {
 	// MaxBatchCheckItems caps a single BatchCheck request; non-positive uses
 	// the configured default.
 	MaxBatchCheckItems int
+	// AdminRateLimitPerMinute throttles the admin API per caller; non-positive
+	// disables the limiter.
+	AdminRateLimitPerMinute int
 }
 
 // Options configures New. Repo defaults to an in-memory store; Logger
@@ -66,16 +69,17 @@ func New(ctx context.Context, opts Options) (*Server, error) {
 		projectID = "default"
 	}
 	handler, err := app.New(ctx, app.Deps{
-		Logger:             logger,
-		Repo:               repo,
-		DefaultProjectID:   projectID,
-		DefaultTenantID:    opts.Config.DefaultTenantID,
-		AllowedOrigins:     opts.Config.AllowedOrigins,
-		ServiceAuthTokens:  opts.Config.ServiceAuthTokens,
-		AdminAPISecret:     opts.Config.AdminAPISecret,
-		MaxListObjects:     opts.Config.MaxListObjects,
-		MaxExpandNodes:     opts.Config.MaxExpandNodes,
-		MaxBatchCheckItems: opts.Config.MaxBatchCheckItems,
+		Logger:                  logger,
+		Repo:                    repo,
+		DefaultProjectID:        projectID,
+		DefaultTenantID:         opts.Config.DefaultTenantID,
+		AllowedOrigins:          opts.Config.AllowedOrigins,
+		ServiceAuthTokens:       opts.Config.ServiceAuthTokens,
+		AdminAPISecret:          opts.Config.AdminAPISecret,
+		MaxListObjects:          opts.Config.MaxListObjects,
+		MaxExpandNodes:          opts.Config.MaxExpandNodes,
+		MaxBatchCheckItems:      opts.Config.MaxBatchCheckItems,
+		AdminRateLimitPerMinute: opts.Config.AdminRateLimitPerMinute,
 	})
 	if err != nil {
 		return nil, err

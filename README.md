@@ -226,6 +226,7 @@ All config is via environment variables (the `GATEWAY_` prefix matches identity)
 | `GATEWAY_MAX_LIST_OBJECTS` | Maximum candidate objects a single `ListObjects` call scans (over-cap returns `ResourceExhausted`) | `1000` |
 | `GATEWAY_MAX_EXPAND_NODES` | Maximum nodes/subjects in a single `Expand` result tree (over-cap returns `ResourceExhausted`) | `10000` |
 | `GATEWAY_MAX_BATCH_CHECK_ITEMS` | Maximum items in a single `BatchCheck` request | `1000` |
+| `GATEWAY_ADMIN_RATE_LIMIT_PER_MINUTE` | Per-caller request cap on the admin API (online brute-force protection); over-limit returns `ResourceExhausted`. `0` or negative disables it. | `30` |
 
 ## Deployment
 
