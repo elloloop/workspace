@@ -66,6 +66,25 @@ func (s *Service) Check(ctx context.Context, p Principal, namespace, objectID, r
 	return s.engine.Check(ctx, p.ProjectID, p.TenantID, namespace, objectID, relation, subjectUserID)
 }
 
+// CheckSet evaluates whether a USERSET (e.g. group:cohort-7#member) has the
+// relation — "does the queried userset intersect the relation's effective
+// userset". It mirrors Check (same suspension fail-closed) but for a set-valued
+// query subject rather than a concrete user.
+func (s *Service) CheckSet(ctx context.Context, p Principal, namespace, objectID, relation string, set authz.SubjectSet) (bool, error) {
+	if namespace == "" || objectID == "" || relation == "" {
+		return false, fmt.Errorf("%w: namespace, object_id, relation are required", ErrInvalidArgument)
+	}
+	if set.Namespace == "" || set.ObjectID == "" || set.Relation == "" {
+		return false, fmt.Errorf("%w: subject_set requires namespace, object_id, and relation", ErrInvalidArgument)
+	}
+	if suspended, err := s.resolver.suspended(ctx, p.ProjectID); err != nil {
+		return false, err
+	} else if suspended {
+		return false, nil // a suspended project denies every check
+	}
+	return s.engine.CheckSet(ctx, p.ProjectID, p.TenantID, namespace, objectID, relation, set)
+}
+
 // Expand returns the userset tree for the caller's project and tenant.
 func (s *Service) Expand(ctx context.Context, p Principal, namespace, objectID, relation string) (authz.Tree, error) {
 	if namespace == "" || objectID == "" || relation == "" {

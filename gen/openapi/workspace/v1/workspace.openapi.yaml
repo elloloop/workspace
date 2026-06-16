@@ -337,6 +337,16 @@ components:
         tenantId:
           type: string
           title: tenant_id
+        subjectSet:
+          title: subject_set
+          description: |-
+            subject_set asks whether a USERSET (e.g. group:cohort-7#member, or a
+             service-account set) has the relation, rather than a concrete user. It is
+             used iff subject_user_id is empty; exactly one of the two must be set. The
+             answer is "does the queried userset intersect the relation's effective
+             userset" — true if the set is structurally included, or if any concrete
+             member of the set has the relation.
+          $ref: '#/components/schemas/workspace.v1.SubjectSet'
       title: CheckRequest
       additionalProperties: false
       description: |-

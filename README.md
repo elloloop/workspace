@@ -67,10 +67,14 @@ of three primitives:
   parent workspace).
 
 `Check(namespace, object, relation, subject_user_id)` evaluates that rule
-**transitively** and answers `allowed`. `Expand(...)` returns the effective
-userset tree (the union of leaves and child usersets) for auditing "who has
-access". `ReadRelationTuples` is the raw store read — it does **not** evaluate
-rewrites; use `Check` for decisions.
+**transitively** and answers `allowed`. The subject may instead be a **userset**
+— pass `subject_set` (e.g. `group:cohort-7#member`) instead of `subject_user_id`
+to ask "does this group/service-account set have the relation?"; the answer is
+true when the set is structurally included or any of its concrete members has
+the relation. `Expand(...)` returns the effective userset tree (the union of
+leaves and child usersets) for auditing "who has access". `ReadRelationTuples`
+is the raw store read — it does **not** evaluate rewrites; use `Check` for
+decisions.
 
 The built-in namespaces (`pkg/authz/model.go`):
 
