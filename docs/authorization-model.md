@@ -323,6 +323,30 @@ with child subtrees, and `LEAF` nodes carrying concrete `user_ids` and nested
 tuples matching an exact filter, with no rewrite evaluation. Use `Check` for
 decisions.
 
+## Consistency tokens (read-after-write)
+
+A caller that needs **read-after-write** — to immediately observe a grant it just
+wrote — uses an optional, opaque **consistency token** ("zookie"):
+
+- `WriteRelationTuples` returns a `consistency_token` naming the
+  `(project, tenant)` shard's monotonic write sequence reached by that batch.
+- `Check` / `CheckSet` / `Expand` / `ListObjects` / `BatchCheck` /
+  `ReadRelationTuples` accept an optional `at_least_consistency_token`. When set,
+  the read must reflect state **at least as fresh** as the token. Empty = read
+  latest (unchanged default).
+- A malformed token, or one issued for a **different shard**, is rejected with
+  `InvalidArgument` — never silently ignored. A token demanding a sequence the
+  store has not reached fails closed with `FailedPrecondition`.
+
+**What it guarantees today vs. tomorrow.** This is a single primary store, so a
+read already sees every committed write — any token the store issued is satisfied
+immediately, and the token's value today is a **strict client contract** plus
+**forward-compatibility**: the plumbing and monotonic semantics are in place so
+that when read replicas are added, a replica lagging behind a token will wait-for
+or route-to-primary rather than serve a stale read. It is **not** a point-in-time
+/ snapshot read (out of scope) — it asserts a *lower bound* on freshness, not an
+exact version.
+
 ## Adding a new namespace
 
 A consuming product can use the engine in two ways:

@@ -155,6 +155,13 @@ CREATE TABLE IF NOT EXISTS seat_assignments (
 	PRIMARY KEY (project_id, tenant_id, sku, user_id)
 );
 
+CREATE TABLE IF NOT EXISTS consistency_seq (
+	project_id text   NOT NULL,
+	tenant_id  text   NOT NULL DEFAULT '',
+	seq        bigint NOT NULL DEFAULT 0,
+	PRIMARY KEY (project_id, tenant_id)
+);
+
 CREATE TABLE IF NOT EXISTS relation_tuples (
 	project_id        text NOT NULL,
 	tenant_id         text NOT NULL DEFAULT '',
@@ -436,7 +443,29 @@ func (s *Store) WriteTuples(ctx context.Context, projectID, tenantID string, ins
 	if err := writeTuplesExec(ctx, tx, projectID, tenantID, inserts, deletes); err != nil {
 		return err
 	}
+	// Advance the shard's monotonic consistency sequence in the SAME tx, so the
+	// bump commits atomically with the write and a token issued for this write
+	// is always observed by a later read on this (single) store.
+	if _, err := tx.Exec(ctx,
+		`INSERT INTO consistency_seq (project_id, tenant_id, seq) VALUES ($1,$2,1)
+		 ON CONFLICT (project_id, tenant_id) DO UPDATE SET seq = consistency_seq.seq + 1`,
+		projectID, tenantID); err != nil {
+		return err
+	}
 	return tx.Commit(ctx)
+}
+
+// ConsistencyToken returns the shard's current monotonic write sequence (0 if
+// the shard has never been written).
+func (s *Store) ConsistencyToken(ctx context.Context, projectID, tenantID string) (int64, error) {
+	var seq int64
+	err := s.pool.QueryRow(ctx,
+		`SELECT COALESCE((SELECT seq FROM consistency_seq WHERE project_id=$1 AND tenant_id=$2), 0)`,
+		projectID, tenantID).Scan(&seq)
+	if err != nil {
+		return 0, err
+	}
+	return seq, nil
 }
 
 // writeTuplesExec applies tuple deletes then inserts via q (a pool or a tx).

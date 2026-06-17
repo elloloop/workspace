@@ -45,11 +45,10 @@ func TestAuditTupleChanges(t *testing.T) {
 	svc := service.New(memory.New(), nil, nil, service.WithAuditLogger(a))
 	p := service.Principal{ProjectID: "p", TenantID: "t1"}
 
-	err := svc.WriteTuples(context.Background(), p, []service.TupleOp{
+	if _, err := svc.WriteTuples(context.Background(), p, []service.TupleOp{
 		{Tuple: authz.Tuple{Namespace: "doc", ObjectID: "d1", Relation: "viewer", Subject: authz.Subject{UserID: "bob"}}},
 		{Delete: true, Tuple: authz.Tuple{Namespace: "doc", ObjectID: "d1", Relation: "editor", Subject: authz.Subject{UserID: "carol"}}},
-	})
-	if err != nil {
+	}); err != nil {
 		t.Fatalf("WriteTuples: %v", err)
 	}
 	recs := a.tupleRecs()
@@ -105,7 +104,7 @@ func TestAuditDisabledNoEmit(t *testing.T) {
 	// A Service without an audit logger must work and never panic (nil-guarded).
 	svc := service.New(memory.New(), nil, nil)
 	p := service.Principal{ProjectID: "p"}
-	if err := svc.WriteTuples(context.Background(), p, []service.TupleOp{
+	if _, err := svc.WriteTuples(context.Background(), p, []service.TupleOp{
 		{Tuple: authz.Tuple{Namespace: "doc", ObjectID: "d1", Relation: "viewer", Subject: authz.Subject{UserID: "bob"}}},
 	}); err != nil {
 		t.Fatalf("WriteTuples (no audit): %v", err)

@@ -410,6 +410,13 @@ components:
           items:
             $ref: '#/components/schemas/workspace.v1.BatchCheckItem'
           title: items
+        atLeastConsistencyToken:
+          type: string
+          title: at_least_consistency_token
+          description: |-
+            at_least_consistency_token, when set, demands the batch observe state at
+             least as fresh as the token (from a prior WriteRelationTuples). Empty =
+             read latest. A malformed or foreign-shard token is rejected.
       title: BatchCheckRequest
       additionalProperties: false
     workspace.v1.BatchCheckResponse:
@@ -475,6 +482,13 @@ components:
              "now": "2026-06-16T00:00:00Z"}). Unset = no context; conditional grants
              then fail closed, while unconditional grants are unaffected.
           $ref: '#/components/schemas/google.protobuf.Struct'
+        atLeastConsistencyToken:
+          type: string
+          title: at_least_consistency_token
+          description: |-
+            at_least_consistency_token, when set, demands the check observe state at
+             least as fresh as the token (from a prior WriteRelationTuples). Empty =
+             read latest. A malformed or foreign-shard token is rejected.
       title: CheckRequest
       additionalProperties: false
       description: |-
@@ -718,6 +732,13 @@ components:
         tenantId:
           type: string
           title: tenant_id
+        atLeastConsistencyToken:
+          type: string
+          title: at_least_consistency_token
+          description: |-
+            at_least_consistency_token, when set, demands the expansion reflect state at
+             least as fresh as the token (from a prior WriteRelationTuples). Empty =
+             read latest. A malformed or foreign-shard token is rejected.
       title: ExpandRequest
       additionalProperties: false
       description: Expand returns the effective userset tree for namespace:object_id#relation.
@@ -1102,6 +1123,13 @@ components:
         tenantId:
           type: string
           title: tenant_id
+        atLeastConsistencyToken:
+          type: string
+          title: at_least_consistency_token
+          description: |-
+            at_least_consistency_token, when set, demands the listing reflect state at
+             least as fresh as the token (from a prior WriteRelationTuples). Empty =
+             read latest. A malformed or foreign-shard token is rejected.
       title: ListObjectsRequest
       additionalProperties: false
       description: |-
@@ -1257,6 +1285,13 @@ components:
         tenantId:
           type: string
           title: tenant_id
+        atLeastConsistencyToken:
+          type: string
+          title: at_least_consistency_token
+          description: |-
+            at_least_consistency_token, when set, demands the read reflect state at
+             least as fresh as the token (from a prior WriteRelationTuples). Empty =
+             read latest. A malformed or foreign-shard token is rejected.
       title: ReadRelationTuplesRequest
       additionalProperties: false
       description: |-
@@ -1852,6 +1887,15 @@ components:
       additionalProperties: false
     workspace.v1.WriteRelationTuplesResponse:
       type: object
+      properties:
+        consistencyToken:
+          type: string
+          title: consistency_token
+          description: |-
+            consistency_token is an opaque "zookie" naming the shard's write sequence
+             reached by this batch. Pass it to a later Check/Expand/ListObjects/
+             BatchCheck/ReadRelationTuples as at_least_consistency_token to demand
+             read-after-write (observe at least this write). Optional to use.
       title: WriteRelationTuplesResponse
       additionalProperties: false
     connect-protocol-version:

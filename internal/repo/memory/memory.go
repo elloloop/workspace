@@ -28,6 +28,7 @@ type Store struct {
 	seatLimits  map[string]map[string]int                               // scope → sku → limit
 	seatAssigns map[string]map[string]map[string]service.SeatAssignment // scope → sku → user → a
 	tuples      map[string]map[string]authz.Tuple                       // scope → tupleKey → tuple
+	seqs        map[string]int64                                        // scope → monotonic write sequence
 }
 
 // New returns an empty Store.
@@ -42,6 +43,7 @@ func New() *Store {
 		seatLimits:  map[string]map[string]int{},
 		seatAssigns: map[string]map[string]map[string]service.SeatAssignment{},
 		tuples:      map[string]map[string]authz.Tuple{},
+		seqs:        map[string]int64{},
 	}
 }
 
@@ -123,7 +125,15 @@ func (s *Store) WriteTuples(_ context.Context, projectID, tenantID string, inser
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.writeTuplesLocked(projectID, tenantID, inserts, deletes)
+	s.seqs[scope(projectID, tenantID)]++ // advance the shard's consistency sequence
 	return nil
+}
+
+// ConsistencyToken returns the shard's current monotonic write sequence.
+func (s *Store) ConsistencyToken(_ context.Context, projectID, tenantID string) (int64, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.seqs[scope(projectID, tenantID)], nil
 }
 
 // writeTuplesLocked applies tuple deletes then inserts. The caller holds s.mu.

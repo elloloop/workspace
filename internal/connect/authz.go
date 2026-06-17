@@ -136,14 +136,18 @@ func (h *Handler) WriteRelationTuples(ctx context.Context, req *connect.Request[
 			return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("update op must be INSERT or DELETE"))
 		}
 	}
-	if err := h.svc.WriteTuples(ctx, p, ops); err != nil {
+	token, err := h.svc.WriteTuples(ctx, p, ops)
+	if err != nil {
 		return nil, errToConnect(err)
 	}
-	return connect.NewResponse(&workspacev1.WriteRelationTuplesResponse{}), nil
+	return connect.NewResponse(&workspacev1.WriteRelationTuplesResponse{ConsistencyToken: token}), nil
 }
 
 func (h *Handler) ReadRelationTuples(ctx context.Context, req *connect.Request[workspacev1.ReadRelationTuplesRequest]) (*connect.Response[workspacev1.ReadRelationTuplesResponse], error) {
 	p := h.scope(ctx, req.Msg.ProjectId, req.Msg.TenantId)
+	if err := h.svc.EnsureConsistency(ctx, p, req.Msg.AtLeastConsistencyToken); err != nil {
+		return nil, errToConnect(err)
+	}
 	tuples, err := h.svc.ReadTuples(ctx, p, service.TupleFilter{
 		Namespace:     req.Msg.Namespace,
 		ObjectID:      req.Msg.ObjectId,
@@ -168,6 +172,10 @@ func (h *Handler) Check(ctx context.Context, req *connect.Request[workspacev1.Ch
 	}
 
 	p := h.scope(ctx, req.Msg.ProjectId, req.Msg.TenantId)
+	if err := h.svc.EnsureConsistency(ctx, p, req.Msg.AtLeastConsistencyToken); err != nil {
+		h.metrics.recordError("Check")
+		return nil, errToConnect(err)
+	}
 	userID, set := req.Msg.SubjectUserId, req.Msg.SubjectSet
 	if (userID == "") == (set == nil) {
 		return nil, connect.NewError(connect.CodeInvalidArgument,
@@ -201,6 +209,10 @@ func (h *Handler) Expand(ctx context.Context, req *connect.Request[workspacev1.E
 	}
 
 	p := h.scope(ctx, req.Msg.ProjectId, req.Msg.TenantId)
+	if err := h.svc.EnsureConsistency(ctx, p, req.Msg.AtLeastConsistencyToken); err != nil {
+		h.metrics.recordError("Expand")
+		return nil, errToConnect(err)
+	}
 	tree, err := h.svc.Expand(ctx, p, req.Msg.Namespace, req.Msg.ObjectId, req.Msg.Relation)
 	if err != nil {
 		h.metrics.recordError("Expand")
@@ -251,6 +263,10 @@ func (h *Handler) ListObjects(ctx context.Context, req *connect.Request[workspac
 	}
 
 	p := h.scope(ctx, req.Msg.ProjectId, req.Msg.TenantId)
+	if err := h.svc.EnsureConsistency(ctx, p, req.Msg.AtLeastConsistencyToken); err != nil {
+		h.metrics.recordError("ListObjects")
+		return nil, errToConnect(err)
+	}
 	ids, err := h.svc.ListObjects(ctx, p, req.Msg.Namespace, req.Msg.Relation, req.Msg.SubjectUserId)
 	if err != nil {
 		h.metrics.recordError("ListObjects")
