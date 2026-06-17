@@ -243,6 +243,57 @@ Design checklist for a new namespace:
 - Will subjects ever be **groups/usersets**? (They always may — the subject side
   is uniform.)
 
+## Product-defined domain roles (per-project models)
+
+The built-in `workspace`/`group`/`resource` namespaces are the *default* model.
+A product does **not** edit `pkg/authz/model.go` to get its own role vocabulary
+— it registers a per-project model through `AdminService` (gated by the admin
+secret), and that model is **overlaid** on the defaults for that project only:
+
+```
+AdminService.CreateProject{ id: "edu", model_json: "<model>" }
+```
+
+The `model_json` is a map of `namespace → relation → rewrite`, where each rewrite
+is one of `{"this":true}`, `{"computed":"rel"}`,
+`{"tupleToUserset":{"tupleset":"rel","computed":"rel"}}`, `{"union":[…]}`,
+`{"intersection":[…]}`, or `{"exclusion":{"include":…,"exclude":…}}`.
+
+A learning platform's **instructor ⊃ ta ⊃ learner** hierarchy, with permissions
+computed off the roles and content that inherits from its course:
+
+```json
+{
+  "course": {
+    "instructor": {"this": true},
+    "ta":         {"union": [{"this": true}, {"computed": "instructor"}]},
+    "learner":    {"union": [{"this": true}, {"computed": "ta"}]},
+    "can_manage": {"computed": "instructor"},
+    "can_grade":  {"computed": "ta"},
+    "can_view":   {"computed": "learner"}
+  },
+  "content": {
+    "parent": {"this": true},
+    "viewer": {"union": [{"this": true}, {"tupleToUserset": {"tupleset": "parent", "computed": "learner"}}]},
+    "editor": {"union": [{"this": true}, {"tupleToUserset": {"tupleset": "parent", "computed": "instructor"}}]}
+  }
+}
+```
+
+Grant `course:c1#instructor@user:alice` and `Check(course, c1, can_grade, alice)`
+is true (instructor ⊃ ta ⊃ can_grade); a `learner` is not. `content` parented to
+the course inherits: `Check(content, lesson1, editor, alice)` flows up via
+`tupleToUserset(parent, instructor)`. Three guarantees hold and are tested:
+
+- **Overlay** — the built-in `workspace`/`group`/`resource` surface still works
+  in the project; a custom namespace only *adds* (or, by re-declaring a name,
+  overrides) namespaces.
+- **Isolation** — the `course` namespace and its grants exist only in project
+  `edu`; the same `Check` in another project denies.
+- **Validation** — on `CreateProject` a model whose same-namespace
+  `computed`/`tupleset` reference is undeclared is rejected, so a typo surfaces
+  at write time rather than silently denying.
+
 ## Worked product mappings
 
 ### 1. Workplace collaboration tool (Slack + email + Linear + HR + incident.io)
