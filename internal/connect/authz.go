@@ -117,6 +117,9 @@ func optTimestamp(t *time.Time) *timestamppb.Timestamp {
 }
 
 func (h *Handler) WriteRelationTuples(ctx context.Context, req *connect.Request[workspacev1.WriteRelationTuplesRequest]) (*connect.Response[workspacev1.WriteRelationTuplesResponse], error) {
+	if err := h.requireTenantRate(req.Msg.ProjectId, req.Msg.TenantId); err != nil {
+		return nil, err
+	}
 	p := h.scope(req.Msg.ProjectId, req.Msg.TenantId)
 	ops := make([]service.TupleOp, 0, len(req.Msg.Updates))
 	for _, u := range req.Msg.Updates {
@@ -160,6 +163,9 @@ func (h *Handler) ReadRelationTuples(ctx context.Context, req *connect.Request[w
 func (h *Handler) Check(ctx context.Context, req *connect.Request[workspacev1.CheckRequest]) (*connect.Response[workspacev1.CheckResponse], error) {
 	start := time.Now()
 	defer func() { h.metrics.observe("Check", start) }()
+	if err := h.requireTenantRate(req.Msg.ProjectId, req.Msg.TenantId); err != nil {
+		return nil, err
+	}
 
 	p := h.scope(req.Msg.ProjectId, req.Msg.TenantId)
 	userID, set := req.Msg.SubjectUserId, req.Msg.SubjectSet
@@ -189,6 +195,9 @@ func (h *Handler) Check(ctx context.Context, req *connect.Request[workspacev1.Ch
 func (h *Handler) Expand(ctx context.Context, req *connect.Request[workspacev1.ExpandRequest]) (*connect.Response[workspacev1.ExpandResponse], error) {
 	start := time.Now()
 	defer func() { h.metrics.observe("Expand", start) }()
+	if err := h.requireTenantRate(req.Msg.ProjectId, req.Msg.TenantId); err != nil {
+		return nil, err
+	}
 
 	p := h.scope(req.Msg.ProjectId, req.Msg.TenantId)
 	tree, err := h.svc.Expand(ctx, p, req.Msg.Namespace, req.Msg.ObjectId, req.Msg.Relation)
@@ -236,6 +245,9 @@ func treeToProto(t authz.Tree) *workspacev1.UsersetTree {
 func (h *Handler) ListObjects(ctx context.Context, req *connect.Request[workspacev1.ListObjectsRequest]) (*connect.Response[workspacev1.ListObjectsResponse], error) {
 	start := time.Now()
 	defer func() { h.metrics.observe("ListObjects", start) }()
+	if err := h.requireTenantRate(req.Msg.ProjectId, req.Msg.TenantId); err != nil {
+		return nil, err
+	}
 
 	p := h.scope(req.Msg.ProjectId, req.Msg.TenantId)
 	ids, err := h.svc.ListObjects(ctx, p, req.Msg.Namespace, req.Msg.Relation, req.Msg.SubjectUserId)
@@ -247,6 +259,9 @@ func (h *Handler) ListObjects(ctx context.Context, req *connect.Request[workspac
 }
 
 func (h *Handler) DeprovisionUser(ctx context.Context, req *connect.Request[workspacev1.DeprovisionUserRequest]) (*connect.Response[workspacev1.DeprovisionUserResponse], error) {
+	if err := h.requireTenantRate(req.Msg.ProjectId, req.Msg.TenantId); err != nil {
+		return nil, err
+	}
 	p := h.scope(req.Msg.ProjectId, req.Msg.TenantId)
 	n, err := h.svc.DeprovisionUser(ctx, p, req.Msg.UserId)
 	if err != nil {
@@ -256,6 +271,9 @@ func (h *Handler) DeprovisionUser(ctx context.Context, req *connect.Request[work
 }
 
 func (h *Handler) ExportSubjectGrants(ctx context.Context, req *connect.Request[workspacev1.ExportSubjectGrantsRequest]) (*connect.Response[workspacev1.ExportSubjectGrantsResponse], error) {
+	if err := h.requireTenantRate(req.Msg.ProjectId, ""); err != nil {
+		return nil, err
+	}
 	p := service.Principal{ProjectID: h.projectOr(req.Msg.ProjectId)}
 	grants, err := h.svc.ExportSubjectGrants(ctx, p, req.Msg.UserId)
 	if err != nil {

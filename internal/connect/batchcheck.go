@@ -19,6 +19,9 @@ import (
 func (h *Handler) BatchCheck(ctx context.Context, req *connect.Request[workspacev1.BatchCheckRequest]) (*connect.Response[workspacev1.BatchCheckResponse], error) {
 	start := time.Now()
 	defer func() { h.metrics.observe("BatchCheck", start) }()
+	if err := h.requireTenantRate(req.Msg.ProjectId, req.Msg.TenantId); err != nil {
+		return nil, err
+	}
 
 	items := req.Msg.Items
 	if h.maxBatchCheckItems > 0 && len(items) > h.maxBatchCheckItems {

@@ -34,6 +34,9 @@ type Handler struct {
 	maxBatchCheckItems int
 	// adminLimiter throttles the AdminService per caller; nil disables it.
 	adminLimiter *rateLimiter
+	// tenantLimiter throttles authz data-plane RPCs per (project, tenant); nil
+	// disables it (the default).
+	tenantLimiter *rateLimiter
 	// metrics records authorization decision counters/histograms exposed at
 	// /metrics; nil-safe, so it never affects a decision.
 	metrics *metrics
@@ -44,8 +47,9 @@ type Handler struct {
 // deployments). adminSecret gates the AdminService; empty disables it.
 // maxBatchCheckItems caps BatchCheck request size; non-positive uses the default.
 // adminRateLimitPerMinute throttles the admin surface per caller; non-positive
-// disables the limiter.
-func NewHandler(svc *service.Service, defaultProjectID, defaultTenantID, adminSecret string, maxBatchCheckItems, adminRateLimitPerMinute int) *Handler {
+// disables the limiter. tenantRateLimitPerMinute throttles authz data-plane
+// RPCs per (project, tenant); non-positive disables it.
+func NewHandler(svc *service.Service, defaultProjectID, defaultTenantID, adminSecret string, maxBatchCheckItems, adminRateLimitPerMinute, tenantRateLimitPerMinute int) *Handler {
 	if defaultProjectID == "" {
 		defaultProjectID = "default"
 	}
@@ -59,8 +63,20 @@ func NewHandler(svc *service.Service, defaultProjectID, defaultTenantID, adminSe
 		adminSecret:        adminSecret,
 		maxBatchCheckItems: maxBatchCheckItems,
 		adminLimiter:       newRateLimiter(adminRateLimitPerMinute, nil),
+		tenantLimiter:      newRateLimiter(tenantRateLimitPerMinute, nil),
 		metrics:            defaultMetrics(),
 	}
+}
+
+// requireTenantRate throttles authz data-plane RPCs per resolved (project,
+// tenant). A nil tenantLimiter (disabled) always allows. Over-limit returns
+// ResourceExhausted. The key uses the resolved scope so empty project_id/
+// tenant_id map to the deployment defaults, consistent with the handler.
+func (h *Handler) requireTenantRate(projectID, tenantID string) error {
+	if h.tenantLimiter.allow(h.projectOr(projectID) + "\x00" + h.tenantOr(tenantID)) {
+		return nil
+	}
+	return connect.NewError(connect.CodeResourceExhausted, errors.New("tenant rate limit exceeded"))
 }
 
 // acting builds the Principal a management RPC acts as. acting_user_id is

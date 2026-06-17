@@ -13,7 +13,7 @@ import (
 )
 
 func TestDecisionMetrics(t *testing.T) {
-	h := NewHandler(service.New(memory.New(), nil, nil), "default", "", "", 100, 0)
+	h := NewHandler(service.New(memory.New(), nil, nil), "default", "", "", 100, 0, 0)
 	reg := prometheus.NewRegistry()
 	h.metrics = newMetrics(reg) // isolate from the global registry
 	ctx := context.Background()

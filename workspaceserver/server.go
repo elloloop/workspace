@@ -41,6 +41,9 @@ type Config struct {
 	// AdminRateLimitPerMinute throttles the admin API per caller; non-positive
 	// disables the limiter.
 	AdminRateLimitPerMinute int
+	// TenantRateLimitPerMinute throttles authz RPCs per (project, tenant);
+	// non-positive disables the limiter.
+	TenantRateLimitPerMinute int
 	// DecisionLog enables the async authorization decision audit log. Default
 	// false. When enabled, call Server.Close on shutdown to flush it.
 	DecisionLog bool
@@ -79,17 +82,18 @@ func New(ctx context.Context, opts Options) (*Server, error) {
 		projectID = "default"
 	}
 	deps := app.Deps{
-		Logger:                  logger,
-		Repo:                    repo,
-		DefaultProjectID:        projectID,
-		DefaultTenantID:         opts.Config.DefaultTenantID,
-		AllowedOrigins:          opts.Config.AllowedOrigins,
-		ServiceAuthTokens:       opts.Config.ServiceAuthTokens,
-		AdminAPISecret:          opts.Config.AdminAPISecret,
-		MaxListObjects:          opts.Config.MaxListObjects,
-		MaxExpandNodes:          opts.Config.MaxExpandNodes,
-		MaxBatchCheckItems:      opts.Config.MaxBatchCheckItems,
-		AdminRateLimitPerMinute: opts.Config.AdminRateLimitPerMinute,
+		Logger:                   logger,
+		Repo:                     repo,
+		DefaultProjectID:         projectID,
+		DefaultTenantID:          opts.Config.DefaultTenantID,
+		AllowedOrigins:           opts.Config.AllowedOrigins,
+		ServiceAuthTokens:        opts.Config.ServiceAuthTokens,
+		AdminAPISecret:           opts.Config.AdminAPISecret,
+		MaxListObjects:           opts.Config.MaxListObjects,
+		MaxExpandNodes:           opts.Config.MaxExpandNodes,
+		MaxBatchCheckItems:       opts.Config.MaxBatchCheckItems,
+		AdminRateLimitPerMinute:  opts.Config.AdminRateLimitPerMinute,
+		TenantRateLimitPerMinute: opts.Config.TenantRateLimitPerMinute,
 	}
 	// Only construct (and only then set the interface field) when enabled, so a
 	// disabled log leaves a genuinely nil DecisionLogger interface — not a
