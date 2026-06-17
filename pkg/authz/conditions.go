@@ -34,6 +34,7 @@ var conditionRegistry = map[string]ConditionFunc{
 	"age_at_least":    condAgeAtLeast,
 	"ip_in_cidrs":     condIPInCIDRs,
 	"not_after":       condNotAfter,
+	"scope_in":        condScopeIn,
 }
 
 // KnownCondition reports whether name is a registered built-in condition. The
@@ -134,6 +135,31 @@ func condNotAfter(params, ctx map[string]any) (bool, error) {
 		return false, fmt.Errorf("not_after: invalid now %q: %w", nowStr, err)
 	}
 	return !now.After(until), nil
+}
+
+// scope_in: the request's action is within the grant's allowed scopes. The
+// product passes the action it is performing as context["scope"] (e.g.
+// "tasks:read"); params["allowed"] lists the scopes this grant authorizes. The
+// grant applies only if the request scope ∈ allowed. This is how an integration
+// is given LIMITED authority — e.g. a Slack grant carrying
+// scope_in{allowed:["tasks:read","tasks:write"]} authorizes task reads/writes
+// but denies a "membership:write" request on the same object. Missing context
+// scope or missing/empty params fails closed.
+func condScopeIn(params, ctx map[string]any) (bool, error) {
+	scope, err := strField(ctx, "scope")
+	if err != nil {
+		return false, err
+	}
+	allowed, err := strSliceField(params, "allowed")
+	if err != nil {
+		return false, err
+	}
+	for _, a := range allowed {
+		if a == scope {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 // ── typed field helpers (JSON/structpb yield float64 numbers and []any) ────

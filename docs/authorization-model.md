@@ -106,9 +106,49 @@ Built-ins (`pkg/authz/conditions.go`):
 - **`age_at_least`** — `context["age"]` ≥ `params["min_age"]`.
 - **`ip_in_cidrs`** — `context["ip"]` is within any of `params["cidrs"]`.
 - **`not_after`** — `context["now"]` (RFC3339) is not past `params["until"]`.
+- **`scope_in`** — `context["scope"]` (the action being performed) is in
+  `params["allowed"]` (the scopes this grant authorizes).
 
 Per-project condition definitions and a richer expression evaluator (e.g. CEL)
 are tracked follow-ups; today the registry is a fixed pinned set.
+
+## Scoped integration delegation / on-behalf-of
+
+Integrations (Slack, Linear, incident.io, …) act on a workspace's behalf but
+should hold **limited, constrained** authority — "Slack may read tasks but not
+change membership", "only during business hours", "only before this grant
+expires". This is **not a new primitive**: it composes the condition layer above
+with the per-credential calling identity (see the README's
+`GATEWAY_SERVICE_CREDENTIALS`).
+
+Model the integration as a stable subject (e.g. `user:svc:slack`, or a group)
+and give it a grant carrying a condition that the product checks per request:
+
+```jsonc
+// Grant: svc:slack may edit doc1, but only for task actions.
+RelationTuple{ namespace:"resource", object_id:"doc1", relation:"editor",
+  subject: user:"svc:slack",
+  condition_name: "scope_in",
+  condition_params: { "allowed": ["tasks:read", "tasks:write"] } }
+```
+
+On the hot path the product passes what it is doing as `CheckRequest.context`:
+
+```jsonc
+Check{ namespace:"resource", object_id:"doc1", relation:"editor",
+  subject_user_id:"svc:slack", context: { "scope": "tasks:read" } }   // → allow
+Check{ … subject_user_id:"svc:slack", context: { "scope": "membership:write" } } // → deny
+```
+
+Combine conditions for stricter delegation — e.g. a `not_after` grant lapses the
+delegation automatically (no tuple revoke needed), and `ip_in_cidrs` binds it to
+the integration's egress. Because every grant is fail-closed, a request that
+omits the expected context is denied.
+
+**Auditing.** When a credential is mapped to a named principal, that name is the
+`Principal.Caller`, and every `Check`/`CheckSet` decision and tuple-change is
+recorded with a `caller` field (decision/audit logs), so a delegated action is
+attributable to the integration that performed it.
 
 ## The built-in namespaces
 

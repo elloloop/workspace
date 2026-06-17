@@ -68,6 +68,49 @@ func TestCheckEmitsDecisionRecord(t *testing.T) {
 	}
 }
 
+// TestScopedDelegationDecisionAttributedToCaller: a scoped integration grant is
+// allowed only for an in-scope request, and the emitted decision record carries
+// the calling-service identity (Principal.Caller) so the delegated action is
+// audited to the integration that made it.
+func TestScopedDelegationDecisionAttributedToCaller(t *testing.T) {
+	repo := memory.New()
+	cap := &capturingLogger{}
+	svc := service.New(repo, nil, nil, service.WithDecisionLogger(cap))
+
+	// svc:slack -> editor on resource:doc1, scoped to tasks:read.
+	if err := repo.WriteTuples(context.Background(), "p", "", []authz.Tuple{{
+		Namespace: "resource", ObjectID: "doc1", Relation: "editor",
+		Subject: authz.Subject{
+			UserID:    "svc:slack",
+			Condition: &authz.Condition{Name: "scope_in", Params: map[string]any{"allowed": []any{"tasks:read"}}},
+		},
+	}}, nil); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	// The calling service "slack" acts on behalf of the workspace.
+	p := service.Principal{ProjectID: "p", Caller: "slack"}
+	if ok, _ := svc.Check(context.Background(), p, "resource", "doc1", "editor", "svc:slack",
+		map[string]any{"scope": "tasks:read"}); !ok {
+		t.Fatal("in-scope delegated check must allow")
+	}
+	if ok, _ := svc.Check(context.Background(), p, "resource", "doc1", "editor", "svc:slack",
+		map[string]any{"scope": "membership:write"}); ok {
+		t.Fatal("out-of-scope delegated check must deny")
+	}
+
+	recs := cap.records()
+	if len(recs) != 2 {
+		t.Fatalf("got %d records, want 2", len(recs))
+	}
+	if !recs[0].Allowed || recs[0].Caller != "slack" {
+		t.Fatalf("allow record not attributed to caller: %+v", recs[0])
+	}
+	if recs[1].Allowed || recs[1].Caller != "slack" {
+		t.Fatalf("deny record not attributed to caller: %+v", recs[1])
+	}
+}
+
 func TestCheckWithoutLoggerWorks(t *testing.T) {
 	repo := memory.New()
 	svc := service.New(repo, nil, nil) // no decision logger
