@@ -126,10 +126,23 @@ func (h *Handler) acting(ctx context.Context, actingUserID, projectID, tenantID 
 		UserID: actingUserID, ProjectID: h.callerProject(ctx, projectID),
 		TenantID: h.tenantOr(tenantID), Caller: middleware.CallerFrom(ctx).Name,
 	}
-	if err := h.svc.EnsureServable(ctx, p); err != nil {
-		return service.Principal{}, errToConnect(err)
+	if err := h.ensureServable(ctx, p); err != nil {
+		return service.Principal{}, err
 	}
 	return p, nil
+}
+
+// ensureServable runs the data-residency guard and, on a residency refusal,
+// records the alertable authz_region_refused_total metric before mapping the
+// error to its wire code. A non-residency error maps straight through.
+func (h *Handler) ensureServable(ctx context.Context, p service.Principal) error {
+	if err := h.svc.EnsureServable(ctx, p); err != nil {
+		if errors.Is(err, service.ErrRegionNotServable) {
+			h.metrics.recordRegionRefused()
+		}
+		return errToConnect(err)
+	}
+	return nil
 }
 
 // scope is the Principal for an authz/seat RPC: only the project/tenant matter;
@@ -142,8 +155,8 @@ func (h *Handler) scope(ctx context.Context, projectID, tenantID string) (servic
 		ProjectID: h.callerProject(ctx, projectID), TenantID: h.tenantOr(tenantID),
 		Caller: middleware.CallerFrom(ctx).Name,
 	}
-	if err := h.svc.EnsureServable(ctx, p); err != nil {
-		return service.Principal{}, errToConnect(err)
+	if err := h.ensureServable(ctx, p); err != nil {
+		return service.Principal{}, err
 	}
 	return p, nil
 }

@@ -4196,7 +4196,18 @@ only way to undo a previously-set cap. </p></td>
                   <td>data_region</td>
                   <td><a href="#string">string</a></td>
                   <td></td>
-                  <td><p>data_region: empty leaves it unchanged (like name/model). </p></td>
+                  <td><p>data_region: empty leaves it unchanged (like name/model). Setting it
+repins the project; a repin converges across a horizontally-scaled fleet
+only after the resolver TTL (~30s), so it is not instantaneous. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>clear_data_region</td>
+                  <td><a href="#bool">bool</a></td>
+                  <td></td>
+                  <td><p>clear_data_region, when true, reverts the project to region-agnostic
+(unpinned). Mutually exclusive with a non-empty data_region. This is the
+explicit &#34;unpin&#34; path, since an empty data_region means &#34;leave unchanged&#34;. </p></td>
                 </tr>
               
             </tbody>

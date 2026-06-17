@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"go.uber.org/zap"
 	"golang.org/x/sync/singleflight"
 
 	"github.com/elloloop/workspace/pkg/authz"
@@ -194,7 +195,7 @@ func (s *Service) CreateProject(ctx context.Context, id, name string, model auth
 	if err := validateModel(model); err != nil {
 		return nil, err
 	}
-	if err := validateRegion(dataRegion); err != nil {
+	if err := ValidateRegion(dataRegion); err != nil {
 		return nil, err
 	}
 	now := s.now()
@@ -239,7 +240,7 @@ func (s *Service) ListProjects(ctx context.Context) ([]*Project, error) {
 // custom model or name. An empty name and an empty/nil model both mean "leave
 // unchanged", and an empty/unspecified status means "leave unchanged".
 // (Resetting a model back to the default is not expressed through Update.)
-func (s *Service) UpdateProject(ctx context.Context, id, name string, status ProjectStatus, model authz.Model, dataRegion string) (*Project, error) {
+func (s *Service) UpdateProject(ctx context.Context, id, name string, status ProjectStatus, model authz.Model, dataRegion string, clearRegion bool) (*Project, error) {
 	if id == "" {
 		return nil, fmt.Errorf("%w: project id is required", ErrInvalidArgument)
 	}
@@ -249,8 +250,11 @@ func (s *Service) UpdateProject(ctx context.Context, id, name string, status Pro
 	if err := validateModel(model); err != nil {
 		return nil, err
 	}
-	if err := validateRegion(dataRegion); err != nil {
+	if err := ValidateRegion(dataRegion); err != nil {
 		return nil, err
+	}
+	if clearRegion && dataRegion != "" {
+		return nil, fmt.Errorf("%w: set clear_data_region OR data_region, not both", ErrInvalidArgument)
 	}
 	p, err := s.repo.GetProject(ctx, id)
 	if err != nil {
@@ -266,8 +270,20 @@ func (s *Service) UpdateProject(ctx context.Context, id, name string, status Pro
 	if len(model) > 0 {
 		p.Model = model
 	}
-	if dataRegion != "" {
+	switch {
+	case clearRegion:
+		p.DataRegion = "" // explicit revert to region-agnostic
+	case dataRegion != "":
 		p.DataRegion = dataRegion
+	}
+	// A repin to a region THIS instance does not serve would, after the resolver
+	// TTL, make every request to the project fail closed fleet-wide — warn the
+	// operator who triggered it (a hard check is impossible from one instance).
+	if p.DataRegion != "" && s.dataRegion != "" && p.DataRegion != s.dataRegion {
+		s.log.Warn("data_region_repin_unservable_here",
+			zap.String("project_id", id),
+			zap.String("target_region", p.DataRegion),
+			zap.String("instance_region", s.dataRegion))
 	}
 	p.UpdatedAt = s.now()
 	if err := s.repo.UpdateProject(ctx, p); err != nil {
@@ -279,7 +295,7 @@ func (s *Service) UpdateProject(ctx context.Context, id, name string, status Pro
 			Action: AdminActionUpdateProject, ProjectID: id, NewStatus: p.Status,
 			StatusChanged: status != "" && status != oldStatus,
 			ModelChanged:  len(model) > 0,
-			RegionChanged: dataRegion != "" && dataRegion != oldRegion, At: p.UpdatedAt,
+			RegionChanged: p.DataRegion != oldRegion, At: p.UpdatedAt,
 		})
 	}
 	return p, nil
@@ -320,7 +336,7 @@ const maxDataRegionLen = 64
 // validateRegion rejects a malformed data-region identifier. Empty is allowed
 // (the project is unpinned). A region is a short token of lowercase letters,
 // digits, '-' and '_' (e.g. "us-east-1", "eu_west").
-func validateRegion(region string) error {
+func ValidateRegion(region string) error {
 	if region == "" {
 		return nil
 	}
@@ -346,8 +362,16 @@ func (s *Service) regionServable(p Principal, res resolved) error {
 	if s.dataRegion == "" || res.dataRegion == "" || res.dataRegion == s.dataRegion {
 		return nil
 	}
+	// A structured breadcrumb so on-call can see an instance is refusing a
+	// mis-routed project (paired with the authz_region_refused_total metric the
+	// handler increments). %w keeps the wire code FailedPrecondition while
+	// errors.Is(err, ErrRegionNotServable) distinguishes a residency refusal.
+	s.log.Warn("data_region_refused",
+		zap.String("project_id", p.ProjectID),
+		zap.String("project_region", res.dataRegion),
+		zap.String("instance_region", s.dataRegion))
 	return fmt.Errorf("%w: project %q is pinned to data region %q; this instance serves %q",
-		ErrFailedPrecondition, p.ProjectID, res.dataRegion, s.dataRegion)
+		ErrRegionNotServable, p.ProjectID, res.dataRegion, s.dataRegion)
 }
 
 // ensureRegion resolves the project and applies the region guard. It is for

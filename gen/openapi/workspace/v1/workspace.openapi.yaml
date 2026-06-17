@@ -1777,7 +1777,17 @@ components:
         dataRegion:
           type: string
           title: data_region
-          description: 'data_region: empty leaves it unchanged (like name/model).'
+          description: |-
+            data_region: empty leaves it unchanged (like name/model). Setting it
+             repins the project; a repin converges across a horizontally-scaled fleet
+             only after the resolver TTL (~30s), so it is not instantaneous.
+        clearDataRegion:
+          type: boolean
+          title: clear_data_region
+          description: |-
+            clear_data_region, when true, reverts the project to region-agnostic
+             (unpinned). Mutually exclusive with a non-empty data_region. This is the
+             explicit "unpin" path, since an empty data_region means "leave unchanged".
       title: UpdateProjectRequest
       additionalProperties: false
     workspace.v1.UpdateProjectResponse:

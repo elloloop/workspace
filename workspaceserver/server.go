@@ -83,6 +83,13 @@ func New(ctx context.Context, opts Options) (*Server, error) {
 	if repo == nil {
 		repo = memory.New()
 	}
+	// Validate the instance region on the embeddable path too — the env path
+	// validates in config.Validate, but an embedder builds Options.Config
+	// directly and would otherwise bypass it (a typo'd region silently fails
+	// closed for every matching project). One shared validator on every entry.
+	if err := service.ValidateRegion(opts.Config.DataRegion); err != nil {
+		return nil, err
+	}
 	projectID := opts.Config.DefaultProjectID
 	if projectID == "" {
 		projectID = "default"

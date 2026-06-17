@@ -134,7 +134,7 @@ func (h *Handler) UpdateProject(ctx context.Context, req *connect.Request[worksp
 	if err != nil {
 		return nil, err
 	}
-	p, err := h.svc.UpdateProject(ctx, req.Msg.Id, req.Msg.Name, projectStatusFromProto(req.Msg.Status), model, req.Msg.DataRegion)
+	p, err := h.svc.UpdateProject(ctx, req.Msg.Id, req.Msg.Name, projectStatusFromProto(req.Msg.Status), model, req.Msg.DataRegion, req.Msg.ClearDataRegion)
 	if err != nil {
 		return nil, errToConnect(err)
 	}

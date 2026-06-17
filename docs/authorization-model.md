@@ -367,6 +367,17 @@ admin audit log (`region_changed`), and the default project is seeded with the
 instance's region at bootstrap (a pre-existing default project pinned to a
 different region fails fast at boot).
 
+A repin is **not instantaneous fleet-wide**: each instance caches a project's
+resolution for the resolver TTL (~30s), so after an `UpdateProject` repin a
+horizontally-scaled fleet converges within that window — during it, some
+instances may still serve under the old region. Repinning a project to a region
+**no running instance serves** makes it fail closed everywhere after the TTL
+(the writing instance logs a `data_region_repin_unservable_here` warning when it
+detects this). To revert a project to region-agnostic, use `clear_data_region`
+on `UpdateProject` (an empty `data_region` means "leave unchanged"). A residency
+refusal emits the `authz_region_refused_total` metric and a `data_region_refused`
+log breadcrumb so a mis-routed instance is alertable.
+
 **Today vs. tomorrow.** This is the recording + validation + **serving guard**
 half. The actual multi-region storage **routing** (steering a project's reads and
 writes to a regional store, data movement on a region change) is forward-compat —

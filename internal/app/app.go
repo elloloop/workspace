@@ -71,6 +71,7 @@ func New(ctx context.Context, d Deps) (http.Handler, error) {
 		service.WithMaxListObjects(d.MaxListObjects),
 		service.WithMaxExpandNodes(d.MaxExpandNodes),
 		service.WithDataRegion(d.DataRegion),
+		service.WithLogger(logger),
 	}
 	if d.DecisionLogger != nil {
 		opts = append(opts, service.WithDecisionLogger(d.DecisionLogger))

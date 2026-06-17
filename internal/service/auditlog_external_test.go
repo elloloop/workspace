@@ -84,11 +84,11 @@ func TestAuditAdminMutations(t *testing.T) {
 		t.Fatalf("CreateProject: %v", err)
 	}
 	// status-only update: StatusChanged true, ModelChanged/RegionChanged false.
-	if _, err := svc.UpdateProject(ctx, "prj", "", service.ProjectSuspended, nil, ""); err != nil {
+	if _, err := svc.UpdateProject(ctx, "prj", "", service.ProjectSuspended, nil, "", false); err != nil {
 		t.Fatalf("UpdateProject: %v", err)
 	}
 	// region repin: RegionChanged true, StatusChanged/ModelChanged false.
-	if _, err := svc.UpdateProject(ctx, "prj", "", "", nil, "eu-west-1"); err != nil {
+	if _, err := svc.UpdateProject(ctx, "prj", "", "", nil, "eu-west-1", false); err != nil {
 		t.Fatalf("UpdateProject region: %v", err)
 	}
 	recs := a.adminRecs()

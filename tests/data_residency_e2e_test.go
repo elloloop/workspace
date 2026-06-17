@@ -198,3 +198,53 @@ func TestDataResidencyGuardsEntireSurface(t *testing.T) {
 		t.Fatalf("matching-region ListWorkspaces must be served: %v", err)
 	}
 }
+
+// TestEmbedderRejectsMalformedRegion: an embedder building Options.Config
+// directly is validated too (no GATEWAY_DATA_REGION env-path bypass).
+func TestEmbedderRejectsMalformedRegion(t *testing.T) {
+	_, err := workspaceserver.New(context.Background(), workspaceserver.Options{
+		Logger: zaptest.NewLogger(t),
+		Config: workspaceserver.Config{
+			DefaultProjectID:  "default",
+			ServiceAuthTokens: []string{svcToken},
+			DataRegion:        "US East!", // malformed
+		},
+	})
+	if err == nil {
+		t.Fatal("workspaceserver.New must reject a malformed DataRegion, not silently fail closed")
+	}
+}
+
+// TestDataResidencyClearPin: a pinned project can be unpinned via
+// clear_data_region and is then served by an instance of any region.
+func TestDataResidencyClearPin(t *testing.T) {
+	h := newRegionHarness(t, "us-east-1")
+	ctx := context.Background()
+
+	if _, err := h.admin.CreateProject(ctx, reqAdmin(&workspacev1.CreateProjectRequest{
+		Id: "eu-proj", Name: "EU", DataRegion: "eu-west-1",
+	})); err != nil {
+		t.Fatalf("CreateProject: %v", err)
+	}
+	// While pinned to eu-west-1, this us-east-1 instance refuses it.
+	if _, err := h.authz.Check(ctx, req(&workspacev1.CheckRequest{
+		ProjectId: "eu-proj", Namespace: "workspace", ObjectId: "w1", Relation: "member", SubjectUserId: "u1",
+	})); connect.CodeOf(err) != connect.CodeFailedPrecondition {
+		t.Fatalf("pinned project should be refused, got %v", err)
+	}
+	// Clear the pin → region-agnostic → served here.
+	if _, err := h.admin.UpdateProject(ctx, reqAdmin(&workspacev1.UpdateProjectRequest{
+		Id: "eu-proj", ClearDataRegion: true,
+	})); err != nil {
+		t.Fatalf("clear pin: %v", err)
+	}
+	got, err := h.admin.GetProject(ctx, reqAdmin(&workspacev1.GetProjectRequest{Id: "eu-proj"}))
+	if err != nil || got.Msg.Project.DataRegion != "" {
+		t.Fatalf("after clear, region = %q, %v; want empty", got.Msg.Project.GetDataRegion(), err)
+	}
+	if _, err := h.authz.Check(ctx, req(&workspacev1.CheckRequest{
+		ProjectId: "eu-proj", Namespace: "workspace", ObjectId: "w1", Relation: "member", SubjectUserId: "u1",
+	})); err != nil {
+		t.Fatalf("unpinned project must be served: %v", err)
+	}
+}

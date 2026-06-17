@@ -76,6 +76,29 @@ func TestDecisionMetrics(t *testing.T) {
 	}
 }
 
+// TestRegionRefusedMetric: a request to a project pinned to a different region
+// than this instance serves is refused AND increments authz_region_refused_total.
+func TestRegionRefusedMetric(t *testing.T) {
+	svc := service.New(memory.New(), nil, nil, service.WithDataRegion("us-east-1"))
+	ctx := context.Background()
+	if _, err := svc.CreateProject(ctx, "eu", "EU", nil, "eu-west-1"); err != nil {
+		t.Fatalf("CreateProject: %v", err)
+	}
+	h := NewHandler(svc, "default", "", "", 100, 0, 0)
+	reg := prometheus.NewRegistry()
+	h.metrics = newMetrics(reg)
+
+	_, err := h.Check(ctx, connect.NewRequest(&workspacev1.CheckRequest{
+		ProjectId: "eu", Namespace: "doc", ObjectId: "d1", Relation: "viewer", SubjectUserId: "u1",
+	}))
+	if connect.CodeOf(err) != connect.CodeFailedPrecondition {
+		t.Fatalf("mis-routed Check = %v, want FailedPrecondition", err)
+	}
+	if got := counterValue(t, reg, "authz_region_refused_total", map[string]string{}); got != 1 {
+		t.Fatalf("region refused counter = %v, want 1", got)
+	}
+}
+
 // counterValue gathers reg and returns the value of the counter named `name`
 // whose label set exactly equals `labels` (0 if absent).
 func counterValue(t *testing.T, reg *prometheus.Registry, name string, labels map[string]string) float64 {

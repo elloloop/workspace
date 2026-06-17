@@ -593,6 +593,15 @@ func testProjects(t *testing.T, r service.Repository) {
 	if err := r.CreateProject(ctx(), &service.Project{ID: "prj2", Name: "Pro", Status: service.ProjectActive, CreatedAt: now, UpdatedAt: now}); err != nil {
 		t.Fatalf("CreateProject prj2: %v", err)
 	}
+	// Region-only (model-less) project — the default-project shape: the
+	// config_json envelope must round-trip a region with no model.
+	prjR := &service.Project{ID: "prjR", Name: "DefaultShape", Status: service.ProjectActive, DataRegion: "us-east-1", CreatedAt: now, UpdatedAt: now}
+	if err := r.CreateProject(ctx(), prjR); err != nil {
+		t.Fatalf("CreateProject prjR: %v", err)
+	}
+	if gotR, _ := r.GetProject(ctx(), "prjR"); gotR.Model != nil || gotR.DataRegion != "us-east-1" {
+		t.Fatalf("prjR region-only round-trip = %+v, want nil model + us-east-1", gotR)
+	}
 
 	got, err := r.GetProject(ctx(), "prj1")
 	if err != nil {
@@ -611,16 +620,18 @@ func testProjects(t *testing.T, r service.Repository) {
 	}
 
 	list, err := r.ListProjects(ctx())
-	if err != nil || len(list) != 2 {
+	if err != nil || len(list) != 3 {
 		t.Fatalf("ListProjects = %d, %v", len(list), err)
 	}
 
+	// Clearing the model must not disturb the persisted region (region-only
+	// round-trip survives a model-clearing rewrite).
 	got.Status = service.ProjectSuspended
 	got.Model = nil
 	if err := r.UpdateProject(ctx(), got); err != nil {
 		t.Fatalf("UpdateProject: %v", err)
 	}
-	if after, _ := r.GetProject(ctx(), "prj1"); after.Status != service.ProjectSuspended || after.Model != nil {
+	if after, _ := r.GetProject(ctx(), "prj1"); after.Status != service.ProjectSuspended || after.Model != nil || after.DataRegion != "us-east-1" {
 		t.Fatalf("after update = %+v", after)
 	}
 

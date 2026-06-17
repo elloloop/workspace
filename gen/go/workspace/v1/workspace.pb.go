@@ -5915,10 +5915,16 @@ type UpdateProjectRequest struct {
 	Name      string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
 	Status    ProjectStatus          `protobuf:"varint,3,opt,name=status,proto3,enum=workspace.v1.ProjectStatus" json:"status,omitempty"`
 	ModelJson string                 `protobuf:"bytes,4,opt,name=model_json,json=modelJson,proto3" json:"model_json,omitempty"`
-	// data_region: empty leaves it unchanged (like name/model).
-	DataRegion    string `protobuf:"bytes,5,opt,name=data_region,json=dataRegion,proto3" json:"data_region,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	// data_region: empty leaves it unchanged (like name/model). Setting it
+	// repins the project; a repin converges across a horizontally-scaled fleet
+	// only after the resolver TTL (~30s), so it is not instantaneous.
+	DataRegion string `protobuf:"bytes,5,opt,name=data_region,json=dataRegion,proto3" json:"data_region,omitempty"`
+	// clear_data_region, when true, reverts the project to region-agnostic
+	// (unpinned). Mutually exclusive with a non-empty data_region. This is the
+	// explicit "unpin" path, since an empty data_region means "leave unchanged".
+	ClearDataRegion bool `protobuf:"varint,6,opt,name=clear_data_region,json=clearDataRegion,proto3" json:"clear_data_region,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
 }
 
 func (x *UpdateProjectRequest) Reset() {
@@ -5984,6 +5990,13 @@ func (x *UpdateProjectRequest) GetDataRegion() string {
 		return x.DataRegion
 	}
 	return ""
+}
+
+func (x *UpdateProjectRequest) GetClearDataRegion() bool {
+	if x != nil {
+		return x.ClearDataRegion
+	}
+	return false
 }
 
 type UpdateProjectResponse struct {
@@ -7240,7 +7253,7 @@ const file_workspace_v1_workspace_proto_rawDesc = "" +
 	"\x11GetProjectRequest\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\"E\n" +
 	"\x12GetProjectResponse\x12/\n" +
-	"\aproject\x18\x01 \x01(\v2\x15.workspace.v1.ProjectR\aproject\"\xaf\x01\n" +
+	"\aproject\x18\x01 \x01(\v2\x15.workspace.v1.ProjectR\aproject\"\xdb\x01\n" +
 	"\x14UpdateProjectRequest\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x123\n" +
@@ -7248,7 +7261,8 @@ const file_workspace_v1_workspace_proto_rawDesc = "" +
 	"\n" +
 	"model_json\x18\x04 \x01(\tR\tmodelJson\x12\x1f\n" +
 	"\vdata_region\x18\x05 \x01(\tR\n" +
-	"dataRegion\"H\n" +
+	"dataRegion\x12*\n" +
+	"\x11clear_data_region\x18\x06 \x01(\bR\x0fclearDataRegion\"H\n" +
 	"\x15UpdateProjectResponse\x12/\n" +
 	"\aproject\x18\x01 \x01(\v2\x15.workspace.v1.ProjectR\aproject\"\x15\n" +
 	"\x13ListProjectsRequest\"I\n" +

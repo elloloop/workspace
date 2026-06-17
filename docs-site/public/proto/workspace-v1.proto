@@ -779,8 +779,14 @@ message UpdateProjectRequest {
   string name = 2;
   ProjectStatus status = 3;
   string model_json = 4;
-  // data_region: empty leaves it unchanged (like name/model).
+  // data_region: empty leaves it unchanged (like name/model). Setting it
+  // repins the project; a repin converges across a horizontally-scaled fleet
+  // only after the resolver TTL (~30s), so it is not instantaneous.
   string data_region = 5;
+  // clear_data_region, when true, reverts the project to region-agnostic
+  // (unpinned). Mutually exclusive with a non-empty data_region. This is the
+  // explicit "unpin" path, since an empty data_region means "leave unchanged".
+  bool clear_data_region = 6;
 }
 message UpdateProjectResponse { Project project = 1; }
 

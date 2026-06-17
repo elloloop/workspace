@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 
+	"go.uber.org/zap"
+
 	"github.com/elloloop/workspace/pkg/authz"
 )
 
@@ -54,6 +56,9 @@ type Service struct {
 	// operate on a project pinned to a different region (fail closed). Empty =
 	// region-agnostic (serves all) — today's behavior.
 	dataRegion string
+	// log is the structured logger for operability breadcrumbs (e.g. a
+	// residency refusal); never nil after New (defaults to a no-op).
+	log *zap.Logger
 }
 
 // Option configures a Service at construction.
@@ -106,11 +111,22 @@ func New(repo Repository, clock func() time.Time, idgen func() string, opts ...O
 		newID:          idgen,
 		maxListObjects: DefaultMaxListObjects,
 		maxExpandNodes: DefaultMaxExpandNodes,
+		log:            zap.NewNop(),
 	}
 	for _, opt := range opts {
 		opt(s)
 	}
 	return s
+}
+
+// WithLogger sets the service's structured logger for operability breadcrumbs
+// (residency refusals, risky repins). A nil logger keeps the no-op default.
+func WithLogger(l *zap.Logger) Option {
+	return func(s *Service) {
+		if l != nil {
+			s.log = l
+		}
+	}
 }
 
 // Engine exposes the authz engine for the AuthzService handler.
