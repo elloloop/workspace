@@ -278,7 +278,14 @@ parent leg handles **both** parent kinds:
 
 Because the aliases resolve **through the model** (computed), they read no raw
 tuples, so a stray `workspace:w#editor@x` tuple is **inert** and cannot leak
-onto child resources. A `resource→resource` chain inherits level by level —
+onto child resources. To prevent such inert grants outright, `WriteRelationTuples`
+**rejects an INSERT** (`InvalidArgument`) on any relation the project's model
+defines as **computed-only** — one with no reachable `this` leg (e.g.
+`workspace#editor`/`#viewer`), since the engine would never read a tuple stored
+on it. Relations with a `this` leg (incl. nested in a `union`, like
+`resource#viewer`) and relations absent from the model (which default to `this`)
+stay writable; `DELETE` is always allowed so a tuple minted before a model change
+can be cleaned up. A `resource→resource` chain inherits level by level —
 `editor` on `folderA` flows to a `doc` nested two folders deep. Deep/branching
 hierarchies are bounded two ways: the engine caps recursion at `maxDepth`
 (`32`), past which **every** path — `Check`, `Expand`, and `CheckSet` — **fails

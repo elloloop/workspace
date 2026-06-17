@@ -36,6 +36,24 @@ func (s *Service) WriteTuples(ctx context.Context, p Principal, ops []TupleOp) (
 	if err := s.ensureProjectActive(ctx, p); err != nil {
 		return "", err
 	}
+	// Reject INSERTs on relations the project's model defines as computed-only
+	// (no reachable `this` leg): the engine would never read such a tuple, so
+	// storing it is an inert grant that ReadTuples would surface but Check would
+	// ignore. DELETEs stay lenient, so a tuple minted before a model change can
+	// still be cleaned up. Unknown relations default to `this` and remain writable.
+	if len(inserts) > 0 {
+		res, rerr := s.resolver.resolve(ctx, p.ProjectID)
+		if rerr != nil {
+			return "", rerr
+		}
+		m := res.modelOrDefault()
+		for _, t := range inserts {
+			if !m.WritableRelation(t.Namespace, t.Relation) {
+				return "", fmt.Errorf("%w: relation %s#%s is computed-only and cannot be written directly",
+					ErrInvalidArgument, t.Namespace, t.Relation)
+			}
+		}
+	}
 	if err := s.repo.WriteTuples(ctx, p.ProjectID, p.TenantID, inserts, deletes); err != nil {
 		return "", err
 	}
