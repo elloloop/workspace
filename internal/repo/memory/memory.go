@@ -214,6 +214,17 @@ func (s *Store) DeleteAllSubjectTuplesInProject(_ context.Context, projectID, us
 			}
 		}
 	}
+	// Reclaim the user's seat assignments across all tenants/skus of the project,
+	// mirroring the tuple scope, so deprovisioning frees paid seats and leaves no
+	// entitlement residue.
+	for sk, bySKU := range s.seatAssigns {
+		if !strings.HasPrefix(sk, prefix) {
+			continue
+		}
+		for _, byUser := range bySKU {
+			delete(byUser, userID)
+		}
+	}
 	return n, nil
 }
 
@@ -664,14 +675,19 @@ func (s *Store) ListEnrollments(_ context.Context, projectID, tenantID, groupID 
 
 // ── seats (license/entitlement counting) ────────────────────────────────────
 
-func (s *Store) SetSeatLimit(_ context.Context, projectID, tenantID, sku string, limit int) error {
+func (s *Store) SetSeatLimit(_ context.Context, projectID, tenantID, sku string, limit *int) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	sk := scope(projectID, tenantID)
+	if limit == nil {
+		// Clear the cap → unlimited.
+		delete(s.seatLimits[sk], sku)
+		return nil
+	}
 	if s.seatLimits[sk] == nil {
 		s.seatLimits[sk] = map[string]int{}
 	}
-	s.seatLimits[sk][sku] = limit
+	s.seatLimits[sk][sku] = *limit
 	return nil
 }
 
@@ -700,8 +716,11 @@ func (s *Store) AssignSeatAndTuple(_ context.Context, a *service.SeatAssignment,
 	if s.seatAssigns[sk][a.SKU] == nil {
 		s.seatAssigns[sk][a.SKU] = map[string]service.SeatAssignment{}
 	}
-	// Idempotent: an already-seated user consumes no extra seat.
+	// Idempotent: an already-seated user consumes no extra seat. Self-heal the
+	// backing tuple (re-assert) so a counted seat whose tuple was deleted
+	// out-of-band converges back to granting access.
 	if _, ok := s.seatAssigns[sk][a.SKU][a.UserID]; ok {
+		s.writeTuplesLocked(a.ProjectID, a.TenantID, []authz.Tuple{tuple}, nil)
 		return true, nil
 	}
 	if used, limit, limited := s.seatUsageLocked(sk, a.SKU); limited && used >= limit {

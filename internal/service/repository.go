@@ -102,9 +102,10 @@ type Repository interface {
 	ListEnrollments(ctx context.Context, projectID, tenantID, groupID string) ([]*Enrollment, error)
 
 	// ── Seats (license/entitlement counting) ─────────────────────────
-	// SetSeatLimit configures the cap for a (project, tenant, sku); limit must
-	// be >= 0. With no limit configured a sku is unlimited.
-	SetSeatLimit(ctx context.Context, projectID, tenantID, sku string, limit int) error
+	// SetSeatLimit configures the cap for a (project, tenant, sku); a non-nil
+	// limit must be >= 0 (0 admits none). A NIL limit CLEARS the cap (deletes the
+	// row), returning the sku to unlimited.
+	SetSeatLimit(ctx context.Context, projectID, tenantID, sku string, limit *int) error
 	// GetSeatUsage returns the seat consumption and configured cap for a sku.
 	GetSeatUsage(ctx context.Context, projectID, tenantID, sku string) (SeatUsage, error)
 	// AssignSeatAndTuple atomically enforces the sku's cap and, on success,

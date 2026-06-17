@@ -168,10 +168,17 @@ sku)` and enforces a cap at write time: `SetSeatLimit` configures the cap,
 `AssignSeat` grants a seat and fails closed (`ResourceExhausted`) once the cap is
 reached — the count-check and insert are one atomic, race-safe operation, so
 concurrent assigns can never oversubscribe. A sku with no configured limit is
-unlimited; a limit of `0` admits none; re-assigning a seated user is idempotent.
-Each assignment also writes a `seat:<sku>#holder@user` tuple, so `Check` can gate
-access on seat-holding. `RevokeSeat` frees a seat; `GetSeatUsage`/`ListSeats`
-report consumption.
+unlimited; a limit of `0` admits none; `SetSeatLimit` with no `limit` **clears**
+the cap (back to unlimited). Lowering a cap below current usage is allowed (a
+**downgrade**): it succeeds, `GetSeatUsage` then reports `used > limit`, and
+further `AssignSeat` is denied until seats are revoked below the new cap — no
+seat is ever auto-revoked. Re-assigning a seated user is idempotent and
+**re-asserts** the backing tuple (a seat always grants access). Each assignment
+writes a `seat:<sku>#holder@user` tuple — the `seat` namespace is **reserved**
+(it cannot be written via `WriteRelationTuples`, only `AssignSeat`/`RevokeSeat`),
+so `Check` can gate on seat-holding without the count and access diverging.
+`RevokeSeat` frees a seat; `DeprovisionUser` also reclaims a leaving user's seats;
+`GetSeatUsage`/`ListSeats` report consumption.
 
 ### Calling the API
 

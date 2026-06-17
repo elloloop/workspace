@@ -3532,8 +3532,9 @@ time (e.g. {&#34;min_age&#34;: 13} for age_at_least). </p></td>
                 <tr>
                   <td>limit</td>
                   <td><a href="#int32">int32</a></td>
-                  <td></td>
-                  <td><p> </p></td>
+                  <td>optional</td>
+                  <td><p>limit is absent when the sku is unlimited (no cap configured); present
+(including 0, which admits no seats) when a cap is set. </p></td>
                 </tr>
               
             </tbody>
@@ -3660,8 +3661,10 @@ time (e.g. {&#34;min_age&#34;: 13} for age_at_least). </p></td>
                 <tr>
                   <td>limit</td>
                   <td><a href="#int32">int32</a></td>
-                  <td></td>
-                  <td><p>must be &gt;= 0; absent (never set) means unlimited </p></td>
+                  <td>optional</td>
+                  <td><p>limit, when present, sets the cap (must be &gt;= 0; 0 admits no seats). When
+ABSENT, the sku&#39;s limit is CLEARED, returning it to unlimited — this is the
+only way to undo a previously-set cap. </p></td>
                 </tr>
               
             </tbody>

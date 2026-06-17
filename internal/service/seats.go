@@ -7,6 +7,12 @@ import (
 	"github.com/elloloop/workspace/pkg/authz"
 )
 
+// seatNamespace is the RESERVED namespace for seat-holder tuples. It is rejected
+// by the generic tuple-write path (validateTuple), so a `seat:<sku>#holder@user`
+// tuple can only be minted/removed via the cap-enforced AssignSeat/RevokeSeat —
+// the seat count and the granted access can never diverge.
+const seatNamespace = "seat"
+
 // SeatRelation is the relation a seat assignment grants in the `seat` namespace:
 // a `seat:<sku>#holder@user:<id>` tuple, so a product model can gate access on
 // seat-holding (the `seat` namespace falls back to direct tuples by default).
@@ -14,17 +20,20 @@ const SeatRelation = "holder"
 
 // seatTuple builds the backing relation tuple for a (sku, user) seat.
 func seatTuple(sku, userID string) authz.Tuple {
-	return authz.Tuple{Namespace: "seat", ObjectID: sku, Relation: SeatRelation, Subject: authz.Subject{UserID: userID}}
+	return authz.Tuple{Namespace: seatNamespace, ObjectID: sku, Relation: SeatRelation, Subject: authz.Subject{UserID: userID}}
 }
 
 // SetSeatLimit configures the seat cap for a sku in the caller's project/tenant.
-// limit must be >= 0 (0 admits no seats); with no limit ever configured a sku is
-// unlimited. Fails closed on a suspended project.
-func (s *Service) SetSeatLimit(ctx context.Context, p Principal, sku string, limit int) (*SeatLimit, error) {
+// A non-nil limit must be >= 0 (0 admits no seats); a NIL limit CLEARS the cap,
+// returning the sku to unlimited. Lowering a limit below current usage is allowed
+// (a downgrade): it succeeds, SeatUsage then reports used > limit, and further
+// AssignSeat is denied until seats are revoked below the new cap; existing
+// assignments are never auto-revoked. Fails closed on a suspended project.
+func (s *Service) SetSeatLimit(ctx context.Context, p Principal, sku string, limit *int) (*SeatLimit, error) {
 	if sku == "" {
 		return nil, fmt.Errorf("%w: sku is required", ErrInvalidArgument)
 	}
-	if limit < 0 {
+	if limit != nil && *limit < 0 {
 		return nil, fmt.Errorf("%w: seat limit must be >= 0", ErrInvalidArgument)
 	}
 	if err := s.ensureProjectActive(ctx, p); err != nil {
@@ -33,13 +42,19 @@ func (s *Service) SetSeatLimit(ctx context.Context, p Principal, sku string, lim
 	if err := s.repo.SetSeatLimit(ctx, p.ProjectID, p.TenantID, sku, limit); err != nil {
 		return nil, err
 	}
-	return &SeatLimit{SKU: sku, Limit: limit}, nil
+	out := &SeatLimit{SKU: sku}
+	if limit != nil {
+		out.Limit, out.Limited = *limit, true
+	}
+	return out, nil
 }
 
-// SeatLimit is the configured cap for a sku.
+// SeatLimit is the configured cap for a sku. Limited is false when the sku is
+// unlimited (no cap configured), in which case Limit is 0 and meaningless.
 type SeatLimit struct {
-	SKU   string
-	Limit int
+	SKU     string
+	Limit   int
+	Limited bool
 }
 
 // SeatUsage returns the seat consumption and configured cap for a sku.

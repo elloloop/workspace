@@ -597,14 +597,29 @@ func (s *Store) ReadTuples(ctx context.Context, projectID, tenantID string, f se
 }
 
 func (s *Store) DeleteAllSubjectTuplesInProject(ctx context.Context, projectID, userID string) (int, error) {
-	// Project-wide erase across ALL tenants. project_id leads the
-	// relation_tuples_subject_user_idx index, so dropping the tenant_id filter
-	// still uses it.
-	tag, err := s.pool.Exec(ctx,
+	// Project-wide erase across ALL tenants, in one transaction: the user's
+	// relation tuples AND their seat assignments (so deprovisioning reclaims paid
+	// seats and leaves no entitlement residue). project_id leads both the
+	// relation_tuples_subject_user_idx index and the seat_assignments PK, so
+	// dropping the tenant_id filter still uses them.
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return 0, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	tag, err := tx.Exec(ctx,
 		`DELETE FROM relation_tuples
 		  WHERE project_id=$1 AND subject_kind='user' AND subject_user_id=$2`,
 		projectID, userID)
 	if err != nil {
+		return 0, err
+	}
+	if _, err := tx.Exec(ctx,
+		`DELETE FROM seat_assignments WHERE project_id=$1 AND user_id=$2`,
+		projectID, userID); err != nil {
+		return 0, err
+	}
+	if err := tx.Commit(ctx); err != nil {
 		return 0, err
 	}
 	return int(tag.RowsAffected()), nil
@@ -1162,12 +1177,19 @@ func (s *Store) ListEnrollments(ctx context.Context, projectID, tenantID, groupI
 
 // ── seats (license/entitlement counting) ────────────────────────────────────
 
-func (s *Store) SetSeatLimit(ctx context.Context, projectID, tenantID, sku string, limit int) error {
+func (s *Store) SetSeatLimit(ctx context.Context, projectID, tenantID, sku string, limit *int) error {
+	if limit == nil {
+		// Clear the cap → unlimited.
+		_, err := s.pool.Exec(ctx,
+			`DELETE FROM seat_limits WHERE project_id=$1 AND tenant_id=$2 AND sku=$3`,
+			projectID, tenantID, sku)
+		return err
+	}
 	_, err := s.pool.Exec(ctx,
 		`INSERT INTO seat_limits (project_id, tenant_id, sku, seat_limit)
 		 VALUES ($1,$2,$3,$4)
 		 ON CONFLICT (project_id, tenant_id, sku) DO UPDATE SET seat_limit=EXCLUDED.seat_limit`,
-		projectID, tenantID, sku, limit)
+		projectID, tenantID, sku, *limit)
 	return err
 }
 
@@ -1223,6 +1245,11 @@ func (s *Store) AssignSeatAndTuple(ctx context.Context, a *service.SeatAssignmen
 		return false, err
 	}
 	if exists {
+		// Self-heal: re-assert the backing tuple (idempotent upsert) so a counted
+		// seat whose tuple was deleted out-of-band converges back to granting.
+		if err := writeTuplesExec(ctx, tx, a.ProjectID, a.TenantID, []authz.Tuple{tuple}, nil); err != nil {
+			return false, err
+		}
 		return true, tx.Commit(ctx)
 	}
 

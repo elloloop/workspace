@@ -1464,6 +1464,10 @@ components:
           type: integer
           title: limit
           format: int32
+          description: |-
+            limit is absent when the sku is unlimited (no cap configured); present
+             (including 0, which admits no seats) when a cap is set.
+          nullable: true
       title: SeatLimit
       additionalProperties: false
     workspace.v1.SetEnrollmentStateRequest:
@@ -1513,7 +1517,11 @@ components:
           type: integer
           title: limit
           format: int32
-          description: must be >= 0; absent (never set) means unlimited
+          description: |-
+            limit, when present, sets the cap (must be >= 0; 0 admits no seats). When
+             ABSENT, the sku's limit is CLEARED, returning it to unlimited — this is the
+             only way to undo a previously-set cap.
+          nullable: true
       title: SetSeatLimitRequest
       additionalProperties: false
     workspace.v1.SetSeatLimitResponse:

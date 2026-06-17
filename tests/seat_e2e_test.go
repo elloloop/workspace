@@ -7,6 +7,7 @@ import (
 
 	"connectrpc.com/connect"
 	"go.uber.org/zap/zaptest"
+	"google.golang.org/protobuf/proto"
 
 	workspacev1 "github.com/elloloop/workspace/gen/go/workspace/v1"
 	"github.com/elloloop/workspace/gen/go/workspace/v1/workspacev1connect"
@@ -32,7 +33,7 @@ func TestSeatEnforcementOverAPI(t *testing.T) {
 	authz := workspacev1connect.NewAuthzServiceClient(c, hs.URL)
 	ctx := context.Background()
 
-	if _, err := seat.SetSeatLimit(ctx, req(&workspacev1.SetSeatLimitRequest{Sku: "pro", Limit: 2})); err != nil {
+	if _, err := seat.SetSeatLimit(ctx, req(&workspacev1.SetSeatLimitRequest{Sku: "pro", Limit: proto.Int32(2)})); err != nil {
 		t.Fatalf("SetSeatLimit: %v", err)
 	}
 	assign := func(user string) error {
@@ -82,5 +83,38 @@ func TestSeatEnforcementOverAPI(t *testing.T) {
 	}
 	if !holds("u3") {
 		t.Fatal("u3 should hold a seat after a freed slot")
+	}
+
+	// Cross-tenant isolation: the "pro" cap is full in the default tenant, but a
+	// different tenant has its own independent (unlimited) cap.
+	if _, err := seat.AssignSeat(ctx, req(&workspacev1.AssignSeatRequest{Sku: "pro", UserId: "z1", TenantId: "tenant-z"})); err != nil {
+		t.Fatalf("assign in tenant-z must be independent of the default tenant's full cap: %v", err)
+	}
+
+	// Clearing the limit (absent Limit) returns the sku to unlimited.
+	if _, err := seat.SetSeatLimit(ctx, req(&workspacev1.SetSeatLimitRequest{Sku: "pro"})); err != nil {
+		t.Fatalf("clear limit: %v", err)
+	}
+	usage, err = seat.GetSeatUsage(ctx, req(&workspacev1.GetSeatUsageRequest{Sku: "pro"}))
+	if err != nil || usage.Msg.Limited {
+		t.Fatalf("after clear, usage = %+v, %v; want unlimited", usage.Msg, err)
+	}
+}
+
+// TestSeatNamespaceReservedOverAPI: seat-holder tuples cannot be minted through
+// the generic WriteRelationTuples path — only via AssignSeat.
+func TestSeatNamespaceReservedOverAPI(t *testing.T) {
+	h := newHarness(t)
+	_, err := h.authz.WriteRelationTuples(context.Background(), req(&workspacev1.WriteRelationTuplesRequest{
+		Updates: []*workspacev1.TupleUpdate{{
+			Op: workspacev1.TupleUpdate_OP_INSERT,
+			Tuple: &workspacev1.RelationTuple{
+				Namespace: "seat", ObjectId: "pro", Relation: "holder",
+				Subject: &workspacev1.Subject{Kind: &workspacev1.Subject_UserId{UserId: "sneaky"}},
+			},
+		}},
+	}))
+	if connect.CodeOf(err) != connect.CodeInvalidArgument {
+		t.Fatalf("writing a seat tuple via WriteRelationTuples must be InvalidArgument, got %v", err)
 	}
 }

@@ -5,6 +5,7 @@ import (
 	"math"
 
 	"connectrpc.com/connect"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	workspacev1 "github.com/elloloop/workspace/gen/go/workspace/v1"
@@ -32,13 +33,20 @@ func (h *Handler) SetSeatLimit(ctx context.Context, req *connect.Request[workspa
 		return nil, err
 	}
 	p := h.scope(ctx, req.Msg.ProjectId, req.Msg.TenantId)
-	lim, err := h.svc.SetSeatLimit(ctx, p, req.Msg.Sku, int(req.Msg.Limit))
+	var limit *int
+	if req.Msg.Limit != nil { // absent ⇒ clear the cap (unlimited)
+		l := int(req.Msg.GetLimit())
+		limit = &l
+	}
+	lim, err := h.svc.SetSeatLimit(ctx, p, req.Msg.Sku, limit)
 	if err != nil {
 		return nil, errToConnect(err)
 	}
-	return connect.NewResponse(&workspacev1.SetSeatLimitResponse{
-		Limit: &workspacev1.SeatLimit{Sku: lim.SKU, Limit: i32(lim.Limit)},
-	}), nil
+	out := &workspacev1.SeatLimit{Sku: lim.SKU}
+	if lim.Limited {
+		out.Limit = proto.Int32(i32(lim.Limit))
+	}
+	return connect.NewResponse(&workspacev1.SetSeatLimitResponse{Limit: out}), nil
 }
 
 func (h *Handler) GetSeatUsage(ctx context.Context, req *connect.Request[workspacev1.GetSeatUsageRequest]) (*connect.Response[workspacev1.GetSeatUsageResponse], error) {

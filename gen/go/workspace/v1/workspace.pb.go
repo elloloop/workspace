@@ -6015,9 +6015,11 @@ func (x *ListProjectsResponse) GetProjects() []*Project {
 }
 
 type SeatLimit struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Sku           string                 `protobuf:"bytes,1,opt,name=sku,proto3" json:"sku,omitempty"`
-	Limit         int32                  `protobuf:"varint,2,opt,name=limit,proto3" json:"limit,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	Sku   string                 `protobuf:"bytes,1,opt,name=sku,proto3" json:"sku,omitempty"`
+	// limit is absent when the sku is unlimited (no cap configured); present
+	// (including 0, which admits no seats) when a cap is set.
+	Limit         *int32 `protobuf:"varint,2,opt,name=limit,proto3,oneof" json:"limit,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -6060,8 +6062,8 @@ func (x *SeatLimit) GetSku() string {
 }
 
 func (x *SeatLimit) GetLimit() int32 {
-	if x != nil {
-		return x.Limit
+	if x != nil && x.Limit != nil {
+		return *x.Limit
 	}
 	return 0
 }
@@ -6127,11 +6129,14 @@ func (x *SeatAssignment) GetAssignedAt() *timestamppb.Timestamp {
 }
 
 type SetSeatLimitRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	ProjectId     string                 `protobuf:"bytes,1,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
-	TenantId      string                 `protobuf:"bytes,2,opt,name=tenant_id,json=tenantId,proto3" json:"tenant_id,omitempty"`
-	Sku           string                 `protobuf:"bytes,3,opt,name=sku,proto3" json:"sku,omitempty"`
-	Limit         int32                  `protobuf:"varint,4,opt,name=limit,proto3" json:"limit,omitempty"` // must be >= 0; absent (never set) means unlimited
+	state     protoimpl.MessageState `protogen:"open.v1"`
+	ProjectId string                 `protobuf:"bytes,1,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
+	TenantId  string                 `protobuf:"bytes,2,opt,name=tenant_id,json=tenantId,proto3" json:"tenant_id,omitempty"`
+	Sku       string                 `protobuf:"bytes,3,opt,name=sku,proto3" json:"sku,omitempty"`
+	// limit, when present, sets the cap (must be >= 0; 0 admits no seats). When
+	// ABSENT, the sku's limit is CLEARED, returning it to unlimited — this is the
+	// only way to undo a previously-set cap.
+	Limit         *int32 `protobuf:"varint,4,opt,name=limit,proto3,oneof" json:"limit,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -6188,8 +6193,8 @@ func (x *SetSeatLimitRequest) GetSku() string {
 }
 
 func (x *SetSeatLimitRequest) GetLimit() int32 {
-	if x != nil {
-		return x.Limit
+	if x != nil && x.Limit != nil {
+		return *x.Limit
 	}
 	return 0
 }
@@ -7140,21 +7145,23 @@ const file_workspace_v1_workspace_proto_rawDesc = "" +
 	"\aproject\x18\x01 \x01(\v2\x15.workspace.v1.ProjectR\aproject\"\x15\n" +
 	"\x13ListProjectsRequest\"I\n" +
 	"\x14ListProjectsResponse\x121\n" +
-	"\bprojects\x18\x01 \x03(\v2\x15.workspace.v1.ProjectR\bprojects\"3\n" +
+	"\bprojects\x18\x01 \x03(\v2\x15.workspace.v1.ProjectR\bprojects\"B\n" +
 	"\tSeatLimit\x12\x10\n" +
-	"\x03sku\x18\x01 \x01(\tR\x03sku\x12\x14\n" +
-	"\x05limit\x18\x02 \x01(\x05R\x05limit\"x\n" +
+	"\x03sku\x18\x01 \x01(\tR\x03sku\x12\x19\n" +
+	"\x05limit\x18\x02 \x01(\x05H\x00R\x05limit\x88\x01\x01B\b\n" +
+	"\x06_limit\"x\n" +
 	"\x0eSeatAssignment\x12\x10\n" +
 	"\x03sku\x18\x01 \x01(\tR\x03sku\x12\x17\n" +
 	"\auser_id\x18\x02 \x01(\tR\x06userId\x12;\n" +
 	"\vassigned_at\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\n" +
-	"assignedAt\"y\n" +
+	"assignedAt\"\x88\x01\n" +
 	"\x13SetSeatLimitRequest\x12\x1d\n" +
 	"\n" +
 	"project_id\x18\x01 \x01(\tR\tprojectId\x12\x1b\n" +
 	"\ttenant_id\x18\x02 \x01(\tR\btenantId\x12\x10\n" +
-	"\x03sku\x18\x03 \x01(\tR\x03sku\x12\x14\n" +
-	"\x05limit\x18\x04 \x01(\x05R\x05limit\"E\n" +
+	"\x03sku\x18\x03 \x01(\tR\x03sku\x12\x19\n" +
+	"\x05limit\x18\x04 \x01(\x05H\x00R\x05limit\x88\x01\x01B\b\n" +
+	"\x06_limit\"E\n" +
 	"\x14SetSeatLimitResponse\x12-\n" +
 	"\x05limit\x18\x01 \x01(\v2\x17.workspace.v1.SeatLimitR\x05limit\"c\n" +
 	"\x13GetSeatUsageRequest\x12\x1d\n" +
@@ -7582,6 +7589,8 @@ func file_workspace_v1_workspace_proto_init() {
 		(*Subject_Set)(nil),
 		(*Subject_Wildcard)(nil),
 	}
+	file_workspace_v1_workspace_proto_msgTypes[89].OneofWrappers = []any{}
+	file_workspace_v1_workspace_proto_msgTypes[91].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{

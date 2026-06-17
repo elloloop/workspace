@@ -770,13 +770,24 @@ service AdminService {
 // FAILS CLOSED (ResourceExhausted) once the cap is reached. The count check and
 // the insert are ONE atomic, race-safe operation, so concurrent assigns can
 // never oversubscribe the cap. A sku with no configured limit is unlimited; a
-// limit of 0 admits none. Assigning an already-seated user is idempotent
-// (consumes no extra seat). Each assignment also writes a `seat:<sku>#holder@user`
-// relation tuple, so Check can gate access on seat-holding.
+// limit of 0 admits none; clearing the limit (SetSeatLimit with no `limit`)
+// returns the sku to unlimited. Assigning an already-seated user is idempotent
+// (consumes no extra seat) and re-asserts the backing tuple, so a seat always
+// grants access. Each assignment writes a `seat:<sku>#holder@user` relation
+// tuple — which can ONLY be minted/removed via AssignSeat/RevokeSeat, never the
+// generic WriteRelationTuples (the `seat` namespace is reserved), so the count
+// and the granted access cannot diverge.
+//
+// Downgrade: lowering a limit below current usage is ALLOWED — SetSeatLimit
+// succeeds, GetSeatUsage then reports used > limit, and further AssignSeat is
+// denied (ResourceExhausted) until enough seats are revoked to drop below the
+// new cap. Existing assignments are never auto-revoked.
 
 message SeatLimit {
   string sku = 1;
-  int32 limit = 2;
+  // limit is absent when the sku is unlimited (no cap configured); present
+  // (including 0, which admits no seats) when a cap is set.
+  optional int32 limit = 2;
 }
 
 message SeatAssignment {
@@ -789,7 +800,10 @@ message SetSeatLimitRequest {
   string project_id = 1;
   string tenant_id = 2;
   string sku = 3;
-  int32 limit = 4; // must be >= 0; absent (never set) means unlimited
+  // limit, when present, sets the cap (must be >= 0; 0 admits no seats). When
+  // ABSENT, the sku's limit is CLEARED, returning it to unlimited — this is the
+  // only way to undo a previously-set cap.
+  optional int32 limit = 4;
 }
 message SetSeatLimitResponse { SeatLimit limit = 1; }
 
