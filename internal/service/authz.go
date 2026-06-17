@@ -238,6 +238,13 @@ func validateTuple(t authz.Tuple) error {
 	if t.Namespace == "" || t.ObjectID == "" || t.Relation == "" {
 		return fmt.Errorf("%w: tuple namespace, object_id, relation are required", ErrInvalidArgument)
 	}
+	// The `seat` namespace is RESERVED: seat-holder tuples may only be minted or
+	// removed through the cap-enforced AssignSeat/RevokeSeat (which write to the
+	// store directly), never the generic tuple-write path — otherwise a paid
+	// entitlement could be granted outside the counted/capped flow.
+	if t.Namespace == seatNamespace {
+		return fmt.Errorf("%w: the %q namespace is reserved; use AssignSeat/RevokeSeat", ErrInvalidArgument, seatNamespace)
+	}
 	var set int
 	if t.Subject.UserID != "" {
 		set++

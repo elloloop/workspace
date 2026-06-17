@@ -100,6 +100,25 @@ type Repository interface {
 	GetEnrollment(ctx context.Context, projectID, tenantID, groupID string, member GroupMember) (*Enrollment, error)
 	// ListEnrollments returns a group's enrollments, ordered by creation time.
 	ListEnrollments(ctx context.Context, projectID, tenantID, groupID string) ([]*Enrollment, error)
+
+	// ── Seats (license/entitlement counting) ─────────────────────────
+	// SetSeatLimit configures the cap for a (project, tenant, sku); a non-nil
+	// limit must be >= 0 (0 admits none). A NIL limit CLEARS the cap (deletes the
+	// row), returning the sku to unlimited.
+	SetSeatLimit(ctx context.Context, projectID, tenantID, sku string, limit *int) error
+	// GetSeatUsage returns the seat consumption and configured cap for a sku.
+	GetSeatUsage(ctx context.Context, projectID, tenantID, sku string) (SeatUsage, error)
+	// AssignSeatAndTuple atomically enforces the sku's cap and, on success,
+	// inserts the assignment AND its backing tuple in ONE transaction — so the
+	// count check and the insert cannot race, and concurrent assigns can never
+	// oversubscribe. Returns alreadyHeld=true (a no-op) when the user already
+	// has a seat, and ErrResourceExhausted when the cap is reached.
+	AssignSeatAndTuple(ctx context.Context, a *SeatAssignment, tuple authz.Tuple) (alreadyHeld bool, err error)
+	// RevokeSeatAndTuple frees a user's seat and deletes its backing tuple in
+	// one transaction; revoking an absent seat is a no-op.
+	RevokeSeatAndTuple(ctx context.Context, projectID, tenantID, sku, userID string, tuple authz.Tuple) error
+	// ListSeats returns the assignments for a sku, ordered by assignment time.
+	ListSeats(ctx context.Context, projectID, tenantID, sku string) ([]*SeatAssignment, error)
 }
 
 // TupleAt is a stored relation tuple together with the tenant it lives in.

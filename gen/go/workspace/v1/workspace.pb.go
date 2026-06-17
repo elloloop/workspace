@@ -6014,6 +6014,685 @@ func (x *ListProjectsResponse) GetProjects() []*Project {
 	return nil
 }
 
+type SeatLimit struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	Sku   string                 `protobuf:"bytes,1,opt,name=sku,proto3" json:"sku,omitempty"`
+	// limit is absent when the sku is unlimited (no cap configured); present
+	// (including 0, which admits no seats) when a cap is set.
+	Limit         *int32 `protobuf:"varint,2,opt,name=limit,proto3,oneof" json:"limit,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SeatLimit) Reset() {
+	*x = SeatLimit{}
+	mi := &file_workspace_v1_workspace_proto_msgTypes[89]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SeatLimit) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SeatLimit) ProtoMessage() {}
+
+func (x *SeatLimit) ProtoReflect() protoreflect.Message {
+	mi := &file_workspace_v1_workspace_proto_msgTypes[89]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SeatLimit.ProtoReflect.Descriptor instead.
+func (*SeatLimit) Descriptor() ([]byte, []int) {
+	return file_workspace_v1_workspace_proto_rawDescGZIP(), []int{89}
+}
+
+func (x *SeatLimit) GetSku() string {
+	if x != nil {
+		return x.Sku
+	}
+	return ""
+}
+
+func (x *SeatLimit) GetLimit() int32 {
+	if x != nil && x.Limit != nil {
+		return *x.Limit
+	}
+	return 0
+}
+
+type SeatAssignment struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Sku           string                 `protobuf:"bytes,1,opt,name=sku,proto3" json:"sku,omitempty"`
+	UserId        string                 `protobuf:"bytes,2,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	AssignedAt    *timestamppb.Timestamp `protobuf:"bytes,3,opt,name=assigned_at,json=assignedAt,proto3" json:"assigned_at,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SeatAssignment) Reset() {
+	*x = SeatAssignment{}
+	mi := &file_workspace_v1_workspace_proto_msgTypes[90]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SeatAssignment) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SeatAssignment) ProtoMessage() {}
+
+func (x *SeatAssignment) ProtoReflect() protoreflect.Message {
+	mi := &file_workspace_v1_workspace_proto_msgTypes[90]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SeatAssignment.ProtoReflect.Descriptor instead.
+func (*SeatAssignment) Descriptor() ([]byte, []int) {
+	return file_workspace_v1_workspace_proto_rawDescGZIP(), []int{90}
+}
+
+func (x *SeatAssignment) GetSku() string {
+	if x != nil {
+		return x.Sku
+	}
+	return ""
+}
+
+func (x *SeatAssignment) GetUserId() string {
+	if x != nil {
+		return x.UserId
+	}
+	return ""
+}
+
+func (x *SeatAssignment) GetAssignedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.AssignedAt
+	}
+	return nil
+}
+
+type SetSeatLimitRequest struct {
+	state     protoimpl.MessageState `protogen:"open.v1"`
+	ProjectId string                 `protobuf:"bytes,1,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
+	TenantId  string                 `protobuf:"bytes,2,opt,name=tenant_id,json=tenantId,proto3" json:"tenant_id,omitempty"`
+	Sku       string                 `protobuf:"bytes,3,opt,name=sku,proto3" json:"sku,omitempty"`
+	// limit, when present, sets the cap (must be >= 0; 0 admits no seats). When
+	// ABSENT, the sku's limit is CLEARED, returning it to unlimited — this is the
+	// only way to undo a previously-set cap.
+	Limit         *int32 `protobuf:"varint,4,opt,name=limit,proto3,oneof" json:"limit,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SetSeatLimitRequest) Reset() {
+	*x = SetSeatLimitRequest{}
+	mi := &file_workspace_v1_workspace_proto_msgTypes[91]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SetSeatLimitRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SetSeatLimitRequest) ProtoMessage() {}
+
+func (x *SetSeatLimitRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_workspace_v1_workspace_proto_msgTypes[91]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SetSeatLimitRequest.ProtoReflect.Descriptor instead.
+func (*SetSeatLimitRequest) Descriptor() ([]byte, []int) {
+	return file_workspace_v1_workspace_proto_rawDescGZIP(), []int{91}
+}
+
+func (x *SetSeatLimitRequest) GetProjectId() string {
+	if x != nil {
+		return x.ProjectId
+	}
+	return ""
+}
+
+func (x *SetSeatLimitRequest) GetTenantId() string {
+	if x != nil {
+		return x.TenantId
+	}
+	return ""
+}
+
+func (x *SetSeatLimitRequest) GetSku() string {
+	if x != nil {
+		return x.Sku
+	}
+	return ""
+}
+
+func (x *SetSeatLimitRequest) GetLimit() int32 {
+	if x != nil && x.Limit != nil {
+		return *x.Limit
+	}
+	return 0
+}
+
+type SetSeatLimitResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Limit         *SeatLimit             `protobuf:"bytes,1,opt,name=limit,proto3" json:"limit,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SetSeatLimitResponse) Reset() {
+	*x = SetSeatLimitResponse{}
+	mi := &file_workspace_v1_workspace_proto_msgTypes[92]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SetSeatLimitResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SetSeatLimitResponse) ProtoMessage() {}
+
+func (x *SetSeatLimitResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_workspace_v1_workspace_proto_msgTypes[92]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SetSeatLimitResponse.ProtoReflect.Descriptor instead.
+func (*SetSeatLimitResponse) Descriptor() ([]byte, []int) {
+	return file_workspace_v1_workspace_proto_rawDescGZIP(), []int{92}
+}
+
+func (x *SetSeatLimitResponse) GetLimit() *SeatLimit {
+	if x != nil {
+		return x.Limit
+	}
+	return nil
+}
+
+type GetSeatUsageRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ProjectId     string                 `protobuf:"bytes,1,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
+	TenantId      string                 `protobuf:"bytes,2,opt,name=tenant_id,json=tenantId,proto3" json:"tenant_id,omitempty"`
+	Sku           string                 `protobuf:"bytes,3,opt,name=sku,proto3" json:"sku,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetSeatUsageRequest) Reset() {
+	*x = GetSeatUsageRequest{}
+	mi := &file_workspace_v1_workspace_proto_msgTypes[93]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetSeatUsageRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetSeatUsageRequest) ProtoMessage() {}
+
+func (x *GetSeatUsageRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_workspace_v1_workspace_proto_msgTypes[93]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetSeatUsageRequest.ProtoReflect.Descriptor instead.
+func (*GetSeatUsageRequest) Descriptor() ([]byte, []int) {
+	return file_workspace_v1_workspace_proto_rawDescGZIP(), []int{93}
+}
+
+func (x *GetSeatUsageRequest) GetProjectId() string {
+	if x != nil {
+		return x.ProjectId
+	}
+	return ""
+}
+
+func (x *GetSeatUsageRequest) GetTenantId() string {
+	if x != nil {
+		return x.TenantId
+	}
+	return ""
+}
+
+func (x *GetSeatUsageRequest) GetSku() string {
+	if x != nil {
+		return x.Sku
+	}
+	return ""
+}
+
+type GetSeatUsageResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	Sku   string                 `protobuf:"bytes,1,opt,name=sku,proto3" json:"sku,omitempty"`
+	Used  int32                  `protobuf:"varint,2,opt,name=used,proto3" json:"used,omitempty"`
+	Limit int32                  `protobuf:"varint,3,opt,name=limit,proto3" json:"limit,omitempty"`
+	// limited is false when no limit is configured for the sku (unlimited).
+	Limited       bool `protobuf:"varint,4,opt,name=limited,proto3" json:"limited,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetSeatUsageResponse) Reset() {
+	*x = GetSeatUsageResponse{}
+	mi := &file_workspace_v1_workspace_proto_msgTypes[94]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetSeatUsageResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetSeatUsageResponse) ProtoMessage() {}
+
+func (x *GetSeatUsageResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_workspace_v1_workspace_proto_msgTypes[94]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetSeatUsageResponse.ProtoReflect.Descriptor instead.
+func (*GetSeatUsageResponse) Descriptor() ([]byte, []int) {
+	return file_workspace_v1_workspace_proto_rawDescGZIP(), []int{94}
+}
+
+func (x *GetSeatUsageResponse) GetSku() string {
+	if x != nil {
+		return x.Sku
+	}
+	return ""
+}
+
+func (x *GetSeatUsageResponse) GetUsed() int32 {
+	if x != nil {
+		return x.Used
+	}
+	return 0
+}
+
+func (x *GetSeatUsageResponse) GetLimit() int32 {
+	if x != nil {
+		return x.Limit
+	}
+	return 0
+}
+
+func (x *GetSeatUsageResponse) GetLimited() bool {
+	if x != nil {
+		return x.Limited
+	}
+	return false
+}
+
+type AssignSeatRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ProjectId     string                 `protobuf:"bytes,1,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
+	TenantId      string                 `protobuf:"bytes,2,opt,name=tenant_id,json=tenantId,proto3" json:"tenant_id,omitempty"`
+	Sku           string                 `protobuf:"bytes,3,opt,name=sku,proto3" json:"sku,omitempty"`
+	UserId        string                 `protobuf:"bytes,4,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AssignSeatRequest) Reset() {
+	*x = AssignSeatRequest{}
+	mi := &file_workspace_v1_workspace_proto_msgTypes[95]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AssignSeatRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AssignSeatRequest) ProtoMessage() {}
+
+func (x *AssignSeatRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_workspace_v1_workspace_proto_msgTypes[95]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AssignSeatRequest.ProtoReflect.Descriptor instead.
+func (*AssignSeatRequest) Descriptor() ([]byte, []int) {
+	return file_workspace_v1_workspace_proto_rawDescGZIP(), []int{95}
+}
+
+func (x *AssignSeatRequest) GetProjectId() string {
+	if x != nil {
+		return x.ProjectId
+	}
+	return ""
+}
+
+func (x *AssignSeatRequest) GetTenantId() string {
+	if x != nil {
+		return x.TenantId
+	}
+	return ""
+}
+
+func (x *AssignSeatRequest) GetSku() string {
+	if x != nil {
+		return x.Sku
+	}
+	return ""
+}
+
+func (x *AssignSeatRequest) GetUserId() string {
+	if x != nil {
+		return x.UserId
+	}
+	return ""
+}
+
+type AssignSeatResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// already_held is true when the user already had a seat (idempotent no-op).
+	AlreadyHeld   bool `protobuf:"varint,1,opt,name=already_held,json=alreadyHeld,proto3" json:"already_held,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AssignSeatResponse) Reset() {
+	*x = AssignSeatResponse{}
+	mi := &file_workspace_v1_workspace_proto_msgTypes[96]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AssignSeatResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AssignSeatResponse) ProtoMessage() {}
+
+func (x *AssignSeatResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_workspace_v1_workspace_proto_msgTypes[96]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AssignSeatResponse.ProtoReflect.Descriptor instead.
+func (*AssignSeatResponse) Descriptor() ([]byte, []int) {
+	return file_workspace_v1_workspace_proto_rawDescGZIP(), []int{96}
+}
+
+func (x *AssignSeatResponse) GetAlreadyHeld() bool {
+	if x != nil {
+		return x.AlreadyHeld
+	}
+	return false
+}
+
+type RevokeSeatRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ProjectId     string                 `protobuf:"bytes,1,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
+	TenantId      string                 `protobuf:"bytes,2,opt,name=tenant_id,json=tenantId,proto3" json:"tenant_id,omitempty"`
+	Sku           string                 `protobuf:"bytes,3,opt,name=sku,proto3" json:"sku,omitempty"`
+	UserId        string                 `protobuf:"bytes,4,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RevokeSeatRequest) Reset() {
+	*x = RevokeSeatRequest{}
+	mi := &file_workspace_v1_workspace_proto_msgTypes[97]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RevokeSeatRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RevokeSeatRequest) ProtoMessage() {}
+
+func (x *RevokeSeatRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_workspace_v1_workspace_proto_msgTypes[97]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RevokeSeatRequest.ProtoReflect.Descriptor instead.
+func (*RevokeSeatRequest) Descriptor() ([]byte, []int) {
+	return file_workspace_v1_workspace_proto_rawDescGZIP(), []int{97}
+}
+
+func (x *RevokeSeatRequest) GetProjectId() string {
+	if x != nil {
+		return x.ProjectId
+	}
+	return ""
+}
+
+func (x *RevokeSeatRequest) GetTenantId() string {
+	if x != nil {
+		return x.TenantId
+	}
+	return ""
+}
+
+func (x *RevokeSeatRequest) GetSku() string {
+	if x != nil {
+		return x.Sku
+	}
+	return ""
+}
+
+func (x *RevokeSeatRequest) GetUserId() string {
+	if x != nil {
+		return x.UserId
+	}
+	return ""
+}
+
+type RevokeSeatResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RevokeSeatResponse) Reset() {
+	*x = RevokeSeatResponse{}
+	mi := &file_workspace_v1_workspace_proto_msgTypes[98]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RevokeSeatResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RevokeSeatResponse) ProtoMessage() {}
+
+func (x *RevokeSeatResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_workspace_v1_workspace_proto_msgTypes[98]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RevokeSeatResponse.ProtoReflect.Descriptor instead.
+func (*RevokeSeatResponse) Descriptor() ([]byte, []int) {
+	return file_workspace_v1_workspace_proto_rawDescGZIP(), []int{98}
+}
+
+type ListSeatsRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ProjectId     string                 `protobuf:"bytes,1,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
+	TenantId      string                 `protobuf:"bytes,2,opt,name=tenant_id,json=tenantId,proto3" json:"tenant_id,omitempty"`
+	Sku           string                 `protobuf:"bytes,3,opt,name=sku,proto3" json:"sku,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListSeatsRequest) Reset() {
+	*x = ListSeatsRequest{}
+	mi := &file_workspace_v1_workspace_proto_msgTypes[99]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListSeatsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListSeatsRequest) ProtoMessage() {}
+
+func (x *ListSeatsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_workspace_v1_workspace_proto_msgTypes[99]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListSeatsRequest.ProtoReflect.Descriptor instead.
+func (*ListSeatsRequest) Descriptor() ([]byte, []int) {
+	return file_workspace_v1_workspace_proto_rawDescGZIP(), []int{99}
+}
+
+func (x *ListSeatsRequest) GetProjectId() string {
+	if x != nil {
+		return x.ProjectId
+	}
+	return ""
+}
+
+func (x *ListSeatsRequest) GetTenantId() string {
+	if x != nil {
+		return x.TenantId
+	}
+	return ""
+}
+
+func (x *ListSeatsRequest) GetSku() string {
+	if x != nil {
+		return x.Sku
+	}
+	return ""
+}
+
+type ListSeatsResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Seats         []*SeatAssignment      `protobuf:"bytes,1,rep,name=seats,proto3" json:"seats,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListSeatsResponse) Reset() {
+	*x = ListSeatsResponse{}
+	mi := &file_workspace_v1_workspace_proto_msgTypes[100]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListSeatsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListSeatsResponse) ProtoMessage() {}
+
+func (x *ListSeatsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_workspace_v1_workspace_proto_msgTypes[100]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListSeatsResponse.ProtoReflect.Descriptor instead.
+func (*ListSeatsResponse) Descriptor() ([]byte, []int) {
+	return file_workspace_v1_workspace_proto_rawDescGZIP(), []int{100}
+}
+
+func (x *ListSeatsResponse) GetSeats() []*SeatAssignment {
+	if x != nil {
+		return x.Seats
+	}
+	return nil
+}
+
 var File_workspace_v1_workspace_proto protoreflect.FileDescriptor
 
 const file_workspace_v1_workspace_proto_rawDesc = "" +
@@ -6466,7 +7145,57 @@ const file_workspace_v1_workspace_proto_rawDesc = "" +
 	"\aproject\x18\x01 \x01(\v2\x15.workspace.v1.ProjectR\aproject\"\x15\n" +
 	"\x13ListProjectsRequest\"I\n" +
 	"\x14ListProjectsResponse\x121\n" +
-	"\bprojects\x18\x01 \x03(\v2\x15.workspace.v1.ProjectR\bprojects*e\n" +
+	"\bprojects\x18\x01 \x03(\v2\x15.workspace.v1.ProjectR\bprojects\"B\n" +
+	"\tSeatLimit\x12\x10\n" +
+	"\x03sku\x18\x01 \x01(\tR\x03sku\x12\x19\n" +
+	"\x05limit\x18\x02 \x01(\x05H\x00R\x05limit\x88\x01\x01B\b\n" +
+	"\x06_limit\"x\n" +
+	"\x0eSeatAssignment\x12\x10\n" +
+	"\x03sku\x18\x01 \x01(\tR\x03sku\x12\x17\n" +
+	"\auser_id\x18\x02 \x01(\tR\x06userId\x12;\n" +
+	"\vassigned_at\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\n" +
+	"assignedAt\"\x88\x01\n" +
+	"\x13SetSeatLimitRequest\x12\x1d\n" +
+	"\n" +
+	"project_id\x18\x01 \x01(\tR\tprojectId\x12\x1b\n" +
+	"\ttenant_id\x18\x02 \x01(\tR\btenantId\x12\x10\n" +
+	"\x03sku\x18\x03 \x01(\tR\x03sku\x12\x19\n" +
+	"\x05limit\x18\x04 \x01(\x05H\x00R\x05limit\x88\x01\x01B\b\n" +
+	"\x06_limit\"E\n" +
+	"\x14SetSeatLimitResponse\x12-\n" +
+	"\x05limit\x18\x01 \x01(\v2\x17.workspace.v1.SeatLimitR\x05limit\"c\n" +
+	"\x13GetSeatUsageRequest\x12\x1d\n" +
+	"\n" +
+	"project_id\x18\x01 \x01(\tR\tprojectId\x12\x1b\n" +
+	"\ttenant_id\x18\x02 \x01(\tR\btenantId\x12\x10\n" +
+	"\x03sku\x18\x03 \x01(\tR\x03sku\"l\n" +
+	"\x14GetSeatUsageResponse\x12\x10\n" +
+	"\x03sku\x18\x01 \x01(\tR\x03sku\x12\x12\n" +
+	"\x04used\x18\x02 \x01(\x05R\x04used\x12\x14\n" +
+	"\x05limit\x18\x03 \x01(\x05R\x05limit\x12\x18\n" +
+	"\alimited\x18\x04 \x01(\bR\alimited\"z\n" +
+	"\x11AssignSeatRequest\x12\x1d\n" +
+	"\n" +
+	"project_id\x18\x01 \x01(\tR\tprojectId\x12\x1b\n" +
+	"\ttenant_id\x18\x02 \x01(\tR\btenantId\x12\x10\n" +
+	"\x03sku\x18\x03 \x01(\tR\x03sku\x12\x17\n" +
+	"\auser_id\x18\x04 \x01(\tR\x06userId\"7\n" +
+	"\x12AssignSeatResponse\x12!\n" +
+	"\falready_held\x18\x01 \x01(\bR\valreadyHeld\"z\n" +
+	"\x11RevokeSeatRequest\x12\x1d\n" +
+	"\n" +
+	"project_id\x18\x01 \x01(\tR\tprojectId\x12\x1b\n" +
+	"\ttenant_id\x18\x02 \x01(\tR\btenantId\x12\x10\n" +
+	"\x03sku\x18\x03 \x01(\tR\x03sku\x12\x17\n" +
+	"\auser_id\x18\x04 \x01(\tR\x06userId\"\x14\n" +
+	"\x12RevokeSeatResponse\"`\n" +
+	"\x10ListSeatsRequest\x12\x1d\n" +
+	"\n" +
+	"project_id\x18\x01 \x01(\tR\tprojectId\x12\x1b\n" +
+	"\ttenant_id\x18\x02 \x01(\tR\btenantId\x12\x10\n" +
+	"\x03sku\x18\x03 \x01(\tR\x03sku\"G\n" +
+	"\x11ListSeatsResponse\x122\n" +
+	"\x05seats\x18\x01 \x03(\v2\x1c.workspace.v1.SeatAssignmentR\x05seats*e\n" +
 	"\rWorkspaceType\x12\x1e\n" +
 	"\x1aWORKSPACE_TYPE_UNSPECIFIED\x10\x00\x12\x1b\n" +
 	"\x17WORKSPACE_TYPE_PERSONAL\x10\x01\x12\x17\n" +
@@ -6545,7 +7274,15 @@ const file_workspace_v1_workspace_proto_rawDesc = "" +
 	"\n" +
 	"GetProject\x12\x1f.workspace.v1.GetProjectRequest\x1a .workspace.v1.GetProjectResponse\x12X\n" +
 	"\rUpdateProject\x12\".workspace.v1.UpdateProjectRequest\x1a#.workspace.v1.UpdateProjectResponse\x12U\n" +
-	"\fListProjects\x12!.workspace.v1.ListProjectsRequest\x1a\".workspace.v1.ListProjectsResponseB?Z=github.com/elloloop/workspace/gen/go/workspace/v1;workspacev1b\x06proto3"
+	"\fListProjects\x12!.workspace.v1.ListProjectsRequest\x1a\".workspace.v1.ListProjectsResponse2\xab\x03\n" +
+	"\vSeatService\x12U\n" +
+	"\fSetSeatLimit\x12!.workspace.v1.SetSeatLimitRequest\x1a\".workspace.v1.SetSeatLimitResponse\x12U\n" +
+	"\fGetSeatUsage\x12!.workspace.v1.GetSeatUsageRequest\x1a\".workspace.v1.GetSeatUsageResponse\x12O\n" +
+	"\n" +
+	"AssignSeat\x12\x1f.workspace.v1.AssignSeatRequest\x1a .workspace.v1.AssignSeatResponse\x12O\n" +
+	"\n" +
+	"RevokeSeat\x12\x1f.workspace.v1.RevokeSeatRequest\x1a .workspace.v1.RevokeSeatResponse\x12L\n" +
+	"\tListSeats\x12\x1e.workspace.v1.ListSeatsRequest\x1a\x1f.workspace.v1.ListSeatsResponseB?Z=github.com/elloloop/workspace/gen/go/workspace/v1;workspacev1b\x06proto3"
 
 var (
 	file_workspace_v1_workspace_proto_rawDescOnce sync.Once
@@ -6560,7 +7297,7 @@ func file_workspace_v1_workspace_proto_rawDescGZIP() []byte {
 }
 
 var file_workspace_v1_workspace_proto_enumTypes = make([]protoimpl.EnumInfo, 8)
-var file_workspace_v1_workspace_proto_msgTypes = make([]protoimpl.MessageInfo, 89)
+var file_workspace_v1_workspace_proto_msgTypes = make([]protoimpl.MessageInfo, 101)
 var file_workspace_v1_workspace_proto_goTypes = []any{
 	(WorkspaceType)(0),                  // 0: workspace.v1.WorkspaceType
 	(Role)(0),                           // 1: workspace.v1.Role
@@ -6659,21 +7396,33 @@ var file_workspace_v1_workspace_proto_goTypes = []any{
 	(*UpdateProjectResponse)(nil),       // 94: workspace.v1.UpdateProjectResponse
 	(*ListProjectsRequest)(nil),         // 95: workspace.v1.ListProjectsRequest
 	(*ListProjectsResponse)(nil),        // 96: workspace.v1.ListProjectsResponse
-	(*timestamppb.Timestamp)(nil),       // 97: google.protobuf.Timestamp
-	(*structpb.Struct)(nil),             // 98: google.protobuf.Struct
+	(*SeatLimit)(nil),                   // 97: workspace.v1.SeatLimit
+	(*SeatAssignment)(nil),              // 98: workspace.v1.SeatAssignment
+	(*SetSeatLimitRequest)(nil),         // 99: workspace.v1.SetSeatLimitRequest
+	(*SetSeatLimitResponse)(nil),        // 100: workspace.v1.SetSeatLimitResponse
+	(*GetSeatUsageRequest)(nil),         // 101: workspace.v1.GetSeatUsageRequest
+	(*GetSeatUsageResponse)(nil),        // 102: workspace.v1.GetSeatUsageResponse
+	(*AssignSeatRequest)(nil),           // 103: workspace.v1.AssignSeatRequest
+	(*AssignSeatResponse)(nil),          // 104: workspace.v1.AssignSeatResponse
+	(*RevokeSeatRequest)(nil),           // 105: workspace.v1.RevokeSeatRequest
+	(*RevokeSeatResponse)(nil),          // 106: workspace.v1.RevokeSeatResponse
+	(*ListSeatsRequest)(nil),            // 107: workspace.v1.ListSeatsRequest
+	(*ListSeatsResponse)(nil),           // 108: workspace.v1.ListSeatsResponse
+	(*timestamppb.Timestamp)(nil),       // 109: google.protobuf.Timestamp
+	(*structpb.Struct)(nil),             // 110: google.protobuf.Struct
 }
 var file_workspace_v1_workspace_proto_depIdxs = []int32{
 	0,   // 0: workspace.v1.Workspace.type:type_name -> workspace.v1.WorkspaceType
-	97,  // 1: workspace.v1.Workspace.created_at:type_name -> google.protobuf.Timestamp
-	97,  // 2: workspace.v1.Workspace.updated_at:type_name -> google.protobuf.Timestamp
+	109, // 1: workspace.v1.Workspace.created_at:type_name -> google.protobuf.Timestamp
+	109, // 2: workspace.v1.Workspace.updated_at:type_name -> google.protobuf.Timestamp
 	1,   // 3: workspace.v1.Membership.role:type_name -> workspace.v1.Role
 	2,   // 4: workspace.v1.Membership.status:type_name -> workspace.v1.MembershipStatus
-	97,  // 5: workspace.v1.Membership.created_at:type_name -> google.protobuf.Timestamp
-	97,  // 6: workspace.v1.Membership.updated_at:type_name -> google.protobuf.Timestamp
+	109, // 5: workspace.v1.Membership.created_at:type_name -> google.protobuf.Timestamp
+	109, // 6: workspace.v1.Membership.updated_at:type_name -> google.protobuf.Timestamp
 	1,   // 7: workspace.v1.Invitation.role:type_name -> workspace.v1.Role
 	3,   // 8: workspace.v1.Invitation.status:type_name -> workspace.v1.InvitationStatus
-	97,  // 9: workspace.v1.Invitation.created_at:type_name -> google.protobuf.Timestamp
-	97,  // 10: workspace.v1.Invitation.expires_at:type_name -> google.protobuf.Timestamp
+	109, // 9: workspace.v1.Invitation.created_at:type_name -> google.protobuf.Timestamp
+	109, // 10: workspace.v1.Invitation.expires_at:type_name -> google.protobuf.Timestamp
 	8,   // 11: workspace.v1.CreateWorkspaceResponse.workspace:type_name -> workspace.v1.Workspace
 	8,   // 12: workspace.v1.GetWorkspaceResponse.workspace:type_name -> workspace.v1.Workspace
 	8,   // 13: workspace.v1.ListWorkspacesResponse.workspaces:type_name -> workspace.v1.Workspace
@@ -6690,8 +7439,8 @@ var file_workspace_v1_workspace_proto_depIdxs = []int32{
 	10,  // 24: workspace.v1.CreateInvitationResponse.invitation:type_name -> workspace.v1.Invitation
 	9,   // 25: workspace.v1.AcceptInvitationResponse.membership:type_name -> workspace.v1.Membership
 	10,  // 26: workspace.v1.ListInvitationsResponse.invitations:type_name -> workspace.v1.Invitation
-	97,  // 27: workspace.v1.Group.created_at:type_name -> google.protobuf.Timestamp
-	97,  // 28: workspace.v1.Group.updated_at:type_name -> google.protobuf.Timestamp
+	109, // 27: workspace.v1.Group.created_at:type_name -> google.protobuf.Timestamp
+	109, // 28: workspace.v1.Group.updated_at:type_name -> google.protobuf.Timestamp
 	43,  // 29: workspace.v1.CreateGroupResponse.group:type_name -> workspace.v1.Group
 	43,  // 30: workspace.v1.GetGroupResponse.group:type_name -> workspace.v1.Group
 	43,  // 31: workspace.v1.ListGroupsResponse.groups:type_name -> workspace.v1.Group
@@ -6700,22 +7449,22 @@ var file_workspace_v1_workspace_proto_depIdxs = []int32{
 	44,  // 34: workspace.v1.ListGroupMembersResponse.members:type_name -> workspace.v1.GroupMember
 	44,  // 35: workspace.v1.Enrollment.member:type_name -> workspace.v1.GroupMember
 	4,   // 36: workspace.v1.Enrollment.state:type_name -> workspace.v1.EnrollmentState
-	97,  // 37: workspace.v1.Enrollment.created_at:type_name -> google.protobuf.Timestamp
-	97,  // 38: workspace.v1.Enrollment.updated_at:type_name -> google.protobuf.Timestamp
+	109, // 37: workspace.v1.Enrollment.created_at:type_name -> google.protobuf.Timestamp
+	109, // 38: workspace.v1.Enrollment.updated_at:type_name -> google.protobuf.Timestamp
 	44,  // 39: workspace.v1.SetEnrollmentStateRequest.member:type_name -> workspace.v1.GroupMember
 	4,   // 40: workspace.v1.SetEnrollmentStateRequest.state:type_name -> workspace.v1.EnrollmentState
 	59,  // 41: workspace.v1.SetEnrollmentStateResponse.enrollment:type_name -> workspace.v1.Enrollment
 	59,  // 42: workspace.v1.ListEnrollmentsResponse.enrollments:type_name -> workspace.v1.Enrollment
 	64,  // 43: workspace.v1.Subject.set:type_name -> workspace.v1.SubjectSet
 	65,  // 44: workspace.v1.RelationTuple.subject:type_name -> workspace.v1.Subject
-	97,  // 45: workspace.v1.RelationTuple.expires_at:type_name -> google.protobuf.Timestamp
-	98,  // 46: workspace.v1.RelationTuple.condition_params:type_name -> google.protobuf.Struct
+	109, // 45: workspace.v1.RelationTuple.expires_at:type_name -> google.protobuf.Timestamp
+	110, // 46: workspace.v1.RelationTuple.condition_params:type_name -> google.protobuf.Struct
 	6,   // 47: workspace.v1.TupleUpdate.op:type_name -> workspace.v1.TupleUpdate.Op
 	66,  // 48: workspace.v1.TupleUpdate.tuple:type_name -> workspace.v1.RelationTuple
 	67,  // 49: workspace.v1.WriteRelationTuplesRequest.updates:type_name -> workspace.v1.TupleUpdate
 	66,  // 50: workspace.v1.ReadRelationTuplesResponse.tuples:type_name -> workspace.v1.RelationTuple
 	64,  // 51: workspace.v1.CheckRequest.subject_set:type_name -> workspace.v1.SubjectSet
-	98,  // 52: workspace.v1.CheckRequest.context:type_name -> google.protobuf.Struct
+	110, // 52: workspace.v1.CheckRequest.context:type_name -> google.protobuf.Struct
 	74,  // 53: workspace.v1.BatchCheckRequest.items:type_name -> workspace.v1.BatchCheckItem
 	76,  // 54: workspace.v1.BatchCheckResponse.results:type_name -> workspace.v1.BatchCheckResult
 	7,   // 55: workspace.v1.UsersetTree.type:type_name -> workspace.v1.UsersetTree.NodeType
@@ -6725,92 +7474,105 @@ var file_workspace_v1_workspace_proto_depIdxs = []int32{
 	79,  // 59: workspace.v1.ExpandResponse.tree:type_name -> workspace.v1.UsersetTree
 	86,  // 60: workspace.v1.ExportSubjectGrantsResponse.grants:type_name -> workspace.v1.SubjectGrant
 	5,   // 61: workspace.v1.Project.status:type_name -> workspace.v1.ProjectStatus
-	97,  // 62: workspace.v1.Project.created_at:type_name -> google.protobuf.Timestamp
-	97,  // 63: workspace.v1.Project.updated_at:type_name -> google.protobuf.Timestamp
+	109, // 62: workspace.v1.Project.created_at:type_name -> google.protobuf.Timestamp
+	109, // 63: workspace.v1.Project.updated_at:type_name -> google.protobuf.Timestamp
 	88,  // 64: workspace.v1.CreateProjectResponse.project:type_name -> workspace.v1.Project
 	88,  // 65: workspace.v1.GetProjectResponse.project:type_name -> workspace.v1.Project
 	5,   // 66: workspace.v1.UpdateProjectRequest.status:type_name -> workspace.v1.ProjectStatus
 	88,  // 67: workspace.v1.UpdateProjectResponse.project:type_name -> workspace.v1.Project
 	88,  // 68: workspace.v1.ListProjectsResponse.projects:type_name -> workspace.v1.Project
-	11,  // 69: workspace.v1.WorkspaceService.CreateWorkspace:input_type -> workspace.v1.CreateWorkspaceRequest
-	13,  // 70: workspace.v1.WorkspaceService.GetWorkspace:input_type -> workspace.v1.GetWorkspaceRequest
-	15,  // 71: workspace.v1.WorkspaceService.ListWorkspaces:input_type -> workspace.v1.ListWorkspacesRequest
-	17,  // 72: workspace.v1.WorkspaceService.UpdateWorkspace:input_type -> workspace.v1.UpdateWorkspaceRequest
-	19,  // 73: workspace.v1.WorkspaceService.TransferOwnership:input_type -> workspace.v1.TransferOwnershipRequest
-	21,  // 74: workspace.v1.WorkspaceService.DeleteWorkspace:input_type -> workspace.v1.DeleteWorkspaceRequest
-	23,  // 75: workspace.v1.WorkspaceService.AddMember:input_type -> workspace.v1.AddMemberRequest
-	25,  // 76: workspace.v1.WorkspaceService.UpdateMemberRole:input_type -> workspace.v1.UpdateMemberRoleRequest
-	27,  // 77: workspace.v1.WorkspaceService.RemoveMember:input_type -> workspace.v1.RemoveMemberRequest
-	29,  // 78: workspace.v1.WorkspaceService.SuspendMember:input_type -> workspace.v1.SuspendMemberRequest
-	31,  // 79: workspace.v1.WorkspaceService.ReinstateMember:input_type -> workspace.v1.ReinstateMemberRequest
-	33,  // 80: workspace.v1.WorkspaceService.ListMembers:input_type -> workspace.v1.ListMembersRequest
-	35,  // 81: workspace.v1.WorkspaceService.CreateInvitation:input_type -> workspace.v1.CreateInvitationRequest
-	37,  // 82: workspace.v1.WorkspaceService.AcceptInvitation:input_type -> workspace.v1.AcceptInvitationRequest
-	39,  // 83: workspace.v1.WorkspaceService.ListInvitations:input_type -> workspace.v1.ListInvitationsRequest
-	41,  // 84: workspace.v1.WorkspaceService.RevokeInvitation:input_type -> workspace.v1.RevokeInvitationRequest
-	45,  // 85: workspace.v1.GroupService.CreateGroup:input_type -> workspace.v1.CreateGroupRequest
-	47,  // 86: workspace.v1.GroupService.GetGroup:input_type -> workspace.v1.GetGroupRequest
-	49,  // 87: workspace.v1.GroupService.ListGroups:input_type -> workspace.v1.ListGroupsRequest
-	51,  // 88: workspace.v1.GroupService.DeleteGroup:input_type -> workspace.v1.DeleteGroupRequest
-	53,  // 89: workspace.v1.GroupService.AddGroupMember:input_type -> workspace.v1.AddGroupMemberRequest
-	55,  // 90: workspace.v1.GroupService.RemoveGroupMember:input_type -> workspace.v1.RemoveGroupMemberRequest
-	57,  // 91: workspace.v1.GroupService.ListGroupMembers:input_type -> workspace.v1.ListGroupMembersRequest
-	60,  // 92: workspace.v1.GroupService.SetEnrollmentState:input_type -> workspace.v1.SetEnrollmentStateRequest
-	62,  // 93: workspace.v1.GroupService.ListEnrollments:input_type -> workspace.v1.ListEnrollmentsRequest
-	68,  // 94: workspace.v1.AuthzService.WriteRelationTuples:input_type -> workspace.v1.WriteRelationTuplesRequest
-	70,  // 95: workspace.v1.AuthzService.ReadRelationTuples:input_type -> workspace.v1.ReadRelationTuplesRequest
-	72,  // 96: workspace.v1.AuthzService.Check:input_type -> workspace.v1.CheckRequest
-	75,  // 97: workspace.v1.AuthzService.BatchCheck:input_type -> workspace.v1.BatchCheckRequest
-	78,  // 98: workspace.v1.AuthzService.Expand:input_type -> workspace.v1.ExpandRequest
-	81,  // 99: workspace.v1.AuthzService.ListObjects:input_type -> workspace.v1.ListObjectsRequest
-	83,  // 100: workspace.v1.AuthzService.DeprovisionUser:input_type -> workspace.v1.DeprovisionUserRequest
-	85,  // 101: workspace.v1.AuthzService.ExportSubjectGrants:input_type -> workspace.v1.ExportSubjectGrantsRequest
-	89,  // 102: workspace.v1.AdminService.CreateProject:input_type -> workspace.v1.CreateProjectRequest
-	91,  // 103: workspace.v1.AdminService.GetProject:input_type -> workspace.v1.GetProjectRequest
-	93,  // 104: workspace.v1.AdminService.UpdateProject:input_type -> workspace.v1.UpdateProjectRequest
-	95,  // 105: workspace.v1.AdminService.ListProjects:input_type -> workspace.v1.ListProjectsRequest
-	12,  // 106: workspace.v1.WorkspaceService.CreateWorkspace:output_type -> workspace.v1.CreateWorkspaceResponse
-	14,  // 107: workspace.v1.WorkspaceService.GetWorkspace:output_type -> workspace.v1.GetWorkspaceResponse
-	16,  // 108: workspace.v1.WorkspaceService.ListWorkspaces:output_type -> workspace.v1.ListWorkspacesResponse
-	18,  // 109: workspace.v1.WorkspaceService.UpdateWorkspace:output_type -> workspace.v1.UpdateWorkspaceResponse
-	20,  // 110: workspace.v1.WorkspaceService.TransferOwnership:output_type -> workspace.v1.TransferOwnershipResponse
-	22,  // 111: workspace.v1.WorkspaceService.DeleteWorkspace:output_type -> workspace.v1.DeleteWorkspaceResponse
-	24,  // 112: workspace.v1.WorkspaceService.AddMember:output_type -> workspace.v1.AddMemberResponse
-	26,  // 113: workspace.v1.WorkspaceService.UpdateMemberRole:output_type -> workspace.v1.UpdateMemberRoleResponse
-	28,  // 114: workspace.v1.WorkspaceService.RemoveMember:output_type -> workspace.v1.RemoveMemberResponse
-	30,  // 115: workspace.v1.WorkspaceService.SuspendMember:output_type -> workspace.v1.SuspendMemberResponse
-	32,  // 116: workspace.v1.WorkspaceService.ReinstateMember:output_type -> workspace.v1.ReinstateMemberResponse
-	34,  // 117: workspace.v1.WorkspaceService.ListMembers:output_type -> workspace.v1.ListMembersResponse
-	36,  // 118: workspace.v1.WorkspaceService.CreateInvitation:output_type -> workspace.v1.CreateInvitationResponse
-	38,  // 119: workspace.v1.WorkspaceService.AcceptInvitation:output_type -> workspace.v1.AcceptInvitationResponse
-	40,  // 120: workspace.v1.WorkspaceService.ListInvitations:output_type -> workspace.v1.ListInvitationsResponse
-	42,  // 121: workspace.v1.WorkspaceService.RevokeInvitation:output_type -> workspace.v1.RevokeInvitationResponse
-	46,  // 122: workspace.v1.GroupService.CreateGroup:output_type -> workspace.v1.CreateGroupResponse
-	48,  // 123: workspace.v1.GroupService.GetGroup:output_type -> workspace.v1.GetGroupResponse
-	50,  // 124: workspace.v1.GroupService.ListGroups:output_type -> workspace.v1.ListGroupsResponse
-	52,  // 125: workspace.v1.GroupService.DeleteGroup:output_type -> workspace.v1.DeleteGroupResponse
-	54,  // 126: workspace.v1.GroupService.AddGroupMember:output_type -> workspace.v1.AddGroupMemberResponse
-	56,  // 127: workspace.v1.GroupService.RemoveGroupMember:output_type -> workspace.v1.RemoveGroupMemberResponse
-	58,  // 128: workspace.v1.GroupService.ListGroupMembers:output_type -> workspace.v1.ListGroupMembersResponse
-	61,  // 129: workspace.v1.GroupService.SetEnrollmentState:output_type -> workspace.v1.SetEnrollmentStateResponse
-	63,  // 130: workspace.v1.GroupService.ListEnrollments:output_type -> workspace.v1.ListEnrollmentsResponse
-	69,  // 131: workspace.v1.AuthzService.WriteRelationTuples:output_type -> workspace.v1.WriteRelationTuplesResponse
-	71,  // 132: workspace.v1.AuthzService.ReadRelationTuples:output_type -> workspace.v1.ReadRelationTuplesResponse
-	73,  // 133: workspace.v1.AuthzService.Check:output_type -> workspace.v1.CheckResponse
-	77,  // 134: workspace.v1.AuthzService.BatchCheck:output_type -> workspace.v1.BatchCheckResponse
-	80,  // 135: workspace.v1.AuthzService.Expand:output_type -> workspace.v1.ExpandResponse
-	82,  // 136: workspace.v1.AuthzService.ListObjects:output_type -> workspace.v1.ListObjectsResponse
-	84,  // 137: workspace.v1.AuthzService.DeprovisionUser:output_type -> workspace.v1.DeprovisionUserResponse
-	87,  // 138: workspace.v1.AuthzService.ExportSubjectGrants:output_type -> workspace.v1.ExportSubjectGrantsResponse
-	90,  // 139: workspace.v1.AdminService.CreateProject:output_type -> workspace.v1.CreateProjectResponse
-	92,  // 140: workspace.v1.AdminService.GetProject:output_type -> workspace.v1.GetProjectResponse
-	94,  // 141: workspace.v1.AdminService.UpdateProject:output_type -> workspace.v1.UpdateProjectResponse
-	96,  // 142: workspace.v1.AdminService.ListProjects:output_type -> workspace.v1.ListProjectsResponse
-	106, // [106:143] is the sub-list for method output_type
-	69,  // [69:106] is the sub-list for method input_type
-	69,  // [69:69] is the sub-list for extension type_name
-	69,  // [69:69] is the sub-list for extension extendee
-	0,   // [0:69] is the sub-list for field type_name
+	109, // 69: workspace.v1.SeatAssignment.assigned_at:type_name -> google.protobuf.Timestamp
+	97,  // 70: workspace.v1.SetSeatLimitResponse.limit:type_name -> workspace.v1.SeatLimit
+	98,  // 71: workspace.v1.ListSeatsResponse.seats:type_name -> workspace.v1.SeatAssignment
+	11,  // 72: workspace.v1.WorkspaceService.CreateWorkspace:input_type -> workspace.v1.CreateWorkspaceRequest
+	13,  // 73: workspace.v1.WorkspaceService.GetWorkspace:input_type -> workspace.v1.GetWorkspaceRequest
+	15,  // 74: workspace.v1.WorkspaceService.ListWorkspaces:input_type -> workspace.v1.ListWorkspacesRequest
+	17,  // 75: workspace.v1.WorkspaceService.UpdateWorkspace:input_type -> workspace.v1.UpdateWorkspaceRequest
+	19,  // 76: workspace.v1.WorkspaceService.TransferOwnership:input_type -> workspace.v1.TransferOwnershipRequest
+	21,  // 77: workspace.v1.WorkspaceService.DeleteWorkspace:input_type -> workspace.v1.DeleteWorkspaceRequest
+	23,  // 78: workspace.v1.WorkspaceService.AddMember:input_type -> workspace.v1.AddMemberRequest
+	25,  // 79: workspace.v1.WorkspaceService.UpdateMemberRole:input_type -> workspace.v1.UpdateMemberRoleRequest
+	27,  // 80: workspace.v1.WorkspaceService.RemoveMember:input_type -> workspace.v1.RemoveMemberRequest
+	29,  // 81: workspace.v1.WorkspaceService.SuspendMember:input_type -> workspace.v1.SuspendMemberRequest
+	31,  // 82: workspace.v1.WorkspaceService.ReinstateMember:input_type -> workspace.v1.ReinstateMemberRequest
+	33,  // 83: workspace.v1.WorkspaceService.ListMembers:input_type -> workspace.v1.ListMembersRequest
+	35,  // 84: workspace.v1.WorkspaceService.CreateInvitation:input_type -> workspace.v1.CreateInvitationRequest
+	37,  // 85: workspace.v1.WorkspaceService.AcceptInvitation:input_type -> workspace.v1.AcceptInvitationRequest
+	39,  // 86: workspace.v1.WorkspaceService.ListInvitations:input_type -> workspace.v1.ListInvitationsRequest
+	41,  // 87: workspace.v1.WorkspaceService.RevokeInvitation:input_type -> workspace.v1.RevokeInvitationRequest
+	45,  // 88: workspace.v1.GroupService.CreateGroup:input_type -> workspace.v1.CreateGroupRequest
+	47,  // 89: workspace.v1.GroupService.GetGroup:input_type -> workspace.v1.GetGroupRequest
+	49,  // 90: workspace.v1.GroupService.ListGroups:input_type -> workspace.v1.ListGroupsRequest
+	51,  // 91: workspace.v1.GroupService.DeleteGroup:input_type -> workspace.v1.DeleteGroupRequest
+	53,  // 92: workspace.v1.GroupService.AddGroupMember:input_type -> workspace.v1.AddGroupMemberRequest
+	55,  // 93: workspace.v1.GroupService.RemoveGroupMember:input_type -> workspace.v1.RemoveGroupMemberRequest
+	57,  // 94: workspace.v1.GroupService.ListGroupMembers:input_type -> workspace.v1.ListGroupMembersRequest
+	60,  // 95: workspace.v1.GroupService.SetEnrollmentState:input_type -> workspace.v1.SetEnrollmentStateRequest
+	62,  // 96: workspace.v1.GroupService.ListEnrollments:input_type -> workspace.v1.ListEnrollmentsRequest
+	68,  // 97: workspace.v1.AuthzService.WriteRelationTuples:input_type -> workspace.v1.WriteRelationTuplesRequest
+	70,  // 98: workspace.v1.AuthzService.ReadRelationTuples:input_type -> workspace.v1.ReadRelationTuplesRequest
+	72,  // 99: workspace.v1.AuthzService.Check:input_type -> workspace.v1.CheckRequest
+	75,  // 100: workspace.v1.AuthzService.BatchCheck:input_type -> workspace.v1.BatchCheckRequest
+	78,  // 101: workspace.v1.AuthzService.Expand:input_type -> workspace.v1.ExpandRequest
+	81,  // 102: workspace.v1.AuthzService.ListObjects:input_type -> workspace.v1.ListObjectsRequest
+	83,  // 103: workspace.v1.AuthzService.DeprovisionUser:input_type -> workspace.v1.DeprovisionUserRequest
+	85,  // 104: workspace.v1.AuthzService.ExportSubjectGrants:input_type -> workspace.v1.ExportSubjectGrantsRequest
+	89,  // 105: workspace.v1.AdminService.CreateProject:input_type -> workspace.v1.CreateProjectRequest
+	91,  // 106: workspace.v1.AdminService.GetProject:input_type -> workspace.v1.GetProjectRequest
+	93,  // 107: workspace.v1.AdminService.UpdateProject:input_type -> workspace.v1.UpdateProjectRequest
+	95,  // 108: workspace.v1.AdminService.ListProjects:input_type -> workspace.v1.ListProjectsRequest
+	99,  // 109: workspace.v1.SeatService.SetSeatLimit:input_type -> workspace.v1.SetSeatLimitRequest
+	101, // 110: workspace.v1.SeatService.GetSeatUsage:input_type -> workspace.v1.GetSeatUsageRequest
+	103, // 111: workspace.v1.SeatService.AssignSeat:input_type -> workspace.v1.AssignSeatRequest
+	105, // 112: workspace.v1.SeatService.RevokeSeat:input_type -> workspace.v1.RevokeSeatRequest
+	107, // 113: workspace.v1.SeatService.ListSeats:input_type -> workspace.v1.ListSeatsRequest
+	12,  // 114: workspace.v1.WorkspaceService.CreateWorkspace:output_type -> workspace.v1.CreateWorkspaceResponse
+	14,  // 115: workspace.v1.WorkspaceService.GetWorkspace:output_type -> workspace.v1.GetWorkspaceResponse
+	16,  // 116: workspace.v1.WorkspaceService.ListWorkspaces:output_type -> workspace.v1.ListWorkspacesResponse
+	18,  // 117: workspace.v1.WorkspaceService.UpdateWorkspace:output_type -> workspace.v1.UpdateWorkspaceResponse
+	20,  // 118: workspace.v1.WorkspaceService.TransferOwnership:output_type -> workspace.v1.TransferOwnershipResponse
+	22,  // 119: workspace.v1.WorkspaceService.DeleteWorkspace:output_type -> workspace.v1.DeleteWorkspaceResponse
+	24,  // 120: workspace.v1.WorkspaceService.AddMember:output_type -> workspace.v1.AddMemberResponse
+	26,  // 121: workspace.v1.WorkspaceService.UpdateMemberRole:output_type -> workspace.v1.UpdateMemberRoleResponse
+	28,  // 122: workspace.v1.WorkspaceService.RemoveMember:output_type -> workspace.v1.RemoveMemberResponse
+	30,  // 123: workspace.v1.WorkspaceService.SuspendMember:output_type -> workspace.v1.SuspendMemberResponse
+	32,  // 124: workspace.v1.WorkspaceService.ReinstateMember:output_type -> workspace.v1.ReinstateMemberResponse
+	34,  // 125: workspace.v1.WorkspaceService.ListMembers:output_type -> workspace.v1.ListMembersResponse
+	36,  // 126: workspace.v1.WorkspaceService.CreateInvitation:output_type -> workspace.v1.CreateInvitationResponse
+	38,  // 127: workspace.v1.WorkspaceService.AcceptInvitation:output_type -> workspace.v1.AcceptInvitationResponse
+	40,  // 128: workspace.v1.WorkspaceService.ListInvitations:output_type -> workspace.v1.ListInvitationsResponse
+	42,  // 129: workspace.v1.WorkspaceService.RevokeInvitation:output_type -> workspace.v1.RevokeInvitationResponse
+	46,  // 130: workspace.v1.GroupService.CreateGroup:output_type -> workspace.v1.CreateGroupResponse
+	48,  // 131: workspace.v1.GroupService.GetGroup:output_type -> workspace.v1.GetGroupResponse
+	50,  // 132: workspace.v1.GroupService.ListGroups:output_type -> workspace.v1.ListGroupsResponse
+	52,  // 133: workspace.v1.GroupService.DeleteGroup:output_type -> workspace.v1.DeleteGroupResponse
+	54,  // 134: workspace.v1.GroupService.AddGroupMember:output_type -> workspace.v1.AddGroupMemberResponse
+	56,  // 135: workspace.v1.GroupService.RemoveGroupMember:output_type -> workspace.v1.RemoveGroupMemberResponse
+	58,  // 136: workspace.v1.GroupService.ListGroupMembers:output_type -> workspace.v1.ListGroupMembersResponse
+	61,  // 137: workspace.v1.GroupService.SetEnrollmentState:output_type -> workspace.v1.SetEnrollmentStateResponse
+	63,  // 138: workspace.v1.GroupService.ListEnrollments:output_type -> workspace.v1.ListEnrollmentsResponse
+	69,  // 139: workspace.v1.AuthzService.WriteRelationTuples:output_type -> workspace.v1.WriteRelationTuplesResponse
+	71,  // 140: workspace.v1.AuthzService.ReadRelationTuples:output_type -> workspace.v1.ReadRelationTuplesResponse
+	73,  // 141: workspace.v1.AuthzService.Check:output_type -> workspace.v1.CheckResponse
+	77,  // 142: workspace.v1.AuthzService.BatchCheck:output_type -> workspace.v1.BatchCheckResponse
+	80,  // 143: workspace.v1.AuthzService.Expand:output_type -> workspace.v1.ExpandResponse
+	82,  // 144: workspace.v1.AuthzService.ListObjects:output_type -> workspace.v1.ListObjectsResponse
+	84,  // 145: workspace.v1.AuthzService.DeprovisionUser:output_type -> workspace.v1.DeprovisionUserResponse
+	87,  // 146: workspace.v1.AuthzService.ExportSubjectGrants:output_type -> workspace.v1.ExportSubjectGrantsResponse
+	90,  // 147: workspace.v1.AdminService.CreateProject:output_type -> workspace.v1.CreateProjectResponse
+	92,  // 148: workspace.v1.AdminService.GetProject:output_type -> workspace.v1.GetProjectResponse
+	94,  // 149: workspace.v1.AdminService.UpdateProject:output_type -> workspace.v1.UpdateProjectResponse
+	96,  // 150: workspace.v1.AdminService.ListProjects:output_type -> workspace.v1.ListProjectsResponse
+	100, // 151: workspace.v1.SeatService.SetSeatLimit:output_type -> workspace.v1.SetSeatLimitResponse
+	102, // 152: workspace.v1.SeatService.GetSeatUsage:output_type -> workspace.v1.GetSeatUsageResponse
+	104, // 153: workspace.v1.SeatService.AssignSeat:output_type -> workspace.v1.AssignSeatResponse
+	106, // 154: workspace.v1.SeatService.RevokeSeat:output_type -> workspace.v1.RevokeSeatResponse
+	108, // 155: workspace.v1.SeatService.ListSeats:output_type -> workspace.v1.ListSeatsResponse
+	114, // [114:156] is the sub-list for method output_type
+	72,  // [72:114] is the sub-list for method input_type
+	72,  // [72:72] is the sub-list for extension type_name
+	72,  // [72:72] is the sub-list for extension extendee
+	0,   // [0:72] is the sub-list for field type_name
 }
 
 func init() { file_workspace_v1_workspace_proto_init() }
@@ -6827,15 +7589,17 @@ func file_workspace_v1_workspace_proto_init() {
 		(*Subject_Set)(nil),
 		(*Subject_Wildcard)(nil),
 	}
+	file_workspace_v1_workspace_proto_msgTypes[89].OneofWrappers = []any{}
+	file_workspace_v1_workspace_proto_msgTypes[91].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_workspace_v1_workspace_proto_rawDesc), len(file_workspace_v1_workspace_proto_rawDesc)),
 			NumEnums:      8,
-			NumMessages:   89,
+			NumMessages:   101,
 			NumExtensions: 0,
-			NumServices:   4,
+			NumServices:   5,
 		},
 		GoTypes:           file_workspace_v1_workspace_proto_goTypes,
 		DependencyIndexes: file_workspace_v1_workspace_proto_depIdxs,

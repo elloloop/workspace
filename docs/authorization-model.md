@@ -219,6 +219,35 @@ re-enrollment — with no separate status read on the hot path. `ListEnrollments
 returns the tracked states. The overlay is additive: plain
 `AddGroupMember`/`RemoveGroupMember` still work for un-tracked membership.
 
+### Seats / licenses (`SeatService`)
+
+`SeatService` counts consumed seats for a `sku` (plan/entitlement) per
+`(project, tenant)` and **enforces a cap at write time**:
+
+- `SetSeatLimit(sku, limit)` configures the cap (`limit >= 0`; `0` admits none).
+  A sku with **no** configured limit is **unlimited**; calling `SetSeatLimit`
+  with the `limit` field **absent clears** the cap (back to unlimited) — the only
+  way to undo a previously-set limit over the wire.
+- **Downgrade:** lowering a cap below current usage is **allowed** —
+  `SetSeatLimit` succeeds, `GetSeatUsage` then reports `used > limit`, and further
+  `AssignSeat` is denied until enough seats are revoked to drop below the new cap.
+  Existing assignments are never auto-revoked.
+- `AssignSeat(sku, user)` grants a seat. It **fails closed** with
+  `ResourceExhausted` once the cap is reached, assigning nothing. The
+  count-check and the insert run in **one transaction** (Postgres serializes
+  concurrent assigns for a sku with an advisory lock; memory under its mutex),
+  so two racing assigns can never both succeed past the cap. Re-assigning an
+  already-seated user is **idempotent** (no extra seat) and **re-asserts** the
+  backing tuple, so a counted seat always grants access (self-healing).
+- Each assignment also writes a `seat:<sku>#holder@user` relation tuple, so a
+  product model can gate access on seat-holding (e.g. a course `viewer` rewrite
+  that unions in `seat:pro#holder`). The `seat` namespace is **reserved** — these
+  tuples can only be minted/removed via `AssignSeat`/`RevokeSeat`, never the
+  generic `WriteRelationTuples` (rejected) — so the count and the granted access
+  cannot diverge. `RevokeSeat` frees the seat and deletes the tuple, atomically;
+  `DeprovisionUser` also reclaims a user's seats project-wide.
+- `GetSeatUsage`/`ListSeats` report consumption (`used`, `limit`, `limited`).
+
 ### `resource`
 
 A generic product object that **inherits** access from its parent — which may

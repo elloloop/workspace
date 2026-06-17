@@ -90,6 +90,8 @@ func New(ctx context.Context, d Deps) (http.Handler, error) {
 	mux.Handle(azPath, azHandler)
 	adminPath, adminHandler := workspacev1connect.NewAdminServiceHandler(h)
 	mux.Handle(adminPath, adminHandler)
+	seatPath, seatHandler := workspacev1connect.NewSeatServiceHandler(h)
+	mux.Handle(seatPath, seatHandler)
 
 	health := middleware.Health()
 	mux.Handle("/healthz", health)

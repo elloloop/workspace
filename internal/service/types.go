@@ -111,6 +111,26 @@ type Enrollment struct {
 	UpdatedAt time.Time
 }
 
+// SeatAssignment is one user's consumed seat for a sku, scoped to a
+// (project, tenant). Each assignment is backed by a `seat:<sku>#holder@user`
+// relation tuple so Check can gate access on seat-holding.
+type SeatAssignment struct {
+	ProjectID  string
+	TenantID   string
+	SKU        string
+	UserID     string
+	AssignedAt time.Time
+}
+
+// SeatUsage reports a sku's seat consumption against its configured cap.
+// Limited is false when no limit is configured for the sku (unlimited).
+type SeatUsage struct {
+	SKU     string
+	Used    int
+	Limit   int
+	Limited bool
+}
+
 // InvitationStatus tracks a pending invite's lifecycle.
 type InvitationStatus string
 
