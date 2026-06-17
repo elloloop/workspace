@@ -131,18 +131,30 @@ func parseServiceCredentials(raw string) ([]middleware.ServiceCredential, error)
 	dec := json.NewDecoder(strings.NewReader(raw))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(&creds); err != nil {
-		return nil, fmt.Errorf("invalid JSON: %w", err)
+		// Do NOT wrap the decoder error verbatim — the raw JSON (and thus token
+		// bytes) can appear in it. Report only that the value is malformed.
+		return nil, errors.New("GATEWAY_SERVICE_CREDENTIALS is not valid JSON")
 	}
 	for i, c := range creds {
+		// Identify a bad entry by INDEX (and at most its non-secret name), never
+		// by token value, so a credential secret can never reach a log.
 		if strings.TrimSpace(c.Token) == "" {
 			return nil, fmt.Errorf("credential %d: token is required", i)
 		}
+		if len(c.Token) < minServiceCredentialLen {
+			return nil, fmt.Errorf("credential %d (%q): token must be a high-entropy value of at least %d characters", i, c.Name, minServiceCredentialLen)
+		}
 		if strings.TrimSpace(c.Name) == "" {
-			return nil, fmt.Errorf("credential %d (%q): name is required", i, c.Token)
+			return nil, fmt.Errorf("credential %d: name is required", i)
 		}
 	}
 	return creds, nil
 }
+
+// minServiceCredentialLen floors a mapped service credential's token: it both
+// authenticates AND authorizes (via its project pin), so it must not be
+// brute-forceable. Mirrors minAdminSecretLen.
+const minServiceCredentialLen = minAdminSecretLen
 
 // Validate checks invariants that defaults cannot express.
 func (c *Config) Validate() error {

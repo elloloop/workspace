@@ -122,13 +122,20 @@ func (h *Handler) acting(ctx context.Context, actingUserID, projectID, tenantID 
 	if actingUserID == "" {
 		return service.Principal{}, connect.NewError(connect.CodeInvalidArgument, errors.New("acting_user_id is required"))
 	}
-	return service.Principal{UserID: actingUserID, ProjectID: h.callerProject(ctx, projectID), TenantID: h.tenantOr(tenantID)}, nil
+	return service.Principal{
+		UserID: actingUserID, ProjectID: h.callerProject(ctx, projectID),
+		TenantID: h.tenantOr(tenantID), Caller: middleware.CallerFrom(ctx).Name,
+	}, nil
 }
 
 // scope is the Principal for an authz RPC: only the project/tenant matter; the
-// subject is a request argument, not the caller.
+// subject is a request argument, not the caller. Caller carries the calling
+// service's identity for audit attribution.
 func (h *Handler) scope(ctx context.Context, projectID, tenantID string) service.Principal {
-	return service.Principal{ProjectID: h.callerProject(ctx, projectID), TenantID: h.tenantOr(tenantID)}
+	return service.Principal{
+		ProjectID: h.callerProject(ctx, projectID), TenantID: h.tenantOr(tenantID),
+		Caller: middleware.CallerFrom(ctx).Name,
+	}
 }
 
 // callerProject resolves the project a request operates in. A credential pinned

@@ -83,6 +83,15 @@ func main() {
 		zap.Bool("postgres", cfg.PostgresDSN != ""),
 		zap.Bool("service_auth", len(cfg.ServiceAuthTokens) > 0))
 
+	// Log the configured service-credential routing (NAME + project pin only —
+	// never the token) so an operator can eyeball a mistyped pin before it
+	// silently mis-routes an integration's writes.
+	for _, c := range cfg.ServiceCredentials {
+		logger.Info("service_credential_configured",
+			zap.String("caller", c.Name),
+			zap.String("pinned_project", c.ProjectID))
+	}
+
 	connectServer := newHTTPServer(fmt.Sprintf(":%d", cfg.ConnectPort),
 		http.MaxBytesHandler(srv.Handler(), cfg.HTTPMaxBodyBytes))
 	// Serve cleartext HTTP/2 (h2c) alongside HTTP/1.1 so gRPC clients work

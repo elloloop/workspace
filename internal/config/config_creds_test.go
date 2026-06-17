@@ -14,7 +14,7 @@ func TestParseServiceCredentials(t *testing.T) {
 	})
 
 	t.Run("valid", func(t *testing.T) {
-		got, err := parseServiceCredentials(`[{"token":"t1","name":"slack","project":"p1"},{"token":"t2","name":"linear"}]`) //nolint:gosec // test-only credential JSON
+		got, err := parseServiceCredentials(`[{"token":"slack-credential-token-0123456789ab","name":"slack","project":"p1"},{"token":"linear-credential-token-0123456789a","name":"linear"}]`) //nolint:gosec // test-only credential JSON
 		if err != nil {
 			t.Fatalf("valid: %v", err)
 		}
@@ -25,9 +25,10 @@ func TestParseServiceCredentials(t *testing.T) {
 
 	for name, raw := range map[string]string{ //nolint:gosec // test-only credential JSON fixtures
 		"bad json":      `{not json`,
-		"unknown field": `[{"token":"t","name":"n","extra":1}]`,
+		"unknown field": `[{"token":"a-sufficiently-long-token-0123456789","name":"n","extra":1}]`,
 		"missing token": `[{"name":"slack"}]`,
-		"missing name":  `[{"token":"t1"}]`,
+		"short token":   `[{"token":"too-short","name":"slack"}]`,
+		"missing name":  `[{"token":"a-sufficiently-long-token-0123456789"}]`,
 	} {
 		t.Run(name, func(t *testing.T) {
 			if _, err := parseServiceCredentials(raw); err == nil {
@@ -38,7 +39,7 @@ func TestParseServiceCredentials(t *testing.T) {
 }
 
 func TestLoadServiceCredentials(t *testing.T) {
-	t.Setenv("GATEWAY_SERVICE_CREDENTIALS", `[{"token":"tok","name":"slack","project":"slack-proj"}]`)
+	t.Setenv("GATEWAY_SERVICE_CREDENTIALS", `[{"token":"slack-credential-token-0123456789ab","name":"slack","project":"slack-proj"}]`)
 	c, err := Load()
 	if err != nil {
 		t.Fatalf("Load: %v", err)

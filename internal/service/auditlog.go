@@ -31,7 +31,10 @@ type TupleChangeRecord struct {
 	SubjectSet    *authz.SubjectSet
 	// Wildcard is true when the subject is the public wildcard (user:*).
 	Wildcard bool
-	At       time.Time
+	// Caller is the calling-service identity that made the change (e.g. "slack"),
+	// for attribution. Empty for an anonymous (flat-token) caller.
+	Caller string
+	At     time.Time
 }
 
 // AdminAction names an AdminService mutation.
@@ -85,7 +88,7 @@ func (s *Service) auditTupleChanges(ctx context.Context, p Principal, inserts, d
 				Op: op, ProjectID: p.ProjectID, TenantID: p.TenantID,
 				Namespace: t.Namespace, ObjectID: t.ObjectID, Relation: t.Relation,
 				SubjectUserID: t.Subject.UserID, SubjectSet: t.Subject.Set,
-				Wildcard: t.Subject.Wildcard, At: now,
+				Wildcard: t.Subject.Wildcard, Caller: p.Caller, At: now,
 			}
 			s.auditLog.LogTupleChange(ctx, rec)
 		}

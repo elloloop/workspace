@@ -71,7 +71,8 @@ func (s *Service) Check(ctx context.Context, p Principal, namespace, objectID, r
 			s.decisionLog.Log(ctx, DecisionRecord{
 				ProjectID: p.ProjectID, TenantID: p.TenantID,
 				Namespace: namespace, ObjectID: objectID, Relation: relation,
-				SubjectUserID: subjectUserID, Allowed: allowed, Err: errString(err), DecidedAt: s.now(),
+				SubjectUserID: subjectUserID, Allowed: allowed, Err: errString(err),
+				Caller: p.Caller, DecidedAt: s.now(),
 			})
 		}()
 	}
@@ -103,7 +104,8 @@ func (s *Service) CheckSet(ctx context.Context, p Principal, namespace, objectID
 			s.decisionLog.Log(ctx, DecisionRecord{
 				ProjectID: p.ProjectID, TenantID: p.TenantID,
 				Namespace: namespace, ObjectID: objectID, Relation: relation,
-				SubjectSet: &ss, Allowed: allowed, Err: errString(err), DecidedAt: s.now(),
+				SubjectSet: &ss, Allowed: allowed, Err: errString(err),
+				Caller: p.Caller, DecidedAt: s.now(),
 			})
 		}()
 	}

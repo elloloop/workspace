@@ -103,6 +103,9 @@ func (z *ZapLogger) emit(rec service.DecisionRecord) {
 		fields = append(fields, zap.String("subject_set",
 			rec.SubjectSet.Namespace+":"+rec.SubjectSet.ObjectID+"#"+rec.SubjectSet.Relation))
 	}
+	if rec.Caller != "" {
+		fields = append(fields, zap.String("caller", rec.Caller))
+	}
 	if rec.Err != "" {
 		fields = append(fields, zap.String("error", rec.Err))
 	}

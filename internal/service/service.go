@@ -21,6 +21,10 @@ type Principal struct {
 	UserID    string
 	ProjectID string
 	TenantID  string
+	// Caller is the resolved CALLING-SERVICE identity (e.g. "slack"), for audit
+	// attribution. Empty for an anonymous (flat-token) caller. It is never the
+	// end user (who is UserID / a request field).
+	Caller string
 }
 
 // Service implements the product surface (workspaces, groups, invitations)
