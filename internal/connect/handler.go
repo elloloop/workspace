@@ -34,6 +34,9 @@ type Handler struct {
 	maxBatchCheckItems int
 	// adminLimiter throttles the AdminService per caller; nil disables it.
 	adminLimiter *rateLimiter
+	// metrics records authorization decision counters/histograms exposed at
+	// /metrics; nil-safe, so it never affects a decision.
+	metrics *metrics
 }
 
 // NewHandler builds the Connect handler for svc. defaultProjectID/defaultTenantID
@@ -56,6 +59,7 @@ func NewHandler(svc *service.Service, defaultProjectID, defaultTenantID, adminSe
 		adminSecret:        adminSecret,
 		maxBatchCheckItems: maxBatchCheckItems,
 		adminLimiter:       newRateLimiter(adminRateLimitPerMinute, nil),
+		metrics:            defaultMetrics(),
 	}
 }
 
