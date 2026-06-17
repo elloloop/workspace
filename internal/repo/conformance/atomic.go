@@ -56,4 +56,33 @@ func testAtomicMembership(t *testing.T, r service.Repository) {
 	if subs, _ := r.ListSubjects(ctx(), p, "", "workspace", "w2", "member"); len(subs) != 1 {
 		t.Fatalf("tuple deleted despite membership-not-found rollback: %+v", subs)
 	}
+
+	// Role swap (the UpdateMemberRole shape): insert the new role tuple and
+	// delete the old one in one atomic call. The result must show exactly the
+	// new role — catching both over-grant (old tuple lingers) and lock-out (new
+	// tuple missing).
+	swapM := &service.Membership{
+		ProjectID: p, WorkspaceID: "w3", UserID: "u3",
+		Role: service.RoleMember, Status: service.StatusActive, CreatedAt: now, UpdatedAt: now,
+	}
+	if err := r.PutMembershipAndTuples(ctx(), swapM,
+		[]authz.Tuple{userTuple("workspace", "w3", "member", "u3")}, nil); err != nil {
+		t.Fatalf("seed member: %v", err)
+	}
+	swapM.Role = service.RoleAdmin
+	swapM.UpdatedAt = now
+	if err := r.PutMembershipAndTuples(ctx(), swapM,
+		[]authz.Tuple{userTuple("workspace", "w3", "admin", "u3")},
+		[]authz.Tuple{userTuple("workspace", "w3", "member", "u3")}); err != nil {
+		t.Fatalf("role swap: %v", err)
+	}
+	if subs, _ := r.ListSubjects(ctx(), p, "", "workspace", "w3", "member"); len(subs) != 0 {
+		t.Fatalf("old role tuple lingers after swap (over-grant): %+v", subs)
+	}
+	if subs, _ := r.ListSubjects(ctx(), p, "", "workspace", "w3", "admin"); len(subs) != 1 || subs[0].UserID != "u3" {
+		t.Fatalf("new role tuple missing after swap (lock-out): %+v", subs)
+	}
+	if got, err := r.GetMembership(ctx(), p, "", "w3", "u3"); err != nil || got.Role != service.RoleAdmin {
+		t.Fatalf("membership role after swap = %+v, %v", got, err)
+	}
 }
