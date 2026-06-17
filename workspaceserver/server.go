@@ -11,6 +11,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/elloloop/workspace/internal/app"
+	"github.com/elloloop/workspace/internal/auditlog"
 	"github.com/elloloop/workspace/internal/decisionlog"
 	"github.com/elloloop/workspace/internal/repo/memory"
 	"github.com/elloloop/workspace/internal/service"
@@ -43,6 +44,9 @@ type Config struct {
 	// DecisionLog enables the async authorization decision audit log. Default
 	// false. When enabled, call Server.Close on shutdown to flush it.
 	DecisionLog bool
+	// AuditLog enables the async tuple-change + admin-mutation audit log.
+	// Default false. When enabled, call Server.Close on shutdown to flush it.
+	AuditLog bool
 }
 
 // Options configures New. Repo defaults to an in-memory store; Logger
@@ -57,6 +61,7 @@ type Options struct {
 type Server struct {
 	handler     http.Handler
 	decisionLog *decisionlog.ZapLogger
+	auditLog    *auditlog.ZapLogger
 }
 
 // New builds the server.
@@ -94,14 +99,22 @@ func New(ctx context.Context, opts Options) (*Server, error) {
 		dl = decisionlog.NewZap(logger, 0)
 		deps.DecisionLogger = dl
 	}
+	var al *auditlog.ZapLogger
+	if opts.Config.AuditLog {
+		al = auditlog.NewZap(logger, 0)
+		deps.AuditLogger = al
+	}
 	handler, err := app.New(ctx, deps)
 	if err != nil {
 		if dl != nil {
 			dl.Close()
 		}
+		if al != nil {
+			al.Close()
+		}
 		return nil, err
 	}
-	return &Server{handler: handler, decisionLog: dl}, nil
+	return &Server{handler: handler, decisionLog: dl, auditLog: al}, nil
 }
 
 // Handler returns the service's HTTP handler; mount it on an h2c/HTTP-2 server.
@@ -112,5 +125,8 @@ func (s *Server) Handler() http.Handler { return s.handler }
 func (s *Server) Close() {
 	if s.decisionLog != nil {
 		s.decisionLog.Close()
+	}
+	if s.auditLog != nil {
+		s.auditLog.Close()
 	}
 }

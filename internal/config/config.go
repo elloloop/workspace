@@ -57,6 +57,9 @@ type Config struct {
 	// DecisionLog enables an async, append-only audit log of every Check/
 	// CheckSet decision (to the structured logger). Default false.
 	DecisionLog bool
+	// AuditLog enables an async, append-only audit log of every relation-tuple
+	// change and admin mutation (to the structured logger). Default false.
+	AuditLog bool
 }
 
 // DefaultMaxListObjects bounds a ListObjects request when not overridden.
@@ -90,6 +93,7 @@ func Load() (*Config, error) {
 		MaxBatchCheckItems:      envInt("GATEWAY_MAX_BATCH_CHECK_ITEMS", DefaultMaxBatchCheckItems),
 		AdminRateLimitPerMinute: envInt("GATEWAY_ADMIN_RATE_LIMIT_PER_MINUTE", DefaultAdminRateLimitPerMinute),
 		DecisionLog:             envBool("GATEWAY_DECISION_LOG", false),
+		AuditLog:                envBool("GATEWAY_AUDIT_LOG", false),
 	}
 	if err := c.Validate(); err != nil {
 		return nil, err

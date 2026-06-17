@@ -45,6 +45,9 @@ type Deps struct {
 	// DecisionLogger, when non-nil, receives an audit record for every
 	// Check/CheckSet decision. The caller owns its lifecycle (Close).
 	DecisionLogger service.DecisionLogger
+	// AuditLogger, when non-nil, receives an append-only audit record for every
+	// relation-tuple change and admin mutation. The caller owns its lifecycle.
+	AuditLogger service.AuditLogger
 }
 
 // New builds the full HTTP handler: the four Connect services plus health
@@ -62,6 +65,9 @@ func New(ctx context.Context, d Deps) (http.Handler, error) {
 	}
 	if d.DecisionLogger != nil {
 		opts = append(opts, service.WithDecisionLogger(d.DecisionLogger))
+	}
+	if d.AuditLogger != nil {
+		opts = append(opts, service.WithAuditLogger(d.AuditLogger))
 	}
 	svc := service.New(d.Repo, nil, nil, opts...)
 	if err := svc.EnsureDefaultProject(ctx, d.DefaultProjectID); err != nil {

@@ -32,7 +32,11 @@ func (s *Service) WriteTuples(ctx context.Context, p Principal, ops []TupleOp) e
 	if err := s.ensureProjectActive(ctx, p); err != nil {
 		return err
 	}
-	return s.repo.WriteTuples(ctx, p.ProjectID, p.TenantID, inserts, deletes)
+	if err := s.repo.WriteTuples(ctx, p.ProjectID, p.TenantID, inserts, deletes); err != nil {
+		return err
+	}
+	s.auditTupleChanges(ctx, p, inserts, deletes)
+	return nil
 }
 
 // ensureProjectActive fails closed when the caller's project is suspended, so a
