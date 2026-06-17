@@ -152,29 +152,34 @@ supports **direct** per-object sharing.
 ```
 parent := this()
 owner  := this()
-editor := union(this(), computed("owner"),
-                tupleToUserset("parent", "admin"), tupleToUserset("parent", "editor"))
-viewer := union(this(), computed("editor"),
-                tupleToUserset("parent", "member"), tupleToUserset("parent", "viewer"))
+editor := union(this(), computed("owner"), tupleToUserset("parent", "editor"))
+viewer := union(this(), computed("editor"), tupleToUserset("parent", "viewer"))
 ```
 
-Reading the rules:
+This relies on `editor`/`viewer` aliases declared in the `workspace` namespace
+(`editor := computed("admin")`, `viewer := computed("member")`), so a single
+parent leg handles **both** parent kinds:
 
 - **`parent`** holds tuples like `resource:doc1#parent@workspace:acme#…` (the
   workspace the resource lives in) **or** `resource:doc1#parent@resource:folderB#…`
   (a containing folder). (For a directly-shared resource with no parent,
   `parent` is simply empty.)
-- **`editor`** = directly granted editors ∪ the resource's `owner` ∪ **every
-  admin of a parent workspace** ∪ **every editor of a parent resource**.
-- **`viewer`** = directly granted viewers ∪ everyone who is an `editor` ∪
-  **every member of a parent workspace** ∪ **every viewer of a parent resource**.
+- **`editor`** = directly granted editors ∪ the resource's `owner` ∪ the
+  **parent's `editor`** — which for a workspace parent resolves to its admins
+  (via the alias) and for a resource parent recurses up the folder chain.
+- **`viewer`** = directly granted viewers ∪ everyone who is an `editor` ∪ the
+  **parent's `viewer`** — workspace members for a workspace parent, the parent
+  folder's viewers for a resource parent.
 
-Each parent kind matches only its own leg: a workspace parent has no
-`editor`/`viewer` relation (so those legs grant nothing) and a resource parent
-has no `admin`/`member` relation (so those legs grant nothing). A
-`resource→resource` chain therefore inherits level by level — `editor` on
-`folderA` flows to a `doc` nested two folders deep — bounded by the engine's
-`maxDepth` cycle/runaway guard.
+Because the aliases resolve **through the model** (computed), they read no raw
+tuples, so a stray `workspace:w#editor@x` tuple is **inert** and cannot leak
+onto child resources. A `resource→resource` chain inherits level by level —
+`editor` on `folderA` flows to a `doc` nested two folders deep. Deep/branching
+hierarchies are bounded two ways: the engine caps recursion at `maxDepth`
+(`100`), past which it **fails closed gracefully** (a clean deny, never an
+error), and a **request-scoped memo** collapses the DAG so each node is
+evaluated once per `Check`/`Expand` (acyclic results are cached; cyclic models
+recompute and stay fail-closed).
 
 So workspace admins can edit anything in the workspace and members can view it,
 with **zero** per-resource tuples — while individual users or groups can still be
