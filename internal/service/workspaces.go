@@ -86,10 +86,10 @@ func (s *Service) createWorkspaceWithOwner(ctx context.Context, p Principal, w *
 		CreatedAt:   w.CreatedAt,
 		UpdatedAt:   w.UpdatedAt,
 	}
-	if err := s.repo.PutMembership(ctx, m); err != nil {
-		return err
-	}
-	return s.repo.WriteTuples(ctx, w.ProjectID, w.TenantID,
+	// Atomic: the owner's membership row and `owner` role tuple commit together,
+	// so a crash can never orphan a workspace's owner (this path backs every
+	// workspace, including every user's auto-provisioned personal workspace).
+	return s.repo.PutMembershipAndTuples(ctx, m,
 		[]authz.Tuple{userTuple("workspace", w.ID, string(RoleOwner), w.OwnerUserID)}, nil)
 }
 

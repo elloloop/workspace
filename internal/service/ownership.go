@@ -13,10 +13,10 @@ import (
 // (added as a member if not already one) and the former owner is demoted to
 // `admin` so they keep access rather than being orphaned.
 //
-// The writes are ordered fail-safe across the non-atomic repo calls: the new
-// owner's `owner` tuple is written FIRST, so there is never a window with no
-// owner — at worst a brief moment where both hold `owner` (a transactional
-// membership+tuple write is the tracked follow-up).
+// Each membership+tuple change commits atomically (PutMembershipAndTuples), so
+// a crash can never strand a membership row without its role tuple. The new
+// owner is promoted before the former owner is demoted, so there is never a
+// window with no owner — at worst a brief moment where both hold `owner`.
 func (s *Service) TransferOwnership(ctx context.Context, p Principal, workspaceID, newOwnerID string) (*Workspace, error) {
 	if newOwnerID == "" {
 		return nil, fmt.Errorf("%w: new_owner_user_id is required", ErrInvalidArgument)
@@ -52,10 +52,6 @@ func (s *Service) TransferOwnership(ctx context.Context, p Principal, workspaceI
 	default:
 		return nil, err
 	}
-	if err := s.repo.WriteTuples(ctx, p.ProjectID, p.TenantID,
-		[]authz.Tuple{userTuple("workspace", workspaceID, string(RoleOwner), newOwnerID)}, deletes); err != nil {
-		return nil, err
-	}
 	newOwner := &Membership{
 		ProjectID:   p.ProjectID,
 		TenantID:    p.TenantID,
@@ -69,7 +65,8 @@ func (s *Service) TransferOwnership(ctx context.Context, p Principal, workspaceI
 	if existing != nil {
 		newOwner.CreatedAt = existing.CreatedAt
 	}
-	if err := s.repo.PutMembership(ctx, newOwner); err != nil {
+	if err := s.repo.PutMembershipAndTuples(ctx, newOwner,
+		[]authz.Tuple{userTuple("workspace", workspaceID, string(RoleOwner), newOwnerID)}, deletes); err != nil {
 		return nil, err
 	}
 
@@ -80,20 +77,23 @@ func (s *Service) TransferOwnership(ctx context.Context, p Principal, workspaceI
 		return nil, err
 	}
 
-	// 3. Demote the former owner to admin: swap their `owner` tuple for `admin`
-	//    and update the membership row.
-	if old, err := s.repo.GetMembership(ctx, p.ProjectID, p.TenantID, workspaceID, oldOwnerID); err == nil {
+	// 3. Demote the former owner to admin: atomically swap their `owner` tuple
+	//    for `admin` together with the membership-row update.
+	adminInsert := []authz.Tuple{userTuple("workspace", workspaceID, string(RoleAdmin), oldOwnerID)}
+	ownerDelete := []authz.Tuple{userTuple("workspace", workspaceID, string(RoleOwner), oldOwnerID)}
+	switch old, err := s.repo.GetMembership(ctx, p.ProjectID, p.TenantID, workspaceID, oldOwnerID); {
+	case err == nil:
 		old.Role = RoleAdmin
 		old.UpdatedAt = now
-		if err := s.repo.PutMembership(ctx, old); err != nil {
+		if err := s.repo.PutMembershipAndTuples(ctx, old, adminInsert, ownerDelete); err != nil {
 			return nil, err
 		}
-	} else if !isNotFound(err) {
-		return nil, err
-	}
-	if err := s.repo.WriteTuples(ctx, p.ProjectID, p.TenantID,
-		[]authz.Tuple{userTuple("workspace", workspaceID, string(RoleAdmin), oldOwnerID)},
-		[]authz.Tuple{userTuple("workspace", workspaceID, string(RoleOwner), oldOwnerID)}); err != nil {
+	case isNotFound(err):
+		// No membership row for the former owner (edge case): just swap tuples.
+		if err := s.repo.WriteTuples(ctx, p.ProjectID, p.TenantID, adminInsert, ownerDelete); err != nil {
+			return nil, err
+		}
+	default:
 		return nil, err
 	}
 	return w, nil
