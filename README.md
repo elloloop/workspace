@@ -158,6 +158,11 @@ may be project-level (a B2C user's "family" list) or scoped to a workspace (a
 company's internal groups), and a group member is either a user or another
 group. See [ADR-0003](docs/adr/0003-groups-separate-from-workspaces.md).
 
+A group used as a **cohort/class** can track each member's enrollment lifecycle
+(`SetEnrollmentState`/`ListEnrollments`): `enrolled`/`active` place the member in
+the group's `#member` set, while `waitlisted`/`completed`/`dropped` record the
+state without granting access — access moves purely by tuple presence, atomically.
+
 ### Calling the API
 
 Every RPC is an HTTP `POST` over the [Connect protocol](https://connectrpc.com)

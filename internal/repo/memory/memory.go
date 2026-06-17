@@ -24,6 +24,7 @@ type Store struct {
 	memberships map[string]map[string]map[string]service.Membership // scope → ws → user → m
 	invitations map[string]map[string]service.Invitation            // scope → id → inv
 	groups      map[string]map[string]service.Group                 // scope → id → g
+	enrollments map[string]map[string]map[string]service.Enrollment // scope → group → memberKey → e
 	tuples      map[string]map[string]authz.Tuple                   // scope → tupleKey → tuple
 }
 
@@ -35,6 +36,7 @@ func New() *Store {
 		memberships: map[string]map[string]map[string]service.Membership{},
 		invitations: map[string]map[string]service.Invitation{},
 		groups:      map[string]map[string]service.Group{},
+		enrollments: map[string]map[string]map[string]service.Enrollment{},
 		tuples:      map[string]map[string]authz.Tuple{},
 	}
 }
@@ -595,10 +597,63 @@ func (s *Store) DeleteGroup(_ context.Context, projectID, tenantID, id string) e
 		return service.ErrNotFound
 	}
 	delete(s.groups[sk], id)
+	delete(s.enrollments[sk], id)
 	for k, t := range s.tuples[sk] {
 		if t.Namespace == "group" && t.ObjectID == id {
 			delete(s.tuples[sk], k)
 		}
 	}
 	return nil
+}
+
+// ── enrollments ─────────────────────────────────────────────────────────────
+
+func (s *Store) SetEnrollmentAndTuples(_ context.Context, e *service.Enrollment, inserts, deletes []authz.Tuple) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	sk := scope(e.ProjectID, e.TenantID)
+	byGroup := s.enrollments[sk]
+	if byGroup == nil {
+		byGroup = map[string]map[string]service.Enrollment{}
+		s.enrollments[sk] = byGroup
+	}
+	byMember := byGroup[e.GroupID]
+	if byMember == nil {
+		byMember = map[string]service.Enrollment{}
+		byGroup[e.GroupID] = byMember
+	}
+	kind, id := service.MemberKey(e.Member)
+	byMember[kind+":"+id] = *e
+	s.writeTuplesLocked(e.ProjectID, e.TenantID, inserts, deletes)
+	return nil
+}
+
+func (s *Store) GetEnrollment(_ context.Context, projectID, tenantID, groupID string, member service.GroupMember) (*service.Enrollment, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	kind, id := service.MemberKey(member)
+	if e, ok := s.enrollments[scope(projectID, tenantID)][groupID][kind+":"+id]; ok {
+		cp := e
+		return &cp, nil
+	}
+	return nil, service.ErrNotFound
+}
+
+func (s *Store) ListEnrollments(_ context.Context, projectID, tenantID, groupID string) ([]*service.Enrollment, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	var out []*service.Enrollment
+	for _, e := range s.enrollments[scope(projectID, tenantID)][groupID] {
+		cp := e
+		out = append(out, &cp)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].CreatedAt.Equal(out[j].CreatedAt) {
+			ki, ii := service.MemberKey(out[i].Member)
+			kj, ij := service.MemberKey(out[j].Member)
+			return ki+":"+ii < kj+":"+ij
+		}
+		return out[i].CreatedAt.Before(out[j].CreatedAt)
+	})
+	return out, nil
 }

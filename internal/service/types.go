@@ -71,6 +71,46 @@ const (
 	StatusSuspended MembershipStatus = "suspended"
 )
 
+// EnrollmentState is a member's lifecycle state within a group used as a
+// cohort/class. Only the access-bearing states (Enrolled, Active) put the
+// member in the group's `member` userset; the rest are tracked without access.
+type EnrollmentState string
+
+const (
+	EnrollmentWaitlisted EnrollmentState = "waitlisted"
+	EnrollmentEnrolled   EnrollmentState = "enrolled"
+	EnrollmentActive     EnrollmentState = "active"
+	EnrollmentCompleted  EnrollmentState = "completed"
+	EnrollmentDropped    EnrollmentState = "dropped"
+)
+
+// Valid reports whether s is a known enrollment state.
+func (s EnrollmentState) Valid() bool {
+	switch s {
+	case EnrollmentWaitlisted, EnrollmentEnrolled, EnrollmentActive, EnrollmentCompleted, EnrollmentDropped:
+		return true
+	}
+	return false
+}
+
+// GrantsAccess reports whether s places the member in the group's `member`
+// userset (the backing group#member tuple is present). Enrolled and Active
+// grant; Waitlisted, Completed, and Dropped do not.
+func (s EnrollmentState) GrantsAccess() bool {
+	return s == EnrollmentEnrolled || s == EnrollmentActive
+}
+
+// Enrollment is a member's tracked lifecycle state within a group (cohort).
+type Enrollment struct {
+	ProjectID string
+	TenantID  string
+	GroupID   string
+	Member    GroupMember
+	State     EnrollmentState
+	CreatedAt time.Time
+	UpdatedAt time.Time
+}
+
 // InvitationStatus tracks a pending invite's lifecycle.
 type InvitationStatus string
 

@@ -5,6 +5,7 @@ import (
 	"errors"
 
 	"connectrpc.com/connect"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	workspacev1 "github.com/elloloop/workspace/gen/go/workspace/v1"
 	"github.com/elloloop/workspace/internal/service"
@@ -110,6 +111,86 @@ func (h *Handler) RemoveGroupMember(ctx context.Context, req *connect.Request[wo
 		return nil, errToConnect(err)
 	}
 	return connect.NewResponse(&workspacev1.RemoveGroupMemberResponse{}), nil
+}
+
+func enrollmentStateFromProto(s workspacev1.EnrollmentState) (service.EnrollmentState, error) {
+	switch s {
+	case workspacev1.EnrollmentState_ENROLLMENT_STATE_WAITLISTED:
+		return service.EnrollmentWaitlisted, nil
+	case workspacev1.EnrollmentState_ENROLLMENT_STATE_ENROLLED:
+		return service.EnrollmentEnrolled, nil
+	case workspacev1.EnrollmentState_ENROLLMENT_STATE_ACTIVE:
+		return service.EnrollmentActive, nil
+	case workspacev1.EnrollmentState_ENROLLMENT_STATE_COMPLETED:
+		return service.EnrollmentCompleted, nil
+	case workspacev1.EnrollmentState_ENROLLMENT_STATE_DROPPED:
+		return service.EnrollmentDropped, nil
+	default:
+		return "", connect.NewError(connect.CodeInvalidArgument, errors.New("state must be a known enrollment state"))
+	}
+}
+
+func enrollmentStateToProto(s service.EnrollmentState) workspacev1.EnrollmentState {
+	switch s {
+	case service.EnrollmentWaitlisted:
+		return workspacev1.EnrollmentState_ENROLLMENT_STATE_WAITLISTED
+	case service.EnrollmentEnrolled:
+		return workspacev1.EnrollmentState_ENROLLMENT_STATE_ENROLLED
+	case service.EnrollmentActive:
+		return workspacev1.EnrollmentState_ENROLLMENT_STATE_ACTIVE
+	case service.EnrollmentCompleted:
+		return workspacev1.EnrollmentState_ENROLLMENT_STATE_COMPLETED
+	case service.EnrollmentDropped:
+		return workspacev1.EnrollmentState_ENROLLMENT_STATE_DROPPED
+	default:
+		return workspacev1.EnrollmentState_ENROLLMENT_STATE_UNSPECIFIED
+	}
+}
+
+func enrollmentToProto(e *service.Enrollment) *workspacev1.Enrollment {
+	return &workspacev1.Enrollment{
+		GroupId:   e.GroupID,
+		Member:    groupMemberToProto(e.Member),
+		State:     enrollmentStateToProto(e.State),
+		CreatedAt: timestamppb.New(e.CreatedAt),
+		UpdatedAt: timestamppb.New(e.UpdatedAt),
+	}
+}
+
+func (h *Handler) SetEnrollmentState(ctx context.Context, req *connect.Request[workspacev1.SetEnrollmentStateRequest]) (*connect.Response[workspacev1.SetEnrollmentStateResponse], error) {
+	p, err := h.acting(ctx, req.Msg.ActingUserId, req.Msg.ProjectId, req.Msg.TenantId)
+	if err != nil {
+		return nil, err
+	}
+	m, err := groupMemberFromProto(req.Msg.Member)
+	if err != nil {
+		return nil, err
+	}
+	state, err := enrollmentStateFromProto(req.Msg.State)
+	if err != nil {
+		return nil, err
+	}
+	e, err := h.svc.SetEnrollmentState(ctx, p, req.Msg.GroupId, m, state)
+	if err != nil {
+		return nil, errToConnect(err)
+	}
+	return connect.NewResponse(&workspacev1.SetEnrollmentStateResponse{Enrollment: enrollmentToProto(e)}), nil
+}
+
+func (h *Handler) ListEnrollments(ctx context.Context, req *connect.Request[workspacev1.ListEnrollmentsRequest]) (*connect.Response[workspacev1.ListEnrollmentsResponse], error) {
+	p, err := h.acting(ctx, req.Msg.ActingUserId, req.Msg.ProjectId, req.Msg.TenantId)
+	if err != nil {
+		return nil, err
+	}
+	enrollments, err := h.svc.ListEnrollments(ctx, p, req.Msg.GroupId)
+	if err != nil {
+		return nil, errToConnect(err)
+	}
+	out := make([]*workspacev1.Enrollment, 0, len(enrollments))
+	for _, e := range enrollments {
+		out = append(out, enrollmentToProto(e))
+	}
+	return connect.NewResponse(&workspacev1.ListEnrollmentsResponse{Enrollments: out}), nil
 }
 
 func (h *Handler) ListGroupMembers(ctx context.Context, req *connect.Request[workspacev1.ListGroupMembersRequest]) (*connect.Response[workspacev1.ListGroupMembersResponse], error) {

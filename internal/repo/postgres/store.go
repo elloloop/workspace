@@ -126,6 +126,18 @@ ALTER TABLE groups ADD COLUMN IF NOT EXISTS tenant_id text NOT NULL DEFAULT '';
 CREATE INDEX IF NOT EXISTS groups_workspace_idx
 	ON groups (project_id, tenant_id, workspace_id);
 
+CREATE TABLE IF NOT EXISTS enrollments (
+	project_id   text        NOT NULL,
+	tenant_id    text        NOT NULL DEFAULT '',
+	group_id     text        NOT NULL,
+	member_kind  text        NOT NULL,
+	member_id    text        NOT NULL,
+	state        text        NOT NULL,
+	created_at   timestamptz NOT NULL,
+	updated_at   timestamptz NOT NULL,
+	PRIMARY KEY (project_id, tenant_id, group_id, member_kind, member_id)
+);
+
 CREATE TABLE IF NOT EXISTS relation_tuples (
 	project_id        text NOT NULL,
 	tenant_id         text NOT NULL DEFAULT '',
@@ -1051,5 +1063,82 @@ func (s *Store) DeleteGroup(ctx context.Context, projectID, tenantID, id string)
 		projectID, tenantID, id); err != nil {
 		return err
 	}
+	if _, err := tx.Exec(ctx,
+		`DELETE FROM enrollments WHERE project_id=$1 AND tenant_id=$2 AND group_id=$3`,
+		projectID, tenantID, id); err != nil {
+		return err
+	}
 	return tx.Commit(ctx)
+}
+
+// ── enrollments ─────────────────────────────────────────────────────────────
+
+// SetEnrollmentAndTuples upserts the enrollment row and applies the tuple writes
+// in one transaction.
+func (s *Store) SetEnrollmentAndTuples(ctx context.Context, e *service.Enrollment, inserts, deletes []authz.Tuple) error {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	kind, id := service.MemberKey(e.Member)
+	if _, err := tx.Exec(ctx,
+		`INSERT INTO enrollments
+		   (project_id, tenant_id, group_id, member_kind, member_id, state, created_at, updated_at)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+		 ON CONFLICT (project_id, tenant_id, group_id, member_kind, member_id) DO UPDATE
+		   SET state=EXCLUDED.state, created_at=EXCLUDED.created_at, updated_at=EXCLUDED.updated_at`,
+		e.ProjectID, e.TenantID, e.GroupID, kind, id, string(e.State), e.CreatedAt, e.UpdatedAt); err != nil {
+		return err
+	}
+	if err := writeTuplesExec(ctx, tx, e.ProjectID, e.TenantID, inserts, deletes); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
+func scanEnrollment(row pgx.Row) (*service.Enrollment, error) {
+	var e service.Enrollment
+	var kind, id, state string
+	err := row.Scan(&e.ProjectID, &e.TenantID, &e.GroupID, &kind, &id, &state, &e.CreatedAt, &e.UpdatedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, service.ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	e.Member = service.MemberFromKey(kind, id)
+	e.State = service.EnrollmentState(state)
+	return &e, nil
+}
+
+const enrollmentCols = `project_id, tenant_id, group_id, member_kind, member_id, state, created_at, updated_at`
+
+func (s *Store) GetEnrollment(ctx context.Context, projectID, tenantID, groupID string, member service.GroupMember) (*service.Enrollment, error) {
+	kind, id := service.MemberKey(member)
+	row := s.pool.QueryRow(ctx,
+		`SELECT `+enrollmentCols+` FROM enrollments
+		  WHERE project_id=$1 AND tenant_id=$2 AND group_id=$3 AND member_kind=$4 AND member_id=$5`,
+		projectID, tenantID, groupID, kind, id)
+	return scanEnrollment(row)
+}
+
+func (s *Store) ListEnrollments(ctx context.Context, projectID, tenantID, groupID string) ([]*service.Enrollment, error) {
+	rows, err := s.pool.Query(ctx,
+		`SELECT `+enrollmentCols+` FROM enrollments
+		  WHERE project_id=$1 AND tenant_id=$2 AND group_id=$3
+		  ORDER BY created_at, member_kind, member_id`, projectID, tenantID, groupID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []*service.Enrollment
+	for rows.Next() {
+		e, err := scanEnrollment(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, e)
+	}
+	return out, rows.Err()
 }

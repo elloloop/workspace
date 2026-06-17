@@ -283,6 +283,10 @@
                 </li>
               
                 <li>
+                  <a href="#workspace.v1.Enrollment"><span class="badge">M</span>Enrollment</a>
+                </li>
+              
+                <li>
                   <a href="#workspace.v1.ExpandRequest"><span class="badge">M</span>ExpandRequest</a>
                 </li>
               
@@ -332,6 +336,14 @@
               
                 <li>
                   <a href="#workspace.v1.Invitation"><span class="badge">M</span>Invitation</a>
+                </li>
+              
+                <li>
+                  <a href="#workspace.v1.ListEnrollmentsRequest"><span class="badge">M</span>ListEnrollmentsRequest</a>
+                </li>
+              
+                <li>
+                  <a href="#workspace.v1.ListEnrollmentsResponse"><span class="badge">M</span>ListEnrollmentsResponse</a>
                 </li>
               
                 <li>
@@ -443,6 +455,14 @@
                 </li>
               
                 <li>
+                  <a href="#workspace.v1.SetEnrollmentStateRequest"><span class="badge">M</span>SetEnrollmentStateRequest</a>
+                </li>
+              
+                <li>
+                  <a href="#workspace.v1.SetEnrollmentStateResponse"><span class="badge">M</span>SetEnrollmentStateResponse</a>
+                </li>
+              
+                <li>
                   <a href="#workspace.v1.Subject"><span class="badge">M</span>Subject</a>
                 </li>
               
@@ -514,6 +534,10 @@
                   <a href="#workspace.v1.WriteRelationTuplesResponse"><span class="badge">M</span>WriteRelationTuplesResponse</a>
                 </li>
               
+              
+                <li>
+                  <a href="#workspace.v1.EnrollmentState"><span class="badge">E</span>EnrollmentState</a>
+                </li>
               
                 <li>
                   <a href="#workspace.v1.InvitationStatus"><span class="badge">E</span>InvitationStatus</a>
@@ -1502,6 +1526,58 @@ every tenant of the project. </p></td>
 
         
       
+        <h3 id="workspace.v1.Enrollment">Enrollment</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>group_id</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>member</td>
+                  <td><a href="#workspace.v1.GroupMember">GroupMember</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>state</td>
+                  <td><a href="#workspace.v1.EnrollmentState">EnrollmentState</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>created_at</td>
+                  <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>updated_at</td>
+                  <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
         <h3 id="workspace.v1.ExpandRequest">ExpandRequest</h3>
         <p>Expand returns the effective userset tree for namespace:object_id#relation.</p>
 
@@ -2010,6 +2086,75 @@ it out of band; it is never echoed by ListInvitations. </p></td>
                   <td>tenant_id</td>
                   <td><a href="#string">string</a></td>
                   <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="workspace.v1.ListEnrollmentsRequest">ListEnrollmentsRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>group_id</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>acting_user_id</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>project_id</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>tenant_id</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="workspace.v1.ListEnrollmentsResponse">ListEnrollmentsResponse</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>enrollments</td>
+                  <td><a href="#workspace.v1.Enrollment">Enrollment</a></td>
+                  <td>repeated</td>
                   <td><p> </p></td>
                 </tr>
               
@@ -3011,6 +3156,89 @@ time (e.g. {&#34;min_age&#34;: 13} for age_at_least). </p></td>
 
         
       
+        <h3 id="workspace.v1.SetEnrollmentStateRequest">SetEnrollmentStateRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>group_id</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>member</td>
+                  <td><a href="#workspace.v1.GroupMember">GroupMember</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>state</td>
+                  <td><a href="#workspace.v1.EnrollmentState">EnrollmentState</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>acting_user_id</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>project_id</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>tenant_id</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="workspace.v1.SetEnrollmentStateResponse">SetEnrollmentStateResponse</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>enrollment</td>
+                  <td><a href="#workspace.v1.Enrollment">Enrollment</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
         <h3 id="workspace.v1.Subject">Subject</h3>
         <p>Subject is the right-hand side of a tuple: a concrete user, a userset, or</p><p>the public wildcard (matches every user — link-sharing / published</p><p>content).</p>
 
@@ -3736,6 +3964,53 @@ time (e.g. {&#34;min_age&#34;: 13} for age_at_least). </p></td>
       
 
       
+        <h3 id="workspace.v1.EnrollmentState">EnrollmentState</h3>
+        <p>─── Enrollment lifecycle overlay ──────────────────────────────────────</p><p>An enrollment overlays a lifecycle STATE on a group membership, so a group</p><p>used as a cohort/class can track each member's progress. Only the</p><p>access-bearing states (ENROLLED, ACTIVE) place the member in the group's</p><p>`member` userset (the backing `group:<id>#member` tuple is present); the</p><p>others (WAITLISTED, COMPLETED, DROPPED) record the state WITHOUT granting</p><p>access (no tuple). Access is therefore revoked/granted purely by tuple</p><p>presence — the same mechanism as workspace member suspend/reinstate — so</p><p>Check/CheckSet over `group:<cohort>#member` naturally exclude a completed,</p><p>dropped, or waitlisted enrollee. The enrollment row and its tuple move</p><p>atomically. The overlay is additive: AddGroupMember/RemoveGroupMember still</p><p>work for plain (un-tracked) membership.</p>
+        <table class="enum-table">
+          <thead>
+            <tr><td>Name</td><td>Number</td><td>Description</td></tr>
+          </thead>
+          <tbody>
+            
+              <tr>
+                <td>ENROLLMENT_STATE_UNSPECIFIED</td>
+                <td>0</td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>ENROLLMENT_STATE_WAITLISTED</td>
+                <td>1</td>
+                <td><p>WAITLISTED: applied but not admitted — no access.</p></td>
+              </tr>
+            
+              <tr>
+                <td>ENROLLMENT_STATE_ENROLLED</td>
+                <td>2</td>
+                <td><p>ENROLLED: admitted/registered — access (in the `member` set).</p></td>
+              </tr>
+            
+              <tr>
+                <td>ENROLLMENT_STATE_ACTIVE</td>
+                <td>3</td>
+                <td><p>ACTIVE: actively participating — access (in the `member` set).</p></td>
+              </tr>
+            
+              <tr>
+                <td>ENROLLMENT_STATE_COMPLETED</td>
+                <td>4</td>
+                <td><p>COMPLETED: finished — access ends.</p></td>
+              </tr>
+            
+              <tr>
+                <td>ENROLLMENT_STATE_DROPPED</td>
+                <td>5</td>
+                <td><p>DROPPED: withdrew/removed — access ends.</p></td>
+              </tr>
+            
+          </tbody>
+        </table>
+      
         <h3 id="workspace.v1.InvitationStatus">InvitationStatus</h3>
         <p></p>
         <table class="enum-table">
@@ -4149,6 +4424,21 @@ a family, a project group, or a whole company.</p></td>
                 <td>ListGroupMembers</td>
                 <td><a href="#workspace.v1.ListGroupMembersRequest">ListGroupMembersRequest</a></td>
                 <td><a href="#workspace.v1.ListGroupMembersResponse">ListGroupMembersResponse</a></td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>SetEnrollmentState</td>
+                <td><a href="#workspace.v1.SetEnrollmentStateRequest">SetEnrollmentStateRequest</a></td>
+                <td><a href="#workspace.v1.SetEnrollmentStateResponse">SetEnrollmentStateResponse</a></td>
+                <td><p>SetEnrollmentState upserts a member&#39;s enrollment state and moves the
+backing `member` tuple accordingly (present iff the state grants access).</p></td>
+              </tr>
+            
+              <tr>
+                <td>ListEnrollments</td>
+                <td><a href="#workspace.v1.ListEnrollmentsRequest">ListEnrollmentsRequest</a></td>
+                <td><a href="#workspace.v1.ListEnrollmentsResponse">ListEnrollmentsResponse</a></td>
                 <td><p></p></td>
               </tr>
             
