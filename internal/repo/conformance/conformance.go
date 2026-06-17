@@ -434,6 +434,12 @@ func testProjectIsolation(t *testing.T, r service.Repository) {
 	if err := r.WriteTuples(ctx(), a, "", []authz.Tuple{userTuple("workspace", "w1", "owner", "u1")}, nil); err != nil {
 		t.Fatal(err)
 	}
+	if err := r.SetEnrollmentAndTuples(ctx(), &service.Enrollment{
+		ProjectID: a, GroupID: "g1", Member: service.GroupMember{UserID: "u1"},
+		State: service.EnrollmentActive, CreatedAt: now, UpdatedAt: now,
+	}, nil, nil); err != nil {
+		t.Fatal(err)
+	}
 
 	// None of project A's data is visible under project B.
 	if _, err := r.GetWorkspace(ctx(), b, "", "w1"); !errors.Is(err, service.ErrNotFound) {
@@ -453,6 +459,9 @@ func testProjectIsolation(t *testing.T, r service.Repository) {
 	}
 	if wss, _ := r.WorkspacesForUser(ctx(), b, "", "u1"); len(wss) != 0 {
 		t.Fatalf("WorkspacesForUser leaked: %d", len(wss))
+	}
+	if _, err := r.GetEnrollment(ctx(), b, "", "g1", service.GroupMember{UserID: "u1"}); !errors.Is(err, service.ErrNotFound) {
+		t.Fatalf("enrollment leaked across project: %v", err)
 	}
 
 	// Same id can be reused independently in project B.
@@ -520,6 +529,12 @@ func testTenantIsolation(t *testing.T, r service.Repository) {
 	if err := r.WriteTuples(ctx(), p, t1, []authz.Tuple{userTuple("workspace", "w1", "owner", "u1")}, nil); err != nil {
 		t.Fatalf("tuple: %v", err)
 	}
+	if err := r.SetEnrollmentAndTuples(ctx(), &service.Enrollment{
+		ProjectID: p, TenantID: t1, GroupID: "g1", Member: service.GroupMember{UserID: "u1"},
+		State: service.EnrollmentActive, CreatedAt: now, UpdatedAt: now,
+	}, nil, nil); err != nil {
+		t.Fatalf("enrollment: %v", err)
+	}
 
 	// None of tenant A's data is visible under tenant B of the same project.
 	if _, err := r.GetWorkspace(ctx(), p, t2, "w1"); !errors.Is(err, service.ErrNotFound) {
@@ -536,6 +551,12 @@ func testTenantIsolation(t *testing.T, r service.Repository) {
 	}
 	if wss, _ := r.WorkspacesForUser(ctx(), p, t2, "u1"); len(wss) != 0 {
 		t.Fatalf("WorkspacesForUser leaked across tenant: %d", len(wss))
+	}
+	if _, err := r.GetEnrollment(ctx(), p, t2, "g1", service.GroupMember{UserID: "u1"}); !errors.Is(err, service.ErrNotFound) {
+		t.Fatalf("enrollment leaked across tenant: %v", err)
+	}
+	if es, _ := r.ListEnrollments(ctx(), p, t2, "g1"); len(es) != 0 {
+		t.Fatalf("ListEnrollments leaked across tenant: %d", len(es))
 	}
 
 	// The same id is reusable in another tenant.

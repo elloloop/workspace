@@ -109,6 +109,17 @@ func (s *Service) AddGroupMember(ctx context.Context, p Principal, groupID strin
 	if err != nil {
 		return err
 	}
+	// If the member is tracked by the enrollment overlay, route through it so the
+	// row and the tuple cannot diverge: adding moves them to an access-bearing
+	// state atomically (rather than a bare tuple insert that would leave the row
+	// stale, e.g. still "dropped"). An untracked member is a plain group member.
+	if enr, gerr := s.repo.GetEnrollment(ctx, p.ProjectID, p.TenantID, groupID, member); gerr == nil {
+		enr.State = EnrollmentEnrolled
+		enr.UpdatedAt = s.now()
+		return s.repo.SetEnrollmentAndTuples(ctx, enr, []authz.Tuple{t}, nil)
+	} else if !isNotFound(gerr) {
+		return gerr
+	}
 	return s.repo.WriteTuples(ctx, p.ProjectID, p.TenantID, []authz.Tuple{t}, nil)
 }
 
@@ -123,6 +134,17 @@ func (s *Service) RemoveGroupMember(ctx context.Context, p Principal, groupID st
 	t, err := groupMemberTuple(groupID, member)
 	if err != nil {
 		return err
+	}
+	// If the member is tracked by the enrollment overlay, transition them to
+	// Dropped (a non-access state) atomically with the tuple delete, so the
+	// roster stays consistent with access rather than showing a stale
+	// access-bearing state. An untracked member is just removed.
+	if enr, gerr := s.repo.GetEnrollment(ctx, p.ProjectID, p.TenantID, groupID, member); gerr == nil {
+		enr.State = EnrollmentDropped
+		enr.UpdatedAt = s.now()
+		return s.repo.SetEnrollmentAndTuples(ctx, enr, nil, []authz.Tuple{t})
+	} else if !isNotFound(gerr) {
+		return gerr
 	}
 	return s.repo.WriteTuples(ctx, p.ProjectID, p.TenantID, nil, []authz.Tuple{t})
 }

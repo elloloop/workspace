@@ -72,6 +72,31 @@ func testEnrollments(t *testing.T, r service.Repository) {
 		t.Fatalf("missing enrollment err = %v, want ErrNotFound", err)
 	}
 
+	// A user member and a NESTED-GROUP member with the SAME id are distinct rows
+	// (the member_kind discriminator must separate them on both drivers).
+	userTeamX := service.GroupMember{UserID: "team-x"}
+	groupTeamX := service.GroupMember{GroupID: "team-x"}
+	if err := r.SetEnrollmentAndTuples(ctx(), &service.Enrollment{
+		ProjectID: p, GroupID: "cohort", Member: userTeamX,
+		State: service.EnrollmentActive, CreatedAt: now, UpdatedAt: now,
+	}, []authz.Tuple{userTuple("group", "cohort", "member", "team-x")}, nil); err != nil {
+		t.Fatalf("enroll user team-x: %v", err)
+	}
+	if err := r.SetEnrollmentAndTuples(ctx(), &service.Enrollment{
+		ProjectID: p, GroupID: "cohort", Member: groupTeamX,
+		State: service.EnrollmentWaitlisted, CreatedAt: now, UpdatedAt: now,
+	}, nil, nil); err != nil {
+		t.Fatalf("enroll group team-x: %v", err)
+	}
+	gotUser, err := r.GetEnrollment(ctx(), p, "", "cohort", userTeamX)
+	if err != nil || gotUser.State != service.EnrollmentActive || gotUser.Member.GroupID != "" {
+		t.Fatalf("user team-x enrollment = %+v, %v", gotUser, err)
+	}
+	gotGroup, err := r.GetEnrollment(ctx(), p, "", "cohort", groupTeamX)
+	if err != nil || gotGroup.State != service.EnrollmentWaitlisted || gotGroup.Member.UserID != "" {
+		t.Fatalf("group team-x enrollment = %+v, %v", gotGroup, err)
+	}
+
 	// DeleteGroup cascades the enrollment rows.
 	if err := r.DeleteGroup(ctx(), p, "", "cohort"); err != nil {
 		t.Fatalf("DeleteGroup: %v", err)
