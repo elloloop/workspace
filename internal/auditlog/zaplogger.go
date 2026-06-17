@@ -133,6 +133,7 @@ func (z *ZapLogger) emit(e event) {
 			zap.String("new_status", string(r.NewStatus)),
 			zap.Bool("status_changed", r.StatusChanged),
 			zap.Bool("model_changed", r.ModelChanged),
+			zap.Bool("region_changed", r.RegionChanged),
 			zap.Time("at", r.At),
 		)
 	}

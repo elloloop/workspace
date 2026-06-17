@@ -112,15 +112,6 @@ func (r *modelResolver) ModelFor(ctx context.Context, projectID string) (authz.M
 	return e.modelOrDefault(), nil
 }
 
-// suspended reports whether projectID is an explicitly suspended project.
-func (r *modelResolver) suspended(ctx context.Context, projectID string) (bool, error) {
-	e, err := r.resolve(ctx, projectID)
-	if err != nil {
-		return false, err
-	}
-	return e.suspended, nil
-}
-
 func (r *modelResolver) load(ctx context.Context, projectID string) (resolved, error) {
 	p, err := r.repo.GetProject(ctx, projectID)
 	switch {
@@ -223,7 +214,8 @@ func (s *Service) CreateProject(ctx context.Context, id, name string, model auth
 	if s.auditLog != nil {
 		s.auditLog.LogAdminMutation(ctx, AdminAuditRecord{
 			Action: AdminActionCreateProject, ProjectID: id, NewStatus: p.Status,
-			StatusChanged: true, ModelChanged: len(model) > 0, At: now,
+			StatusChanged: true, ModelChanged: len(model) > 0,
+			RegionChanged: dataRegion != "", At: now,
 		})
 	}
 	return p, nil
@@ -264,7 +256,7 @@ func (s *Service) UpdateProject(ctx context.Context, id, name string, status Pro
 	if err != nil {
 		return nil, err
 	}
-	oldStatus := p.Status
+	oldStatus, oldRegion := p.Status, p.DataRegion
 	if name != "" {
 		p.Name = name
 	}
@@ -286,7 +278,8 @@ func (s *Service) UpdateProject(ctx context.Context, id, name string, status Pro
 		s.auditLog.LogAdminMutation(ctx, AdminAuditRecord{
 			Action: AdminActionUpdateProject, ProjectID: id, NewStatus: p.Status,
 			StatusChanged: status != "" && status != oldStatus,
-			ModelChanged:  len(model) > 0, At: p.UpdatedAt,
+			ModelChanged:  len(model) > 0,
+			RegionChanged: dataRegion != "" && dataRegion != oldRegion, At: p.UpdatedAt,
 		})
 	}
 	return p, nil
@@ -299,12 +292,22 @@ func (s *Service) EnsureDefaultProject(ctx context.Context, id string) error {
 	if id == "" {
 		return nil
 	}
-	if _, err := s.repo.GetProject(ctx, id); err == nil {
+	// Pin the default project to the instance's region so the default shard (which
+	// backs personal-workspace auto-provision) is servable here rather than being
+	// refused by the residency guard.
+	if existing, err := s.repo.GetProject(ctx, id); err == nil {
+		// Already seeded: fail fast on a residency misconfiguration — an instance
+		// pinned to region X must not boot against a default project pinned to Y,
+		// since every default-project request would otherwise fail closed.
+		if s.dataRegion != "" && existing.DataRegion != "" && existing.DataRegion != s.dataRegion {
+			return fmt.Errorf("%w: default project %q is pinned to data region %q but this instance serves %q",
+				ErrFailedPrecondition, id, existing.DataRegion, s.dataRegion)
+		}
 		return nil
 	} else if !isNotFound(err) {
 		return err
 	}
-	_, err := s.CreateProject(ctx, id, "Default", nil, "")
+	_, err := s.CreateProject(ctx, id, "Default", nil, s.dataRegion)
 	if isAlreadyExists(err) {
 		return nil // lost a race; the winner seeded it
 	}
@@ -359,6 +362,17 @@ func (s *Service) ensureRegion(ctx context.Context, p Principal) error {
 		return err
 	}
 	return s.regionServable(p, res)
+}
+
+// EnsureServable is the data-residency chokepoint enforced at the transport
+// boundary: the connect handler calls it while building the Principal for EVERY
+// project-scoped RPC (via acting/scope), so no read or write — management or
+// data-plane — can touch a project whose pinned region differs from this
+// instance's GATEWAY_DATA_REGION. A region-agnostic instance returns nil with
+// zero overhead. (The data-plane methods also guard internally as defense in
+// depth.)
+func (s *Service) EnsureServable(ctx context.Context, p Principal) error {
+	return s.ensureRegion(ctx, p)
 }
 
 // validateModel round-trips the model through its JSON form to reject any

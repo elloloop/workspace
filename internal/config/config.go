@@ -184,6 +184,35 @@ func (c *Config) Validate() error {
 	if c.TenantRateLimitPerMinute > 0 && c.TenantRateLimitPerMinute < minTenantRateLimitPerMinute {
 		return fmt.Errorf("GATEWAY_TENANT_RATE_LIMIT_PER_MINUTE, when enabled, must be >= %d (use 0 to disable)", minTenantRateLimitPerMinute)
 	}
+	// The instance region is compared char-for-char against a project's pinned
+	// data_region (same lowercase [a-z0-9_-], <=64 charset). Reject a malformed
+	// value at startup, otherwise a case/charset typo would silently fail closed
+	// for every project it should match.
+	if err := validateDataRegion(c.DataRegion); err != nil {
+		return err
+	}
+	return nil
+}
+
+// maxDataRegionLen bounds the instance data-region identifier; it MUST match the
+// service's project-side validateRegion rule so the two compare cleanly.
+const maxDataRegionLen = 64
+
+// validateDataRegion enforces the same charset as a project's data_region: empty
+// (region-agnostic) or lowercase [a-z0-9_-], at most maxDataRegionLen chars.
+func validateDataRegion(region string) error {
+	if region == "" {
+		return nil
+	}
+	if len(region) > maxDataRegionLen {
+		return fmt.Errorf("GATEWAY_DATA_REGION must be at most %d characters", maxDataRegionLen)
+	}
+	for _, ch := range region {
+		ok := ch >= 'a' && ch <= 'z' || ch >= '0' && ch <= '9' || ch == '-' || ch == '_'
+		if !ok {
+			return errors.New("GATEWAY_DATA_REGION must be lowercase [a-z0-9_-]")
+		}
+	}
 	return nil
 }
 

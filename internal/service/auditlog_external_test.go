@@ -83,20 +83,28 @@ func TestAuditAdminMutations(t *testing.T) {
 	if _, err := svc.CreateProject(ctx, "prj", "Kids", model, ""); err != nil {
 		t.Fatalf("CreateProject: %v", err)
 	}
-	// status-only update: StatusChanged true, ModelChanged false.
+	// status-only update: StatusChanged true, ModelChanged/RegionChanged false.
 	if _, err := svc.UpdateProject(ctx, "prj", "", service.ProjectSuspended, nil, ""); err != nil {
 		t.Fatalf("UpdateProject: %v", err)
 	}
-	recs := a.adminRecs()
-	if len(recs) != 2 {
-		t.Fatalf("got %d admin records, want 2: %+v", len(recs), recs)
+	// region repin: RegionChanged true, StatusChanged/ModelChanged false.
+	if _, err := svc.UpdateProject(ctx, "prj", "", "", nil, "eu-west-1"); err != nil {
+		t.Fatalf("UpdateProject region: %v", err)
 	}
-	if recs[0].Action != service.AdminActionCreateProject || recs[0].ProjectID != "prj" || !recs[0].ModelChanged {
+	recs := a.adminRecs()
+	if len(recs) != 3 {
+		t.Fatalf("got %d admin records, want 3: %+v", len(recs), recs)
+	}
+	if recs[0].Action != service.AdminActionCreateProject || recs[0].ProjectID != "prj" || !recs[0].ModelChanged || recs[0].RegionChanged {
 		t.Fatalf("create record wrong: %+v", recs[0])
 	}
 	upd := recs[1]
-	if upd.Action != service.AdminActionUpdateProject || !upd.StatusChanged || upd.NewStatus != service.ProjectSuspended || upd.ModelChanged {
-		t.Fatalf("update record wrong: %+v", upd)
+	if upd.Action != service.AdminActionUpdateProject || !upd.StatusChanged || upd.NewStatus != service.ProjectSuspended || upd.ModelChanged || upd.RegionChanged {
+		t.Fatalf("status update record wrong: %+v", upd)
+	}
+	region := recs[2]
+	if region.Action != service.AdminActionUpdateProject || !region.RegionChanged || region.StatusChanged || region.ModelChanged {
+		t.Fatalf("region update record wrong: %+v", region)
 	}
 }
 

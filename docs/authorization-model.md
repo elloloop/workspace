@@ -351,12 +351,21 @@ exact version.
 
 A project may declare a `data_region` (set via `AdminService.CreateProject` /
 `UpdateProject`); an instance declares the region it serves via
-`GATEWAY_DATA_REGION`. When both are set and **differ**, the service **fails
-closed** (`FailedPrecondition`) on every data-plane and management path that
-resolves the project, so a mis-routed request can never silently read or write
-that project's data in the wrong region. When either is empty the instance is
-**region-agnostic** and serves the project (today's behavior); the region check
-short-circuits with zero overhead.
+`GATEWAY_DATA_REGION` (validated to the same `[a-z0-9_-]`, ≤64 charset, so a
+typo can't silently fail closed). When both are set and **differ**, the service
+**fails closed** (`FailedPrecondition`). The guard is enforced at the connect
+handler boundary while building the request Principal, so it covers **every
+project-scoped RPC by construction** — Workspace/Group/Seat reads *and* writes,
+the personal-workspace auto-provision, and the repo-direct Authz paths
+(`ReadRelationTuples`/`DeprovisionUser`/`ExportSubjectGrants`) — not just the
+data plane; the data-plane methods also guard internally as defense in depth.
+The `AdminService` is intentionally exempt: it is the region-agnostic control
+plane that *configures* a project's region. When either side is empty the
+instance is **region-agnostic** and serves the project (today's behavior); the
+check short-circuits with zero overhead. A region pin/repin is recorded in the
+admin audit log (`region_changed`), and the default project is seeded with the
+instance's region at bootstrap (a pre-existing default project pinned to a
+different region fails fast at boot).
 
 **Today vs. tomorrow.** This is the recording + validation + **serving guard**
 half. The actual multi-region storage **routing** (steering a project's reads and

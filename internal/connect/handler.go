@@ -122,20 +122,30 @@ func (h *Handler) acting(ctx context.Context, actingUserID, projectID, tenantID 
 	if actingUserID == "" {
 		return service.Principal{}, connect.NewError(connect.CodeInvalidArgument, errors.New("acting_user_id is required"))
 	}
-	return service.Principal{
+	p := service.Principal{
 		UserID: actingUserID, ProjectID: h.callerProject(ctx, projectID),
 		TenantID: h.tenantOr(tenantID), Caller: middleware.CallerFrom(ctx).Name,
-	}, nil
+	}
+	if err := h.svc.EnsureServable(ctx, p); err != nil {
+		return service.Principal{}, errToConnect(err)
+	}
+	return p, nil
 }
 
-// scope is the Principal for an authz RPC: only the project/tenant matter; the
-// subject is a request argument, not the caller. Caller carries the calling
-// service's identity for audit attribution.
-func (h *Handler) scope(ctx context.Context, projectID, tenantID string) service.Principal {
-	return service.Principal{
+// scope is the Principal for an authz/seat RPC: only the project/tenant matter;
+// the subject is a request argument, not the caller. Caller carries the calling
+// service's identity for audit attribution. Like acting, it enforces the
+// data-residency guard at the boundary, so EVERY project-scoped RPC fails closed
+// on a mis-routed instance by construction.
+func (h *Handler) scope(ctx context.Context, projectID, tenantID string) (service.Principal, error) {
+	p := service.Principal{
 		ProjectID: h.callerProject(ctx, projectID), TenantID: h.tenantOr(tenantID),
 		Caller: middleware.CallerFrom(ctx).Name,
 	}
+	if err := h.svc.EnsureServable(ctx, p); err != nil {
+		return service.Principal{}, errToConnect(err)
+	}
+	return p, nil
 }
 
 // callerProject resolves the project a request operates in. A credential pinned

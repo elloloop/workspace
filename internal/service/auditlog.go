@@ -57,6 +57,9 @@ type AdminAuditRecord struct {
 	NewStatus     ProjectStatus
 	StatusChanged bool
 	ModelChanged  bool
+	// RegionChanged records a data-residency (data_region) pin/repin — a
+	// compliance-critical mutation that must be attributable.
+	RegionChanged bool
 	At            time.Time
 }
 
