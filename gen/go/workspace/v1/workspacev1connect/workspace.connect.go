@@ -29,6 +29,8 @@ const (
 	AuthzServiceName = "workspace.v1.AuthzService"
 	// AdminServiceName is the fully-qualified name of the AdminService service.
 	AdminServiceName = "workspace.v1.AdminService"
+	// SeatServiceName is the fully-qualified name of the SeatService service.
+	SeatServiceName = "workspace.v1.SeatService"
 )
 
 // These constants are the fully-qualified names of the RPCs defined in this package. They're
@@ -144,6 +146,18 @@ const (
 	// AdminServiceListProjectsProcedure is the fully-qualified name of the AdminService's ListProjects
 	// RPC.
 	AdminServiceListProjectsProcedure = "/workspace.v1.AdminService/ListProjects"
+	// SeatServiceSetSeatLimitProcedure is the fully-qualified name of the SeatService's SetSeatLimit
+	// RPC.
+	SeatServiceSetSeatLimitProcedure = "/workspace.v1.SeatService/SetSeatLimit"
+	// SeatServiceGetSeatUsageProcedure is the fully-qualified name of the SeatService's GetSeatUsage
+	// RPC.
+	SeatServiceGetSeatUsageProcedure = "/workspace.v1.SeatService/GetSeatUsage"
+	// SeatServiceAssignSeatProcedure is the fully-qualified name of the SeatService's AssignSeat RPC.
+	SeatServiceAssignSeatProcedure = "/workspace.v1.SeatService/AssignSeat"
+	// SeatServiceRevokeSeatProcedure is the fully-qualified name of the SeatService's RevokeSeat RPC.
+	SeatServiceRevokeSeatProcedure = "/workspace.v1.SeatService/RevokeSeat"
+	// SeatServiceListSeatsProcedure is the fully-qualified name of the SeatService's ListSeats RPC.
+	SeatServiceListSeatsProcedure = "/workspace.v1.SeatService/ListSeats"
 )
 
 // WorkspaceServiceClient is a client for the workspace.v1.WorkspaceService service.
@@ -1286,4 +1300,178 @@ func (UnimplementedAdminServiceHandler) UpdateProject(context.Context, *connect.
 
 func (UnimplementedAdminServiceHandler) ListProjects(context.Context, *connect.Request[v1.ListProjectsRequest]) (*connect.Response[v1.ListProjectsResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("workspace.v1.AdminService.ListProjects is not implemented"))
+}
+
+// SeatServiceClient is a client for the workspace.v1.SeatService service.
+type SeatServiceClient interface {
+	SetSeatLimit(context.Context, *connect.Request[v1.SetSeatLimitRequest]) (*connect.Response[v1.SetSeatLimitResponse], error)
+	GetSeatUsage(context.Context, *connect.Request[v1.GetSeatUsageRequest]) (*connect.Response[v1.GetSeatUsageResponse], error)
+	AssignSeat(context.Context, *connect.Request[v1.AssignSeatRequest]) (*connect.Response[v1.AssignSeatResponse], error)
+	RevokeSeat(context.Context, *connect.Request[v1.RevokeSeatRequest]) (*connect.Response[v1.RevokeSeatResponse], error)
+	ListSeats(context.Context, *connect.Request[v1.ListSeatsRequest]) (*connect.Response[v1.ListSeatsResponse], error)
+}
+
+// NewSeatServiceClient constructs a client for the workspace.v1.SeatService service. By default, it
+// uses the Connect protocol with the binary Protobuf Codec, asks for gzipped responses, and sends
+// uncompressed requests. To use the gRPC or gRPC-Web protocols, supply the connect.WithGRPC() or
+// connect.WithGRPCWeb() options.
+//
+// The URL supplied here should be the base URL for the Connect or gRPC server (for example,
+// http://api.acme.com or https://acme.com/grpc).
+func NewSeatServiceClient(httpClient connect.HTTPClient, baseURL string, opts ...connect.ClientOption) SeatServiceClient {
+	baseURL = strings.TrimRight(baseURL, "/")
+	seatServiceMethods := v1.File_workspace_v1_workspace_proto.Services().ByName("SeatService").Methods()
+	return &seatServiceClient{
+		setSeatLimit: connect.NewClient[v1.SetSeatLimitRequest, v1.SetSeatLimitResponse](
+			httpClient,
+			baseURL+SeatServiceSetSeatLimitProcedure,
+			connect.WithSchema(seatServiceMethods.ByName("SetSeatLimit")),
+			connect.WithClientOptions(opts...),
+		),
+		getSeatUsage: connect.NewClient[v1.GetSeatUsageRequest, v1.GetSeatUsageResponse](
+			httpClient,
+			baseURL+SeatServiceGetSeatUsageProcedure,
+			connect.WithSchema(seatServiceMethods.ByName("GetSeatUsage")),
+			connect.WithClientOptions(opts...),
+		),
+		assignSeat: connect.NewClient[v1.AssignSeatRequest, v1.AssignSeatResponse](
+			httpClient,
+			baseURL+SeatServiceAssignSeatProcedure,
+			connect.WithSchema(seatServiceMethods.ByName("AssignSeat")),
+			connect.WithClientOptions(opts...),
+		),
+		revokeSeat: connect.NewClient[v1.RevokeSeatRequest, v1.RevokeSeatResponse](
+			httpClient,
+			baseURL+SeatServiceRevokeSeatProcedure,
+			connect.WithSchema(seatServiceMethods.ByName("RevokeSeat")),
+			connect.WithClientOptions(opts...),
+		),
+		listSeats: connect.NewClient[v1.ListSeatsRequest, v1.ListSeatsResponse](
+			httpClient,
+			baseURL+SeatServiceListSeatsProcedure,
+			connect.WithSchema(seatServiceMethods.ByName("ListSeats")),
+			connect.WithClientOptions(opts...),
+		),
+	}
+}
+
+// seatServiceClient implements SeatServiceClient.
+type seatServiceClient struct {
+	setSeatLimit *connect.Client[v1.SetSeatLimitRequest, v1.SetSeatLimitResponse]
+	getSeatUsage *connect.Client[v1.GetSeatUsageRequest, v1.GetSeatUsageResponse]
+	assignSeat   *connect.Client[v1.AssignSeatRequest, v1.AssignSeatResponse]
+	revokeSeat   *connect.Client[v1.RevokeSeatRequest, v1.RevokeSeatResponse]
+	listSeats    *connect.Client[v1.ListSeatsRequest, v1.ListSeatsResponse]
+}
+
+// SetSeatLimit calls workspace.v1.SeatService.SetSeatLimit.
+func (c *seatServiceClient) SetSeatLimit(ctx context.Context, req *connect.Request[v1.SetSeatLimitRequest]) (*connect.Response[v1.SetSeatLimitResponse], error) {
+	return c.setSeatLimit.CallUnary(ctx, req)
+}
+
+// GetSeatUsage calls workspace.v1.SeatService.GetSeatUsage.
+func (c *seatServiceClient) GetSeatUsage(ctx context.Context, req *connect.Request[v1.GetSeatUsageRequest]) (*connect.Response[v1.GetSeatUsageResponse], error) {
+	return c.getSeatUsage.CallUnary(ctx, req)
+}
+
+// AssignSeat calls workspace.v1.SeatService.AssignSeat.
+func (c *seatServiceClient) AssignSeat(ctx context.Context, req *connect.Request[v1.AssignSeatRequest]) (*connect.Response[v1.AssignSeatResponse], error) {
+	return c.assignSeat.CallUnary(ctx, req)
+}
+
+// RevokeSeat calls workspace.v1.SeatService.RevokeSeat.
+func (c *seatServiceClient) RevokeSeat(ctx context.Context, req *connect.Request[v1.RevokeSeatRequest]) (*connect.Response[v1.RevokeSeatResponse], error) {
+	return c.revokeSeat.CallUnary(ctx, req)
+}
+
+// ListSeats calls workspace.v1.SeatService.ListSeats.
+func (c *seatServiceClient) ListSeats(ctx context.Context, req *connect.Request[v1.ListSeatsRequest]) (*connect.Response[v1.ListSeatsResponse], error) {
+	return c.listSeats.CallUnary(ctx, req)
+}
+
+// SeatServiceHandler is an implementation of the workspace.v1.SeatService service.
+type SeatServiceHandler interface {
+	SetSeatLimit(context.Context, *connect.Request[v1.SetSeatLimitRequest]) (*connect.Response[v1.SetSeatLimitResponse], error)
+	GetSeatUsage(context.Context, *connect.Request[v1.GetSeatUsageRequest]) (*connect.Response[v1.GetSeatUsageResponse], error)
+	AssignSeat(context.Context, *connect.Request[v1.AssignSeatRequest]) (*connect.Response[v1.AssignSeatResponse], error)
+	RevokeSeat(context.Context, *connect.Request[v1.RevokeSeatRequest]) (*connect.Response[v1.RevokeSeatResponse], error)
+	ListSeats(context.Context, *connect.Request[v1.ListSeatsRequest]) (*connect.Response[v1.ListSeatsResponse], error)
+}
+
+// NewSeatServiceHandler builds an HTTP handler from the service implementation. It returns the path
+// on which to mount the handler and the handler itself.
+//
+// By default, handlers support the Connect, gRPC, and gRPC-Web protocols with the binary Protobuf
+// and JSON codecs. They also support gzip compression.
+func NewSeatServiceHandler(svc SeatServiceHandler, opts ...connect.HandlerOption) (string, http.Handler) {
+	seatServiceMethods := v1.File_workspace_v1_workspace_proto.Services().ByName("SeatService").Methods()
+	seatServiceSetSeatLimitHandler := connect.NewUnaryHandler(
+		SeatServiceSetSeatLimitProcedure,
+		svc.SetSeatLimit,
+		connect.WithSchema(seatServiceMethods.ByName("SetSeatLimit")),
+		connect.WithHandlerOptions(opts...),
+	)
+	seatServiceGetSeatUsageHandler := connect.NewUnaryHandler(
+		SeatServiceGetSeatUsageProcedure,
+		svc.GetSeatUsage,
+		connect.WithSchema(seatServiceMethods.ByName("GetSeatUsage")),
+		connect.WithHandlerOptions(opts...),
+	)
+	seatServiceAssignSeatHandler := connect.NewUnaryHandler(
+		SeatServiceAssignSeatProcedure,
+		svc.AssignSeat,
+		connect.WithSchema(seatServiceMethods.ByName("AssignSeat")),
+		connect.WithHandlerOptions(opts...),
+	)
+	seatServiceRevokeSeatHandler := connect.NewUnaryHandler(
+		SeatServiceRevokeSeatProcedure,
+		svc.RevokeSeat,
+		connect.WithSchema(seatServiceMethods.ByName("RevokeSeat")),
+		connect.WithHandlerOptions(opts...),
+	)
+	seatServiceListSeatsHandler := connect.NewUnaryHandler(
+		SeatServiceListSeatsProcedure,
+		svc.ListSeats,
+		connect.WithSchema(seatServiceMethods.ByName("ListSeats")),
+		connect.WithHandlerOptions(opts...),
+	)
+	return "/workspace.v1.SeatService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case SeatServiceSetSeatLimitProcedure:
+			seatServiceSetSeatLimitHandler.ServeHTTP(w, r)
+		case SeatServiceGetSeatUsageProcedure:
+			seatServiceGetSeatUsageHandler.ServeHTTP(w, r)
+		case SeatServiceAssignSeatProcedure:
+			seatServiceAssignSeatHandler.ServeHTTP(w, r)
+		case SeatServiceRevokeSeatProcedure:
+			seatServiceRevokeSeatHandler.ServeHTTP(w, r)
+		case SeatServiceListSeatsProcedure:
+			seatServiceListSeatsHandler.ServeHTTP(w, r)
+		default:
+			http.NotFound(w, r)
+		}
+	})
+}
+
+// UnimplementedSeatServiceHandler returns CodeUnimplemented from all methods.
+type UnimplementedSeatServiceHandler struct{}
+
+func (UnimplementedSeatServiceHandler) SetSeatLimit(context.Context, *connect.Request[v1.SetSeatLimitRequest]) (*connect.Response[v1.SetSeatLimitResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("workspace.v1.SeatService.SetSeatLimit is not implemented"))
+}
+
+func (UnimplementedSeatServiceHandler) GetSeatUsage(context.Context, *connect.Request[v1.GetSeatUsageRequest]) (*connect.Response[v1.GetSeatUsageResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("workspace.v1.SeatService.GetSeatUsage is not implemented"))
+}
+
+func (UnimplementedSeatServiceHandler) AssignSeat(context.Context, *connect.Request[v1.AssignSeatRequest]) (*connect.Response[v1.AssignSeatResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("workspace.v1.SeatService.AssignSeat is not implemented"))
+}
+
+func (UnimplementedSeatServiceHandler) RevokeSeat(context.Context, *connect.Request[v1.RevokeSeatRequest]) (*connect.Response[v1.RevokeSeatResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("workspace.v1.SeatService.RevokeSeat is not implemented"))
+}
+
+func (UnimplementedSeatServiceHandler) ListSeats(context.Context, *connect.Request[v1.ListSeatsRequest]) (*connect.Response[v1.ListSeatsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("workspace.v1.SeatService.ListSeats is not implemented"))
 }

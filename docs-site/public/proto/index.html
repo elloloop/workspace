@@ -203,6 +203,14 @@
                 </li>
               
                 <li>
+                  <a href="#workspace.v1.AssignSeatRequest"><span class="badge">M</span>AssignSeatRequest</a>
+                </li>
+              
+                <li>
+                  <a href="#workspace.v1.AssignSeatResponse"><span class="badge">M</span>AssignSeatResponse</a>
+                </li>
+              
+                <li>
                   <a href="#workspace.v1.BatchCheckItem"><span class="badge">M</span>BatchCheckItem</a>
                 </li>
               
@@ -319,6 +327,14 @@
                 </li>
               
                 <li>
+                  <a href="#workspace.v1.GetSeatUsageRequest"><span class="badge">M</span>GetSeatUsageRequest</a>
+                </li>
+              
+                <li>
+                  <a href="#workspace.v1.GetSeatUsageResponse"><span class="badge">M</span>GetSeatUsageResponse</a>
+                </li>
+              
+                <li>
                   <a href="#workspace.v1.GetWorkspaceRequest"><span class="badge">M</span>GetWorkspaceRequest</a>
                 </li>
               
@@ -395,6 +411,14 @@
                 </li>
               
                 <li>
+                  <a href="#workspace.v1.ListSeatsRequest"><span class="badge">M</span>ListSeatsRequest</a>
+                </li>
+              
+                <li>
+                  <a href="#workspace.v1.ListSeatsResponse"><span class="badge">M</span>ListSeatsResponse</a>
+                </li>
+              
+                <li>
                   <a href="#workspace.v1.ListWorkspacesRequest"><span class="badge">M</span>ListWorkspacesRequest</a>
                 </li>
               
@@ -455,11 +479,35 @@
                 </li>
               
                 <li>
+                  <a href="#workspace.v1.RevokeSeatRequest"><span class="badge">M</span>RevokeSeatRequest</a>
+                </li>
+              
+                <li>
+                  <a href="#workspace.v1.RevokeSeatResponse"><span class="badge">M</span>RevokeSeatResponse</a>
+                </li>
+              
+                <li>
+                  <a href="#workspace.v1.SeatAssignment"><span class="badge">M</span>SeatAssignment</a>
+                </li>
+              
+                <li>
+                  <a href="#workspace.v1.SeatLimit"><span class="badge">M</span>SeatLimit</a>
+                </li>
+              
+                <li>
                   <a href="#workspace.v1.SetEnrollmentStateRequest"><span class="badge">M</span>SetEnrollmentStateRequest</a>
                 </li>
               
                 <li>
                   <a href="#workspace.v1.SetEnrollmentStateResponse"><span class="badge">M</span>SetEnrollmentStateResponse</a>
+                </li>
+              
+                <li>
+                  <a href="#workspace.v1.SetSeatLimitRequest"><span class="badge">M</span>SetSeatLimitRequest</a>
+                </li>
+              
+                <li>
+                  <a href="#workspace.v1.SetSeatLimitResponse"><span class="badge">M</span>SetSeatLimitResponse</a>
                 </li>
               
                 <li>
@@ -579,6 +627,10 @@
               
                 <li>
                   <a href="#workspace.v1.GroupService"><span class="badge">S</span>GroupService</a>
+                </li>
+              
+                <li>
+                  <a href="#workspace.v1.SeatService"><span class="badge">S</span>SeatService</a>
                 </li>
               
                 <li>
@@ -802,6 +854,75 @@
                   <td><a href="#workspace.v1.Membership">Membership</a></td>
                   <td></td>
                   <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="workspace.v1.AssignSeatRequest">AssignSeatRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>project_id</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>tenant_id</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>sku</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>user_id</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="workspace.v1.AssignSeatResponse">AssignSeatResponse</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>already_held</td>
+                  <td><a href="#bool">bool</a></td>
+                  <td></td>
+                  <td><p>already_held is true when the user already had a seat (idempotent no-op). </p></td>
                 </tr>
               
             </tbody>
@@ -1826,6 +1947,89 @@ every tenant of the project. </p></td>
 
         
       
+        <h3 id="workspace.v1.GetSeatUsageRequest">GetSeatUsageRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>project_id</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>tenant_id</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>sku</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="workspace.v1.GetSeatUsageResponse">GetSeatUsageResponse</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>sku</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>used</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>limit</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>limited</td>
+                  <td><a href="#bool">bool</a></td>
+                  <td></td>
+                  <td><p>limited is false when no limit is configured for the sku (unlimited). </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
         <h3 id="workspace.v1.GetWorkspaceRequest">GetWorkspaceRequest</h3>
         <p></p>
 
@@ -2548,6 +2752,68 @@ it out of band; it is never echoed by ListInvitations. </p></td>
 
         
       
+        <h3 id="workspace.v1.ListSeatsRequest">ListSeatsRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>project_id</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>tenant_id</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>sku</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="workspace.v1.ListSeatsResponse">ListSeatsResponse</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>seats</td>
+                  <td><a href="#workspace.v1.SeatAssignment">SeatAssignment</a></td>
+                  <td>repeated</td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
         <h3 id="workspace.v1.ListWorkspacesRequest">ListWorkspacesRequest</h3>
         <p>ListWorkspaces returns every workspace acting_user_id is an active member</p><p>of, auto-provisioning their PERSONAL workspace on first call.</p>
 
@@ -3156,6 +3422,127 @@ time (e.g. {&#34;min_age&#34;: 13} for age_at_least). </p></td>
 
         
       
+        <h3 id="workspace.v1.RevokeSeatRequest">RevokeSeatRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>project_id</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>tenant_id</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>sku</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>user_id</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="workspace.v1.RevokeSeatResponse">RevokeSeatResponse</h3>
+        <p></p>
+
+        
+
+        
+      
+        <h3 id="workspace.v1.SeatAssignment">SeatAssignment</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>sku</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>user_id</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>assigned_at</td>
+                  <td><a href="#google.protobuf.Timestamp">google.protobuf.Timestamp</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="workspace.v1.SeatLimit">SeatLimit</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>sku</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>limit</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
         <h3 id="workspace.v1.SetEnrollmentStateRequest">SetEnrollmentStateRequest</h3>
         <p></p>
 
@@ -3228,6 +3615,75 @@ time (e.g. {&#34;min_age&#34;: 13} for age_at_least). </p></td>
                 <tr>
                   <td>enrollment</td>
                   <td><a href="#workspace.v1.Enrollment">Enrollment</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="workspace.v1.SetSeatLimitRequest">SetSeatLimitRequest</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>project_id</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>tenant_id</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>sku</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>limit</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>must be &gt;= 0; absent (never set) means unlimited </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="workspace.v1.SetSeatLimitResponse">SetSeatLimitResponse</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>limit</td>
+                  <td><a href="#workspace.v1.SeatLimit">SeatLimit</a></td>
                   <td></td>
                   <td><p> </p></td>
                 </tr>
@@ -4439,6 +4895,53 @@ backing `member` tuple accordingly (present iff the state grants access).</p></t
                 <td>ListEnrollments</td>
                 <td><a href="#workspace.v1.ListEnrollmentsRequest">ListEnrollmentsRequest</a></td>
                 <td><a href="#workspace.v1.ListEnrollmentsResponse">ListEnrollmentsResponse</a></td>
+                <td><p></p></td>
+              </tr>
+            
+          </tbody>
+        </table>
+
+        
+        <h3 id="workspace.v1.SeatService">SeatService</h3>
+        <p></p>
+        <table class="enum-table">
+          <thead>
+            <tr><td>Method Name</td><td>Request Type</td><td>Response Type</td><td>Description</td></tr>
+          </thead>
+          <tbody>
+            
+              <tr>
+                <td>SetSeatLimit</td>
+                <td><a href="#workspace.v1.SetSeatLimitRequest">SetSeatLimitRequest</a></td>
+                <td><a href="#workspace.v1.SetSeatLimitResponse">SetSeatLimitResponse</a></td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>GetSeatUsage</td>
+                <td><a href="#workspace.v1.GetSeatUsageRequest">GetSeatUsageRequest</a></td>
+                <td><a href="#workspace.v1.GetSeatUsageResponse">GetSeatUsageResponse</a></td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>AssignSeat</td>
+                <td><a href="#workspace.v1.AssignSeatRequest">AssignSeatRequest</a></td>
+                <td><a href="#workspace.v1.AssignSeatResponse">AssignSeatResponse</a></td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>RevokeSeat</td>
+                <td><a href="#workspace.v1.RevokeSeatRequest">RevokeSeatRequest</a></td>
+                <td><a href="#workspace.v1.RevokeSeatResponse">RevokeSeatResponse</a></td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>ListSeats</td>
+                <td><a href="#workspace.v1.ListSeatsRequest">ListSeatsRequest</a></td>
+                <td><a href="#workspace.v1.ListSeatsResponse">ListSeatsResponse</a></td>
                 <td><p></p></td>
               </tr>
             

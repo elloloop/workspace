@@ -342,6 +342,32 @@ components:
           $ref: '#/components/schemas/workspace.v1.Membership'
       title: AddMemberResponse
       additionalProperties: false
+    workspace.v1.AssignSeatRequest:
+      type: object
+      properties:
+        projectId:
+          type: string
+          title: project_id
+        tenantId:
+          type: string
+          title: tenant_id
+        sku:
+          type: string
+          title: sku
+        userId:
+          type: string
+          title: user_id
+      title: AssignSeatRequest
+      additionalProperties: false
+    workspace.v1.AssignSeatResponse:
+      type: object
+      properties:
+        alreadyHeld:
+          type: boolean
+          title: already_held
+          description: already_held is true when the user already had a seat (idempotent no-op).
+      title: AssignSeatResponse
+      additionalProperties: false
     workspace.v1.BatchCheckItem:
       type: object
       properties:
@@ -769,6 +795,40 @@ components:
           $ref: '#/components/schemas/workspace.v1.Project'
       title: GetProjectResponse
       additionalProperties: false
+    workspace.v1.GetSeatUsageRequest:
+      type: object
+      properties:
+        projectId:
+          type: string
+          title: project_id
+        tenantId:
+          type: string
+          title: tenant_id
+        sku:
+          type: string
+          title: sku
+      title: GetSeatUsageRequest
+      additionalProperties: false
+    workspace.v1.GetSeatUsageResponse:
+      type: object
+      properties:
+        sku:
+          type: string
+          title: sku
+        used:
+          type: integer
+          title: used
+          format: int32
+        limit:
+          type: integer
+          title: limit
+          format: int32
+        limited:
+          type: boolean
+          title: limited
+          description: limited is false when no limit is configured for the sku (unlimited).
+      title: GetSeatUsageResponse
+      additionalProperties: false
     workspace.v1.GetWorkspaceRequest:
       type: object
       properties:
@@ -1072,6 +1132,30 @@ components:
           title: projects
       title: ListProjectsResponse
       additionalProperties: false
+    workspace.v1.ListSeatsRequest:
+      type: object
+      properties:
+        projectId:
+          type: string
+          title: project_id
+        tenantId:
+          type: string
+          title: tenant_id
+        sku:
+          type: string
+          title: sku
+      title: ListSeatsRequest
+      additionalProperties: false
+    workspace.v1.ListSeatsResponse:
+      type: object
+      properties:
+        seats:
+          type: array
+          items:
+            $ref: '#/components/schemas/workspace.v1.SeatAssignment'
+          title: seats
+      title: ListSeatsResponse
+      additionalProperties: false
     workspace.v1.ListWorkspacesRequest:
       type: object
       properties:
@@ -1335,6 +1419,53 @@ components:
       type: object
       title: RevokeInvitationResponse
       additionalProperties: false
+    workspace.v1.RevokeSeatRequest:
+      type: object
+      properties:
+        projectId:
+          type: string
+          title: project_id
+        tenantId:
+          type: string
+          title: tenant_id
+        sku:
+          type: string
+          title: sku
+        userId:
+          type: string
+          title: user_id
+      title: RevokeSeatRequest
+      additionalProperties: false
+    workspace.v1.RevokeSeatResponse:
+      type: object
+      title: RevokeSeatResponse
+      additionalProperties: false
+    workspace.v1.SeatAssignment:
+      type: object
+      properties:
+        sku:
+          type: string
+          title: sku
+        userId:
+          type: string
+          title: user_id
+        assignedAt:
+          title: assigned_at
+          $ref: '#/components/schemas/google.protobuf.Timestamp'
+      title: SeatAssignment
+      additionalProperties: false
+    workspace.v1.SeatLimit:
+      type: object
+      properties:
+        sku:
+          type: string
+          title: sku
+        limit:
+          type: integer
+          title: limit
+          format: int32
+      title: SeatLimit
+      additionalProperties: false
     workspace.v1.SetEnrollmentStateRequest:
       type: object
       properties:
@@ -1365,6 +1496,33 @@ components:
           title: enrollment
           $ref: '#/components/schemas/workspace.v1.Enrollment'
       title: SetEnrollmentStateResponse
+      additionalProperties: false
+    workspace.v1.SetSeatLimitRequest:
+      type: object
+      properties:
+        projectId:
+          type: string
+          title: project_id
+        tenantId:
+          type: string
+          title: tenant_id
+        sku:
+          type: string
+          title: sku
+        limit:
+          type: integer
+          title: limit
+          format: int32
+          description: must be >= 0; absent (never set) means unlimited
+      title: SetSeatLimitRequest
+      additionalProperties: false
+    workspace.v1.SetSeatLimitResponse:
+      type: object
+      properties:
+        limit:
+          title: limit
+          $ref: '#/components/schemas/workspace.v1.SeatLimit'
+      title: SetSeatLimitResponse
       additionalProperties: false
     workspace.v1.Subject:
       type: object
@@ -3044,8 +3202,184 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/workspace.v1.ListProjectsResponse'
+  /workspace.v1.SeatService/SetSeatLimit:
+    post:
+      tags:
+        - workspace.v1.SeatService
+      summary: SetSeatLimit
+      operationId: workspace.v1.SeatService.SetSeatLimit
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          required: true
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+        - name: Connect-Timeout-Ms
+          in: header
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/workspace.v1.SetSeatLimitRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/workspace.v1.SetSeatLimitResponse'
+  /workspace.v1.SeatService/GetSeatUsage:
+    post:
+      tags:
+        - workspace.v1.SeatService
+      summary: GetSeatUsage
+      operationId: workspace.v1.SeatService.GetSeatUsage
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          required: true
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+        - name: Connect-Timeout-Ms
+          in: header
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/workspace.v1.GetSeatUsageRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/workspace.v1.GetSeatUsageResponse'
+  /workspace.v1.SeatService/AssignSeat:
+    post:
+      tags:
+        - workspace.v1.SeatService
+      summary: AssignSeat
+      operationId: workspace.v1.SeatService.AssignSeat
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          required: true
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+        - name: Connect-Timeout-Ms
+          in: header
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/workspace.v1.AssignSeatRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/workspace.v1.AssignSeatResponse'
+  /workspace.v1.SeatService/RevokeSeat:
+    post:
+      tags:
+        - workspace.v1.SeatService
+      summary: RevokeSeat
+      operationId: workspace.v1.SeatService.RevokeSeat
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          required: true
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+        - name: Connect-Timeout-Ms
+          in: header
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/workspace.v1.RevokeSeatRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/workspace.v1.RevokeSeatResponse'
+  /workspace.v1.SeatService/ListSeats:
+    post:
+      tags:
+        - workspace.v1.SeatService
+      summary: ListSeats
+      operationId: workspace.v1.SeatService.ListSeats
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          required: true
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+        - name: Connect-Timeout-Ms
+          in: header
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/workspace.v1.ListSeatsRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/workspace.v1.ListSeatsResponse'
 tags:
   - name: workspace.v1.WorkspaceService
   - name: workspace.v1.GroupService
   - name: workspace.v1.AuthzService
   - name: workspace.v1.AdminService
+  - name: workspace.v1.SeatService

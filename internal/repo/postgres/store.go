@@ -138,6 +138,23 @@ CREATE TABLE IF NOT EXISTS enrollments (
 	PRIMARY KEY (project_id, tenant_id, group_id, member_kind, member_id)
 );
 
+CREATE TABLE IF NOT EXISTS seat_limits (
+	project_id text    NOT NULL,
+	tenant_id  text    NOT NULL DEFAULT '',
+	sku        text    NOT NULL,
+	seat_limit integer NOT NULL,
+	PRIMARY KEY (project_id, tenant_id, sku)
+);
+
+CREATE TABLE IF NOT EXISTS seat_assignments (
+	project_id  text        NOT NULL,
+	tenant_id   text        NOT NULL DEFAULT '',
+	sku         text        NOT NULL,
+	user_id     text        NOT NULL,
+	assigned_at timestamptz NOT NULL,
+	PRIMARY KEY (project_id, tenant_id, sku, user_id)
+);
+
 CREATE TABLE IF NOT EXISTS relation_tuples (
 	project_id        text NOT NULL,
 	tenant_id         text NOT NULL DEFAULT '',
@@ -1139,6 +1156,142 @@ func (s *Store) ListEnrollments(ctx context.Context, projectID, tenantID, groupI
 			return nil, err
 		}
 		out = append(out, e)
+	}
+	return out, rows.Err()
+}
+
+// ── seats (license/entitlement counting) ────────────────────────────────────
+
+func (s *Store) SetSeatLimit(ctx context.Context, projectID, tenantID, sku string, limit int) error {
+	_, err := s.pool.Exec(ctx,
+		`INSERT INTO seat_limits (project_id, tenant_id, sku, seat_limit)
+		 VALUES ($1,$2,$3,$4)
+		 ON CONFLICT (project_id, tenant_id, sku) DO UPDATE SET seat_limit=EXCLUDED.seat_limit`,
+		projectID, tenantID, sku, limit)
+	return err
+}
+
+func (s *Store) GetSeatUsage(ctx context.Context, projectID, tenantID, sku string) (service.SeatUsage, error) {
+	u := service.SeatUsage{SKU: sku}
+	if err := s.pool.QueryRow(ctx,
+		`SELECT count(*) FROM seat_assignments WHERE project_id=$1 AND tenant_id=$2 AND sku=$3`,
+		projectID, tenantID, sku).Scan(&u.Used); err != nil {
+		return service.SeatUsage{}, err
+	}
+	var limit int
+	err := s.pool.QueryRow(ctx,
+		`SELECT seat_limit FROM seat_limits WHERE project_id=$1 AND tenant_id=$2 AND sku=$3`,
+		projectID, tenantID, sku).Scan(&limit)
+	switch {
+	case errors.Is(err, pgx.ErrNoRows):
+		// No limit configured → unlimited.
+	case err != nil:
+		return service.SeatUsage{}, err
+	default:
+		u.Limit, u.Limited = limit, true
+	}
+	return u, nil
+}
+
+// seatLockKey serializes concurrent AssignSeat for one (project, tenant, sku) so
+// the count-check and insert cannot interleave and oversubscribe the cap.
+func seatLockKey(projectID, tenantID, sku string) string {
+	// Joined with the unit separator (0x1F): valid in Postgres text (unlike NUL)
+	// and not a character ids contain, so distinct skus map to distinct keys.
+	return "seat\x1f" + projectID + "\x1f" + tenantID + "\x1f" + sku
+}
+
+func (s *Store) AssignSeatAndTuple(ctx context.Context, a *service.SeatAssignment, tuple authz.Tuple) (bool, error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return false, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	// Serialize assigns for this sku; the lock is released on commit/rollback.
+	if _, err := tx.Exec(ctx, "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
+		seatLockKey(a.ProjectID, a.TenantID, a.SKU)); err != nil {
+		return false, err
+	}
+
+	// Idempotent: a user who already holds a seat consumes no extra one.
+	var exists bool
+	if err := tx.QueryRow(ctx,
+		`SELECT EXISTS(SELECT 1 FROM seat_assignments
+		   WHERE project_id=$1 AND tenant_id=$2 AND sku=$3 AND user_id=$4)`,
+		a.ProjectID, a.TenantID, a.SKU, a.UserID).Scan(&exists); err != nil {
+		return false, err
+	}
+	if exists {
+		return true, tx.Commit(ctx)
+	}
+
+	// Enforce the cap (no limit row = unlimited).
+	var limit int
+	switch err := tx.QueryRow(ctx,
+		`SELECT seat_limit FROM seat_limits WHERE project_id=$1 AND tenant_id=$2 AND sku=$3`,
+		a.ProjectID, a.TenantID, a.SKU).Scan(&limit); {
+	case errors.Is(err, pgx.ErrNoRows):
+		// unlimited
+	case err != nil:
+		return false, err
+	default:
+		var used int
+		if err := tx.QueryRow(ctx,
+			`SELECT count(*) FROM seat_assignments WHERE project_id=$1 AND tenant_id=$2 AND sku=$3`,
+			a.ProjectID, a.TenantID, a.SKU).Scan(&used); err != nil {
+			return false, err
+		}
+		if used >= limit {
+			return false, service.ErrResourceExhausted
+		}
+	}
+
+	if _, err := tx.Exec(ctx,
+		`INSERT INTO seat_assignments (project_id, tenant_id, sku, user_id, assigned_at)
+		 VALUES ($1,$2,$3,$4,$5)`,
+		a.ProjectID, a.TenantID, a.SKU, a.UserID, a.AssignedAt); err != nil {
+		return false, err
+	}
+	if err := writeTuplesExec(ctx, tx, a.ProjectID, a.TenantID, []authz.Tuple{tuple}, nil); err != nil {
+		return false, err
+	}
+	return false, tx.Commit(ctx)
+}
+
+func (s *Store) RevokeSeatAndTuple(ctx context.Context, projectID, tenantID, sku, userID string, tuple authz.Tuple) error {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if _, err := tx.Exec(ctx,
+		`DELETE FROM seat_assignments WHERE project_id=$1 AND tenant_id=$2 AND sku=$3 AND user_id=$4`,
+		projectID, tenantID, sku, userID); err != nil {
+		return err
+	}
+	if err := writeTuplesExec(ctx, tx, projectID, tenantID, nil, []authz.Tuple{tuple}); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
+func (s *Store) ListSeats(ctx context.Context, projectID, tenantID, sku string) ([]*service.SeatAssignment, error) {
+	rows, err := s.pool.Query(ctx,
+		`SELECT project_id, tenant_id, sku, user_id, assigned_at FROM seat_assignments
+		  WHERE project_id=$1 AND tenant_id=$2 AND sku=$3
+		  ORDER BY assigned_at, user_id`, projectID, tenantID, sku)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []*service.SeatAssignment
+	for rows.Next() {
+		var a service.SeatAssignment
+		if err := rows.Scan(&a.ProjectID, &a.TenantID, &a.SKU, &a.UserID, &a.AssignedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, &a)
 	}
 	return out, rows.Err()
 }

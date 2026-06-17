@@ -19,13 +19,15 @@ import (
 type Store struct {
 	mu sync.RWMutex
 
-	projects    map[string]service.Project                          // id → project (global)
-	workspaces  map[string]map[string]service.Workspace             // scope → id → ws
-	memberships map[string]map[string]map[string]service.Membership // scope → ws → user → m
-	invitations map[string]map[string]service.Invitation            // scope → id → inv
-	groups      map[string]map[string]service.Group                 // scope → id → g
-	enrollments map[string]map[string]map[string]service.Enrollment // scope → group → memberKey → e
-	tuples      map[string]map[string]authz.Tuple                   // scope → tupleKey → tuple
+	projects    map[string]service.Project                              // id → project (global)
+	workspaces  map[string]map[string]service.Workspace                 // scope → id → ws
+	memberships map[string]map[string]map[string]service.Membership     // scope → ws → user → m
+	invitations map[string]map[string]service.Invitation                // scope → id → inv
+	groups      map[string]map[string]service.Group                     // scope → id → g
+	enrollments map[string]map[string]map[string]service.Enrollment     // scope → group → memberKey → e
+	seatLimits  map[string]map[string]int                               // scope → sku → limit
+	seatAssigns map[string]map[string]map[string]service.SeatAssignment // scope → sku → user → a
+	tuples      map[string]map[string]authz.Tuple                       // scope → tupleKey → tuple
 }
 
 // New returns an empty Store.
@@ -37,6 +39,8 @@ func New() *Store {
 		invitations: map[string]map[string]service.Invitation{},
 		groups:      map[string]map[string]service.Group{},
 		enrollments: map[string]map[string]map[string]service.Enrollment{},
+		seatLimits:  map[string]map[string]int{},
+		seatAssigns: map[string]map[string]map[string]service.SeatAssignment{},
 		tuples:      map[string]map[string]authz.Tuple{},
 	}
 }
@@ -654,6 +658,82 @@ func (s *Store) ListEnrollments(_ context.Context, projectID, tenantID, groupID 
 			return ki+":"+ii < kj+":"+ij
 		}
 		return out[i].CreatedAt.Before(out[j].CreatedAt)
+	})
+	return out, nil
+}
+
+// ── seats (license/entitlement counting) ────────────────────────────────────
+
+func (s *Store) SetSeatLimit(_ context.Context, projectID, tenantID, sku string, limit int) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	sk := scope(projectID, tenantID)
+	if s.seatLimits[sk] == nil {
+		s.seatLimits[sk] = map[string]int{}
+	}
+	s.seatLimits[sk][sku] = limit
+	return nil
+}
+
+// seatUsageLocked returns the current count, the configured limit, and whether a
+// limit is configured. The caller holds s.mu.
+func (s *Store) seatUsageLocked(sk, sku string) (used, limit int, limited bool) {
+	used = len(s.seatAssigns[sk][sku])
+	limit, limited = s.seatLimits[sk][sku]
+	return used, limit, limited
+}
+
+func (s *Store) GetSeatUsage(_ context.Context, projectID, tenantID, sku string) (service.SeatUsage, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	used, limit, limited := s.seatUsageLocked(scope(projectID, tenantID), sku)
+	return service.SeatUsage{SKU: sku, Used: used, Limit: limit, Limited: limited}, nil
+}
+
+func (s *Store) AssignSeatAndTuple(_ context.Context, a *service.SeatAssignment, tuple authz.Tuple) (bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	sk := scope(a.ProjectID, a.TenantID)
+	if s.seatAssigns[sk] == nil {
+		s.seatAssigns[sk] = map[string]map[string]service.SeatAssignment{}
+	}
+	if s.seatAssigns[sk][a.SKU] == nil {
+		s.seatAssigns[sk][a.SKU] = map[string]service.SeatAssignment{}
+	}
+	// Idempotent: an already-seated user consumes no extra seat.
+	if _, ok := s.seatAssigns[sk][a.SKU][a.UserID]; ok {
+		return true, nil
+	}
+	if used, limit, limited := s.seatUsageLocked(sk, a.SKU); limited && used >= limit {
+		return false, service.ErrResourceExhausted
+	}
+	s.seatAssigns[sk][a.SKU][a.UserID] = *a
+	s.writeTuplesLocked(a.ProjectID, a.TenantID, []authz.Tuple{tuple}, nil)
+	return false, nil
+}
+
+func (s *Store) RevokeSeatAndTuple(_ context.Context, projectID, tenantID, sku, userID string, tuple authz.Tuple) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	sk := scope(projectID, tenantID)
+	delete(s.seatAssigns[sk][sku], userID)
+	s.writeTuplesLocked(projectID, tenantID, nil, []authz.Tuple{tuple})
+	return nil
+}
+
+func (s *Store) ListSeats(_ context.Context, projectID, tenantID, sku string) ([]*service.SeatAssignment, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	var out []*service.SeatAssignment
+	for _, a := range s.seatAssigns[scope(projectID, tenantID)][sku] {
+		cp := a
+		out = append(out, &cp)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].AssignedAt.Equal(out[j].AssignedAt) {
+			return out[i].UserID < out[j].UserID
+		}
+		return out[i].AssignedAt.Before(out[j].AssignedAt)
 	})
 	return out, nil
 }

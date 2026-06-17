@@ -219,6 +219,25 @@ re-enrollment — with no separate status read on the hot path. `ListEnrollments
 returns the tracked states. The overlay is additive: plain
 `AddGroupMember`/`RemoveGroupMember` still work for un-tracked membership.
 
+### Seats / licenses (`SeatService`)
+
+`SeatService` counts consumed seats for a `sku` (plan/entitlement) per
+`(project, tenant)` and **enforces a cap at write time**:
+
+- `SetSeatLimit(sku, limit)` configures the cap (`limit >= 0`; `0` admits none).
+  A sku with **no** configured limit is **unlimited**.
+- `AssignSeat(sku, user)` grants a seat. It **fails closed** with
+  `ResourceExhausted` once the cap is reached, assigning nothing. The
+  count-check and the insert run in **one transaction** (Postgres serializes
+  concurrent assigns for a sku with an advisory lock; memory under its mutex),
+  so two racing assigns can never both succeed past the cap. Re-assigning an
+  already-seated user is **idempotent** (no extra seat).
+- Each assignment also writes a `seat:<sku>#holder@user` relation tuple, so a
+  product model can gate access on seat-holding (e.g. a course `viewer` rewrite
+  that unions in `seat:pro#holder`). `RevokeSeat` frees the seat and deletes the
+  tuple, atomically.
+- `GetSeatUsage`/`ListSeats` report consumption (`used`, `limit`, `limited`).
+
 ### `resource`
 
 A generic product object that **inherits** access from its parent — which may

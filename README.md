@@ -163,6 +163,16 @@ A group used as a **cohort/class** can track each member's enrollment lifecycle
 the group's `#member` set, while `waitlisted`/`completed`/`dropped` record the
 state without granting access — access moves purely by tuple presence, atomically.
 
+**Seats / licenses.** `SeatService` counts consumed seats per `(project, tenant,
+sku)` and enforces a cap at write time: `SetSeatLimit` configures the cap,
+`AssignSeat` grants a seat and fails closed (`ResourceExhausted`) once the cap is
+reached — the count-check and insert are one atomic, race-safe operation, so
+concurrent assigns can never oversubscribe. A sku with no configured limit is
+unlimited; a limit of `0` admits none; re-assigning a seated user is idempotent.
+Each assignment also writes a `seat:<sku>#holder@user` tuple, so `Check` can gate
+access on seat-holding. `RevokeSeat` frees a seat; `GetSeatUsage`/`ListSeats`
+report consumption.
+
 ### Calling the API
 
 Every RPC is an HTTP `POST` over the [Connect protocol](https://connectrpc.com)

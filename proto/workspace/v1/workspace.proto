@@ -759,3 +759,83 @@ service AdminService {
   rpc UpdateProject(UpdateProjectRequest) returns (UpdateProjectResponse);
   rpc ListProjects(ListProjectsRequest) returns (ListProjectsResponse);
 }
+
+// ═══════════════════════════════════════════════════════════════════════
+// SeatService — seat/license/entitlement counting with write-time enforcement
+// ═══════════════════════════════════════════════════════════════════════
+//
+// A seat is one unit of a paid plan (sku) consumed by a user, scoped to
+// (project_id, tenant_id) — the B2B "only N paid seats may access this plan"
+// need. SetSeatLimit caps how many seats a sku admits; AssignSeat grants one and
+// FAILS CLOSED (ResourceExhausted) once the cap is reached. The count check and
+// the insert are ONE atomic, race-safe operation, so concurrent assigns can
+// never oversubscribe the cap. A sku with no configured limit is unlimited; a
+// limit of 0 admits none. Assigning an already-seated user is idempotent
+// (consumes no extra seat). Each assignment also writes a `seat:<sku>#holder@user`
+// relation tuple, so Check can gate access on seat-holding.
+
+message SeatLimit {
+  string sku = 1;
+  int32 limit = 2;
+}
+
+message SeatAssignment {
+  string sku = 1;
+  string user_id = 2;
+  google.protobuf.Timestamp assigned_at = 3;
+}
+
+message SetSeatLimitRequest {
+  string project_id = 1;
+  string tenant_id = 2;
+  string sku = 3;
+  int32 limit = 4; // must be >= 0; absent (never set) means unlimited
+}
+message SetSeatLimitResponse { SeatLimit limit = 1; }
+
+message GetSeatUsageRequest {
+  string project_id = 1;
+  string tenant_id = 2;
+  string sku = 3;
+}
+message GetSeatUsageResponse {
+  string sku = 1;
+  int32 used = 2;
+  int32 limit = 3;
+  // limited is false when no limit is configured for the sku (unlimited).
+  bool limited = 4;
+}
+
+message AssignSeatRequest {
+  string project_id = 1;
+  string tenant_id = 2;
+  string sku = 3;
+  string user_id = 4;
+}
+message AssignSeatResponse {
+  // already_held is true when the user already had a seat (idempotent no-op).
+  bool already_held = 1;
+}
+
+message RevokeSeatRequest {
+  string project_id = 1;
+  string tenant_id = 2;
+  string sku = 3;
+  string user_id = 4;
+}
+message RevokeSeatResponse {}
+
+message ListSeatsRequest {
+  string project_id = 1;
+  string tenant_id = 2;
+  string sku = 3;
+}
+message ListSeatsResponse { repeated SeatAssignment seats = 1; }
+
+service SeatService {
+  rpc SetSeatLimit(SetSeatLimitRequest) returns (SetSeatLimitResponse);
+  rpc GetSeatUsage(GetSeatUsageRequest) returns (GetSeatUsageResponse);
+  rpc AssignSeat(AssignSeatRequest) returns (AssignSeatResponse);
+  rpc RevokeSeat(RevokeSeatRequest) returns (RevokeSeatResponse);
+  rpc ListSeats(ListSeatsRequest) returns (ListSeatsResponse);
+}
