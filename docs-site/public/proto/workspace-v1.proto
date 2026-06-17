@@ -406,6 +406,59 @@ message ListGroupMembersRequest {
 }
 message ListGroupMembersResponse { repeated GroupMember members = 1; }
 
+// ─── Enrollment lifecycle overlay ──────────────────────────────────────
+//
+// An enrollment overlays a lifecycle STATE on a group membership, so a group
+// used as a cohort/class can track each member's progress. Only the
+// access-bearing states (ENROLLED, ACTIVE) place the member in the group's
+// `member` userset (the backing `group:<id>#member` tuple is present); the
+// others (WAITLISTED, COMPLETED, DROPPED) record the state WITHOUT granting
+// access (no tuple). Access is therefore revoked/granted purely by tuple
+// presence — the same mechanism as workspace member suspend/reinstate — so
+// Check/CheckSet over `group:<cohort>#member` naturally exclude a completed,
+// dropped, or waitlisted enrollee. The enrollment row and its tuple move
+// atomically. The overlay is additive: AddGroupMember/RemoveGroupMember still
+// work for plain (un-tracked) membership.
+enum EnrollmentState {
+  ENROLLMENT_STATE_UNSPECIFIED = 0;
+  // WAITLISTED: applied but not admitted — no access.
+  ENROLLMENT_STATE_WAITLISTED = 1;
+  // ENROLLED: admitted/registered — access (in the `member` set).
+  ENROLLMENT_STATE_ENROLLED = 2;
+  // ACTIVE: actively participating — access (in the `member` set).
+  ENROLLMENT_STATE_ACTIVE = 3;
+  // COMPLETED: finished — access ends.
+  ENROLLMENT_STATE_COMPLETED = 4;
+  // DROPPED: withdrew/removed — access ends.
+  ENROLLMENT_STATE_DROPPED = 5;
+}
+
+message Enrollment {
+  string group_id = 1;
+  GroupMember member = 2;
+  EnrollmentState state = 3;
+  google.protobuf.Timestamp created_at = 4;
+  google.protobuf.Timestamp updated_at = 5;
+}
+
+message SetEnrollmentStateRequest {
+  string group_id = 1;
+  GroupMember member = 2;
+  EnrollmentState state = 3;
+  string acting_user_id = 4;
+  string project_id = 5;
+  string tenant_id = 6;
+}
+message SetEnrollmentStateResponse { Enrollment enrollment = 1; }
+
+message ListEnrollmentsRequest {
+  string group_id = 1;
+  string acting_user_id = 2;
+  string project_id = 3;
+  string tenant_id = 4;
+}
+message ListEnrollmentsResponse { repeated Enrollment enrollments = 1; }
+
 service GroupService {
   rpc CreateGroup(CreateGroupRequest) returns (CreateGroupResponse);
   rpc GetGroup(GetGroupRequest) returns (GetGroupResponse);
@@ -414,6 +467,10 @@ service GroupService {
   rpc AddGroupMember(AddGroupMemberRequest) returns (AddGroupMemberResponse);
   rpc RemoveGroupMember(RemoveGroupMemberRequest) returns (RemoveGroupMemberResponse);
   rpc ListGroupMembers(ListGroupMembersRequest) returns (ListGroupMembersResponse);
+  // SetEnrollmentState upserts a member's enrollment state and moves the
+  // backing `member` tuple accordingly (present iff the state grants access).
+  rpc SetEnrollmentState(SetEnrollmentStateRequest) returns (SetEnrollmentStateResponse);
+  rpc ListEnrollments(ListEnrollmentsRequest) returns (ListEnrollmentsResponse);
 }
 
 // ═══════════════════════════════════════════════════════════════════════

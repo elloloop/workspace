@@ -106,6 +106,12 @@ const (
 	// GroupServiceListGroupMembersProcedure is the fully-qualified name of the GroupService's
 	// ListGroupMembers RPC.
 	GroupServiceListGroupMembersProcedure = "/workspace.v1.GroupService/ListGroupMembers"
+	// GroupServiceSetEnrollmentStateProcedure is the fully-qualified name of the GroupService's
+	// SetEnrollmentState RPC.
+	GroupServiceSetEnrollmentStateProcedure = "/workspace.v1.GroupService/SetEnrollmentState"
+	// GroupServiceListEnrollmentsProcedure is the fully-qualified name of the GroupService's
+	// ListEnrollments RPC.
+	GroupServiceListEnrollmentsProcedure = "/workspace.v1.GroupService/ListEnrollments"
 	// AuthzServiceWriteRelationTuplesProcedure is the fully-qualified name of the AuthzService's
 	// WriteRelationTuples RPC.
 	AuthzServiceWriteRelationTuplesProcedure = "/workspace.v1.AuthzService/WriteRelationTuples"
@@ -609,6 +615,10 @@ type GroupServiceClient interface {
 	AddGroupMember(context.Context, *connect.Request[v1.AddGroupMemberRequest]) (*connect.Response[v1.AddGroupMemberResponse], error)
 	RemoveGroupMember(context.Context, *connect.Request[v1.RemoveGroupMemberRequest]) (*connect.Response[v1.RemoveGroupMemberResponse], error)
 	ListGroupMembers(context.Context, *connect.Request[v1.ListGroupMembersRequest]) (*connect.Response[v1.ListGroupMembersResponse], error)
+	// SetEnrollmentState upserts a member's enrollment state and moves the
+	// backing `member` tuple accordingly (present iff the state grants access).
+	SetEnrollmentState(context.Context, *connect.Request[v1.SetEnrollmentStateRequest]) (*connect.Response[v1.SetEnrollmentStateResponse], error)
+	ListEnrollments(context.Context, *connect.Request[v1.ListEnrollmentsRequest]) (*connect.Response[v1.ListEnrollmentsResponse], error)
 }
 
 // NewGroupServiceClient constructs a client for the workspace.v1.GroupService service. By default,
@@ -664,18 +674,32 @@ func NewGroupServiceClient(httpClient connect.HTTPClient, baseURL string, opts .
 			connect.WithSchema(groupServiceMethods.ByName("ListGroupMembers")),
 			connect.WithClientOptions(opts...),
 		),
+		setEnrollmentState: connect.NewClient[v1.SetEnrollmentStateRequest, v1.SetEnrollmentStateResponse](
+			httpClient,
+			baseURL+GroupServiceSetEnrollmentStateProcedure,
+			connect.WithSchema(groupServiceMethods.ByName("SetEnrollmentState")),
+			connect.WithClientOptions(opts...),
+		),
+		listEnrollments: connect.NewClient[v1.ListEnrollmentsRequest, v1.ListEnrollmentsResponse](
+			httpClient,
+			baseURL+GroupServiceListEnrollmentsProcedure,
+			connect.WithSchema(groupServiceMethods.ByName("ListEnrollments")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
 // groupServiceClient implements GroupServiceClient.
 type groupServiceClient struct {
-	createGroup       *connect.Client[v1.CreateGroupRequest, v1.CreateGroupResponse]
-	getGroup          *connect.Client[v1.GetGroupRequest, v1.GetGroupResponse]
-	listGroups        *connect.Client[v1.ListGroupsRequest, v1.ListGroupsResponse]
-	deleteGroup       *connect.Client[v1.DeleteGroupRequest, v1.DeleteGroupResponse]
-	addGroupMember    *connect.Client[v1.AddGroupMemberRequest, v1.AddGroupMemberResponse]
-	removeGroupMember *connect.Client[v1.RemoveGroupMemberRequest, v1.RemoveGroupMemberResponse]
-	listGroupMembers  *connect.Client[v1.ListGroupMembersRequest, v1.ListGroupMembersResponse]
+	createGroup        *connect.Client[v1.CreateGroupRequest, v1.CreateGroupResponse]
+	getGroup           *connect.Client[v1.GetGroupRequest, v1.GetGroupResponse]
+	listGroups         *connect.Client[v1.ListGroupsRequest, v1.ListGroupsResponse]
+	deleteGroup        *connect.Client[v1.DeleteGroupRequest, v1.DeleteGroupResponse]
+	addGroupMember     *connect.Client[v1.AddGroupMemberRequest, v1.AddGroupMemberResponse]
+	removeGroupMember  *connect.Client[v1.RemoveGroupMemberRequest, v1.RemoveGroupMemberResponse]
+	listGroupMembers   *connect.Client[v1.ListGroupMembersRequest, v1.ListGroupMembersResponse]
+	setEnrollmentState *connect.Client[v1.SetEnrollmentStateRequest, v1.SetEnrollmentStateResponse]
+	listEnrollments    *connect.Client[v1.ListEnrollmentsRequest, v1.ListEnrollmentsResponse]
 }
 
 // CreateGroup calls workspace.v1.GroupService.CreateGroup.
@@ -713,6 +737,16 @@ func (c *groupServiceClient) ListGroupMembers(ctx context.Context, req *connect.
 	return c.listGroupMembers.CallUnary(ctx, req)
 }
 
+// SetEnrollmentState calls workspace.v1.GroupService.SetEnrollmentState.
+func (c *groupServiceClient) SetEnrollmentState(ctx context.Context, req *connect.Request[v1.SetEnrollmentStateRequest]) (*connect.Response[v1.SetEnrollmentStateResponse], error) {
+	return c.setEnrollmentState.CallUnary(ctx, req)
+}
+
+// ListEnrollments calls workspace.v1.GroupService.ListEnrollments.
+func (c *groupServiceClient) ListEnrollments(ctx context.Context, req *connect.Request[v1.ListEnrollmentsRequest]) (*connect.Response[v1.ListEnrollmentsResponse], error) {
+	return c.listEnrollments.CallUnary(ctx, req)
+}
+
 // GroupServiceHandler is an implementation of the workspace.v1.GroupService service.
 type GroupServiceHandler interface {
 	CreateGroup(context.Context, *connect.Request[v1.CreateGroupRequest]) (*connect.Response[v1.CreateGroupResponse], error)
@@ -722,6 +756,10 @@ type GroupServiceHandler interface {
 	AddGroupMember(context.Context, *connect.Request[v1.AddGroupMemberRequest]) (*connect.Response[v1.AddGroupMemberResponse], error)
 	RemoveGroupMember(context.Context, *connect.Request[v1.RemoveGroupMemberRequest]) (*connect.Response[v1.RemoveGroupMemberResponse], error)
 	ListGroupMembers(context.Context, *connect.Request[v1.ListGroupMembersRequest]) (*connect.Response[v1.ListGroupMembersResponse], error)
+	// SetEnrollmentState upserts a member's enrollment state and moves the
+	// backing `member` tuple accordingly (present iff the state grants access).
+	SetEnrollmentState(context.Context, *connect.Request[v1.SetEnrollmentStateRequest]) (*connect.Response[v1.SetEnrollmentStateResponse], error)
+	ListEnrollments(context.Context, *connect.Request[v1.ListEnrollmentsRequest]) (*connect.Response[v1.ListEnrollmentsResponse], error)
 }
 
 // NewGroupServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -773,6 +811,18 @@ func NewGroupServiceHandler(svc GroupServiceHandler, opts ...connect.HandlerOpti
 		connect.WithSchema(groupServiceMethods.ByName("ListGroupMembers")),
 		connect.WithHandlerOptions(opts...),
 	)
+	groupServiceSetEnrollmentStateHandler := connect.NewUnaryHandler(
+		GroupServiceSetEnrollmentStateProcedure,
+		svc.SetEnrollmentState,
+		connect.WithSchema(groupServiceMethods.ByName("SetEnrollmentState")),
+		connect.WithHandlerOptions(opts...),
+	)
+	groupServiceListEnrollmentsHandler := connect.NewUnaryHandler(
+		GroupServiceListEnrollmentsProcedure,
+		svc.ListEnrollments,
+		connect.WithSchema(groupServiceMethods.ByName("ListEnrollments")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/workspace.v1.GroupService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case GroupServiceCreateGroupProcedure:
@@ -789,6 +839,10 @@ func NewGroupServiceHandler(svc GroupServiceHandler, opts ...connect.HandlerOpti
 			groupServiceRemoveGroupMemberHandler.ServeHTTP(w, r)
 		case GroupServiceListGroupMembersProcedure:
 			groupServiceListGroupMembersHandler.ServeHTTP(w, r)
+		case GroupServiceSetEnrollmentStateProcedure:
+			groupServiceSetEnrollmentStateHandler.ServeHTTP(w, r)
+		case GroupServiceListEnrollmentsProcedure:
+			groupServiceListEnrollmentsHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -824,6 +878,14 @@ func (UnimplementedGroupServiceHandler) RemoveGroupMember(context.Context, *conn
 
 func (UnimplementedGroupServiceHandler) ListGroupMembers(context.Context, *connect.Request[v1.ListGroupMembersRequest]) (*connect.Response[v1.ListGroupMembersResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("workspace.v1.GroupService.ListGroupMembers is not implemented"))
+}
+
+func (UnimplementedGroupServiceHandler) SetEnrollmentState(context.Context, *connect.Request[v1.SetEnrollmentStateRequest]) (*connect.Response[v1.SetEnrollmentStateResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("workspace.v1.GroupService.SetEnrollmentState is not implemented"))
+}
+
+func (UnimplementedGroupServiceHandler) ListEnrollments(context.Context, *connect.Request[v1.ListEnrollmentsRequest]) (*connect.Response[v1.ListEnrollmentsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("workspace.v1.GroupService.ListEnrollments is not implemented"))
 }
 
 // AuthzServiceClient is a client for the workspace.v1.AuthzService service.

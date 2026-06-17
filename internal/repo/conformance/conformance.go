@@ -33,6 +33,7 @@ func Run(t *testing.T, newRepo func() service.Repository) {
 		{"WorkspacesForUser", testWorkspacesForUser},
 		{"Invitations", testInvitations},
 		{"Groups", testGroups},
+		{"Enrollments", testEnrollments},
 		{"ProjectIsolation", testProjectIsolation},
 		{"TenantIsolation", testTenantIsolation},
 		{"Projects", testProjects},

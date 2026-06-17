@@ -28,6 +28,30 @@ components:
          `Value` type union.
 
          The JSON representation for `NullValue` is JSON `null`.
+    workspace.v1.EnrollmentState:
+      type: string
+      title: EnrollmentState
+      enum:
+        - ENROLLMENT_STATE_UNSPECIFIED
+        - ENROLLMENT_STATE_WAITLISTED
+        - ENROLLMENT_STATE_ENROLLED
+        - ENROLLMENT_STATE_ACTIVE
+        - ENROLLMENT_STATE_COMPLETED
+        - ENROLLMENT_STATE_DROPPED
+      description: |-
+        ─── Enrollment lifecycle overlay ──────────────────────────────────────
+
+         An enrollment overlays a lifecycle STATE on a group membership, so a group
+         used as a cohort/class can track each member's progress. Only the
+         access-bearing states (ENROLLED, ACTIVE) place the member in the group's
+         `member` userset (the backing `group:<id>#member` tuple is present); the
+         others (WAITLISTED, COMPLETED, DROPPED) record the state WITHOUT granting
+         access (no tuple). Access is therefore revoked/granted purely by tuple
+         presence — the same mechanism as workspace member suspend/reinstate — so
+         Check/CheckSet over `group:<cohort>#member` naturally exclude a completed,
+         dropped, or waitlisted enrollee. The enrollment row and its tuple move
+         atomically. The overlay is additive: AddGroupMember/RemoveGroupMember still
+         work for plain (un-tracked) membership.
     workspace.v1.InvitationStatus:
       type: string
       title: InvitationStatus
@@ -630,6 +654,26 @@ components:
           format: int64
       title: DeprovisionUserResponse
       additionalProperties: false
+    workspace.v1.Enrollment:
+      type: object
+      properties:
+        groupId:
+          type: string
+          title: group_id
+        member:
+          title: member
+          $ref: '#/components/schemas/workspace.v1.GroupMember'
+        state:
+          title: state
+          $ref: '#/components/schemas/workspace.v1.EnrollmentState'
+        createdAt:
+          title: created_at
+          $ref: '#/components/schemas/google.protobuf.Timestamp'
+        updatedAt:
+          title: updated_at
+          $ref: '#/components/schemas/google.protobuf.Timestamp'
+      title: Enrollment
+      additionalProperties: false
     workspace.v1.ExpandRequest:
       type: object
       properties:
@@ -843,6 +887,33 @@ components:
           type: string
           title: tenant_id
       title: Invitation
+      additionalProperties: false
+    workspace.v1.ListEnrollmentsRequest:
+      type: object
+      properties:
+        groupId:
+          type: string
+          title: group_id
+        actingUserId:
+          type: string
+          title: acting_user_id
+        projectId:
+          type: string
+          title: project_id
+        tenantId:
+          type: string
+          title: tenant_id
+      title: ListEnrollmentsRequest
+      additionalProperties: false
+    workspace.v1.ListEnrollmentsResponse:
+      type: object
+      properties:
+        enrollments:
+          type: array
+          items:
+            $ref: '#/components/schemas/workspace.v1.Enrollment'
+          title: enrollments
+      title: ListEnrollmentsResponse
       additionalProperties: false
     workspace.v1.ListGroupMembersRequest:
       type: object
@@ -1263,6 +1334,37 @@ components:
     workspace.v1.RevokeInvitationResponse:
       type: object
       title: RevokeInvitationResponse
+      additionalProperties: false
+    workspace.v1.SetEnrollmentStateRequest:
+      type: object
+      properties:
+        groupId:
+          type: string
+          title: group_id
+        member:
+          title: member
+          $ref: '#/components/schemas/workspace.v1.GroupMember'
+        state:
+          title: state
+          $ref: '#/components/schemas/workspace.v1.EnrollmentState'
+        actingUserId:
+          type: string
+          title: acting_user_id
+        projectId:
+          type: string
+          title: project_id
+        tenantId:
+          type: string
+          title: tenant_id
+      title: SetEnrollmentStateRequest
+      additionalProperties: false
+    workspace.v1.SetEnrollmentStateResponse:
+      type: object
+      properties:
+        enrollment:
+          title: enrollment
+          $ref: '#/components/schemas/workspace.v1.Enrollment'
+      title: SetEnrollmentStateResponse
       additionalProperties: false
     workspace.v1.Subject:
       type: object
@@ -2449,6 +2551,79 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/workspace.v1.ListGroupMembersResponse'
+  /workspace.v1.GroupService/SetEnrollmentState:
+    post:
+      tags:
+        - workspace.v1.GroupService
+      summary: SetEnrollmentState
+      description: |-
+        SetEnrollmentState upserts a member's enrollment state and moves the
+         backing `member` tuple accordingly (present iff the state grants access).
+      operationId: workspace.v1.GroupService.SetEnrollmentState
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          required: true
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+        - name: Connect-Timeout-Ms
+          in: header
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/workspace.v1.SetEnrollmentStateRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/workspace.v1.SetEnrollmentStateResponse'
+  /workspace.v1.GroupService/ListEnrollments:
+    post:
+      tags:
+        - workspace.v1.GroupService
+      summary: ListEnrollments
+      operationId: workspace.v1.GroupService.ListEnrollments
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          required: true
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+        - name: Connect-Timeout-Ms
+          in: header
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/workspace.v1.ListEnrollmentsRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/workspace.v1.ListEnrollmentsResponse'
   /workspace.v1.AuthzService/WriteRelationTuples:
     post:
       tags:

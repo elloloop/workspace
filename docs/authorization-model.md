@@ -199,6 +199,26 @@ Just stored tuples — but because a subject may be a userset, a group member ca
 be another group: `group:all-eng#member@group:backend#member`. `Check` resolves
 the nesting transitively.
 
+#### Enrollment lifecycle overlay (cohorts / classes)
+
+When a group is used as a cohort or class, `GroupService.SetEnrollmentState`
+tracks each member's lifecycle state while keeping access driven purely by tuple
+presence — the same mechanism as workspace member suspend/reinstate. The state
+maps to membership like so:
+
+| State | In `#member` set? |
+|---|---|
+| `enrolled`, `active` | **yes** — backing `group:<id>#member` tuple present |
+| `waitlisted`, `completed`, `dropped` | no — tuple absent, state still recorded |
+
+`SetEnrollmentState` upserts the enrollment row and adds/removes the member tuple
+**atomically**, so a `Check`/`CheckSet` over `group:<cohort>#member` (and anything
+that inherits from it, e.g. a course resource granted to the cohort) automatically
+excludes a completed, dropped, or waitlisted enrollee, and re-includes them on
+re-enrollment — with no separate status read on the hot path. `ListEnrollments`
+returns the tracked states. The overlay is additive: plain
+`AddGroupMember`/`RemoveGroupMember` still work for un-tracked membership.
+
 ### `resource`
 
 A generic product object that **inherits** access from its parent — which may

@@ -87,7 +87,19 @@ type Repository interface {
 	// ListGroups returns groups in the project/tenant; when workspaceID is
 	// non-empty it restricts to groups owned by that workspace.
 	ListGroups(ctx context.Context, projectID, tenantID, workspaceID string) ([]*Group, error)
+	// DeleteGroup removes the group, its member tuples, AND its enrollment rows.
 	DeleteGroup(ctx context.Context, projectID, tenantID, id string) error
+
+	// ── Enrollments (group lifecycle overlay) ────────────────────────
+	// SetEnrollmentAndTuples upserts the enrollment row and applies the tuple
+	// writes (deletes then inserts, scoped to e's project/tenant) in ONE
+	// transaction, so the enrollment state and its backing group#member tuple
+	// can never diverge on a crash between the two writes.
+	SetEnrollmentAndTuples(ctx context.Context, e *Enrollment, inserts, deletes []authz.Tuple) error
+	// GetEnrollment returns the enrollment for a (group, member), or ErrNotFound.
+	GetEnrollment(ctx context.Context, projectID, tenantID, groupID string, member GroupMember) (*Enrollment, error)
+	// ListEnrollments returns a group's enrollments, ordered by creation time.
+	ListEnrollments(ctx context.Context, projectID, tenantID, groupID string) ([]*Enrollment, error)
 }
 
 // TupleAt is a stored relation tuple together with the tenant it lives in.
