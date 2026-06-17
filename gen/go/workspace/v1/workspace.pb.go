@@ -4362,9 +4362,14 @@ func (x *WriteRelationTuplesRequest) GetTenantId() string {
 }
 
 type WriteRelationTuplesResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// consistency_token is an opaque "zookie" naming the shard's write sequence
+	// reached by this batch. Pass it to a later Check/Expand/ListObjects/
+	// BatchCheck/ReadRelationTuples as at_least_consistency_token to demand
+	// read-after-write (observe at least this write). Optional to use.
+	ConsistencyToken string `protobuf:"bytes,1,opt,name=consistency_token,json=consistencyToken,proto3" json:"consistency_token,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
 }
 
 func (x *WriteRelationTuplesResponse) Reset() {
@@ -4397,6 +4402,13 @@ func (*WriteRelationTuplesResponse) Descriptor() ([]byte, []int) {
 	return file_workspace_v1_workspace_proto_rawDescGZIP(), []int{61}
 }
 
+func (x *WriteRelationTuplesResponse) GetConsistencyToken() string {
+	if x != nil {
+		return x.ConsistencyToken
+	}
+	return ""
+}
+
 // ReadRelationTuples returns stored tuples matching the non-empty filter
 // fields (exact match). It does NOT evaluate userset rewrites — it is the
 // raw store read. Use Check for permission decisions.
@@ -4409,8 +4421,12 @@ type ReadRelationTuplesRequest struct {
 	SubjectUserId string `protobuf:"bytes,4,opt,name=subject_user_id,json=subjectUserId,proto3" json:"subject_user_id,omitempty"`
 	ProjectId     string `protobuf:"bytes,5,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
 	TenantId      string `protobuf:"bytes,6,opt,name=tenant_id,json=tenantId,proto3" json:"tenant_id,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	// at_least_consistency_token, when set, demands the read reflect state at
+	// least as fresh as the token (from a prior WriteRelationTuples). Empty =
+	// read latest. A malformed or foreign-shard token is rejected.
+	AtLeastConsistencyToken string `protobuf:"bytes,7,opt,name=at_least_consistency_token,json=atLeastConsistencyToken,proto3" json:"at_least_consistency_token,omitempty"`
+	unknownFields           protoimpl.UnknownFields
+	sizeCache               protoimpl.SizeCache
 }
 
 func (x *ReadRelationTuplesRequest) Reset() {
@@ -4485,6 +4501,13 @@ func (x *ReadRelationTuplesRequest) GetTenantId() string {
 	return ""
 }
 
+func (x *ReadRelationTuplesRequest) GetAtLeastConsistencyToken() string {
+	if x != nil {
+		return x.AtLeastConsistencyToken
+	}
+	return ""
+}
+
 type ReadRelationTuplesResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Tuples        []*RelationTuple       `protobuf:"bytes,1,rep,name=tuples,proto3" json:"tuples,omitempty"`
@@ -4550,9 +4573,13 @@ type CheckRequest struct {
 	// evaluated against (e.g. {"age": 9, "consent": true, "ip": "1.2.3.4",
 	// "now": "2026-06-16T00:00:00Z"}). Unset = no context; conditional grants
 	// then fail closed, while unconditional grants are unaffected.
-	Context       *structpb.Struct `protobuf:"bytes,8,opt,name=context,proto3" json:"context,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	Context *structpb.Struct `protobuf:"bytes,8,opt,name=context,proto3" json:"context,omitempty"`
+	// at_least_consistency_token, when set, demands the check observe state at
+	// least as fresh as the token (from a prior WriteRelationTuples). Empty =
+	// read latest. A malformed or foreign-shard token is rejected.
+	AtLeastConsistencyToken string `protobuf:"bytes,9,opt,name=at_least_consistency_token,json=atLeastConsistencyToken,proto3" json:"at_least_consistency_token,omitempty"`
+	unknownFields           protoimpl.UnknownFields
+	sizeCache               protoimpl.SizeCache
 }
 
 func (x *CheckRequest) Reset() {
@@ -4639,6 +4666,13 @@ func (x *CheckRequest) GetContext() *structpb.Struct {
 		return x.Context
 	}
 	return nil
+}
+
+func (x *CheckRequest) GetAtLeastConsistencyToken() string {
+	if x != nil {
+		return x.AtLeastConsistencyToken
+	}
+	return ""
 }
 
 type CheckResponse struct {
@@ -4764,12 +4798,16 @@ func (x *BatchCheckItem) GetSubjectUserId() string {
 }
 
 type BatchCheckRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	ProjectId     string                 `protobuf:"bytes,1,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
-	TenantId      string                 `protobuf:"bytes,2,opt,name=tenant_id,json=tenantId,proto3" json:"tenant_id,omitempty"`
-	Items         []*BatchCheckItem      `protobuf:"bytes,3,rep,name=items,proto3" json:"items,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state     protoimpl.MessageState `protogen:"open.v1"`
+	ProjectId string                 `protobuf:"bytes,1,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
+	TenantId  string                 `protobuf:"bytes,2,opt,name=tenant_id,json=tenantId,proto3" json:"tenant_id,omitempty"`
+	Items     []*BatchCheckItem      `protobuf:"bytes,3,rep,name=items,proto3" json:"items,omitempty"`
+	// at_least_consistency_token, when set, demands the batch observe state at
+	// least as fresh as the token (from a prior WriteRelationTuples). Empty =
+	// read latest. A malformed or foreign-shard token is rejected.
+	AtLeastConsistencyToken string `protobuf:"bytes,4,opt,name=at_least_consistency_token,json=atLeastConsistencyToken,proto3" json:"at_least_consistency_token,omitempty"`
+	unknownFields           protoimpl.UnknownFields
+	sizeCache               protoimpl.SizeCache
 }
 
 func (x *BatchCheckRequest) Reset() {
@@ -4821,6 +4859,13 @@ func (x *BatchCheckRequest) GetItems() []*BatchCheckItem {
 		return x.Items
 	}
 	return nil
+}
+
+func (x *BatchCheckRequest) GetAtLeastConsistencyToken() string {
+	if x != nil {
+		return x.AtLeastConsistencyToken
+	}
+	return ""
 }
 
 type BatchCheckResult struct {
@@ -4923,14 +4968,18 @@ func (x *BatchCheckResponse) GetResults() []*BatchCheckResult {
 
 // Expand returns the effective userset tree for namespace:object_id#relation.
 type ExpandRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Namespace     string                 `protobuf:"bytes,1,opt,name=namespace,proto3" json:"namespace,omitempty"`
-	ObjectId      string                 `protobuf:"bytes,2,opt,name=object_id,json=objectId,proto3" json:"object_id,omitempty"`
-	Relation      string                 `protobuf:"bytes,3,opt,name=relation,proto3" json:"relation,omitempty"`
-	ProjectId     string                 `protobuf:"bytes,4,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
-	TenantId      string                 `protobuf:"bytes,5,opt,name=tenant_id,json=tenantId,proto3" json:"tenant_id,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state     protoimpl.MessageState `protogen:"open.v1"`
+	Namespace string                 `protobuf:"bytes,1,opt,name=namespace,proto3" json:"namespace,omitempty"`
+	ObjectId  string                 `protobuf:"bytes,2,opt,name=object_id,json=objectId,proto3" json:"object_id,omitempty"`
+	Relation  string                 `protobuf:"bytes,3,opt,name=relation,proto3" json:"relation,omitempty"`
+	ProjectId string                 `protobuf:"bytes,4,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
+	TenantId  string                 `protobuf:"bytes,5,opt,name=tenant_id,json=tenantId,proto3" json:"tenant_id,omitempty"`
+	// at_least_consistency_token, when set, demands the expansion reflect state at
+	// least as fresh as the token (from a prior WriteRelationTuples). Empty =
+	// read latest. A malformed or foreign-shard token is rejected.
+	AtLeastConsistencyToken string `protobuf:"bytes,6,opt,name=at_least_consistency_token,json=atLeastConsistencyToken,proto3" json:"at_least_consistency_token,omitempty"`
+	unknownFields           protoimpl.UnknownFields
+	sizeCache               protoimpl.SizeCache
 }
 
 func (x *ExpandRequest) Reset() {
@@ -4994,6 +5043,13 @@ func (x *ExpandRequest) GetProjectId() string {
 func (x *ExpandRequest) GetTenantId() string {
 	if x != nil {
 		return x.TenantId
+	}
+	return ""
+}
+
+func (x *ExpandRequest) GetAtLeastConsistencyToken() string {
+	if x != nil {
+		return x.AtLeastConsistencyToken
 	}
 	return ""
 }
@@ -5140,8 +5196,12 @@ type ListObjectsRequest struct {
 	SubjectUserId string                 `protobuf:"bytes,3,opt,name=subject_user_id,json=subjectUserId,proto3" json:"subject_user_id,omitempty"`
 	ProjectId     string                 `protobuf:"bytes,4,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
 	TenantId      string                 `protobuf:"bytes,5,opt,name=tenant_id,json=tenantId,proto3" json:"tenant_id,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	// at_least_consistency_token, when set, demands the listing reflect state at
+	// least as fresh as the token (from a prior WriteRelationTuples). Empty =
+	// read latest. A malformed or foreign-shard token is rejected.
+	AtLeastConsistencyToken string `protobuf:"bytes,6,opt,name=at_least_consistency_token,json=atLeastConsistencyToken,proto3" json:"at_least_consistency_token,omitempty"`
+	unknownFields           protoimpl.UnknownFields
+	sizeCache               protoimpl.SizeCache
 }
 
 func (x *ListObjectsRequest) Reset() {
@@ -5205,6 +5265,13 @@ func (x *ListObjectsRequest) GetProjectId() string {
 func (x *ListObjectsRequest) GetTenantId() string {
 	if x != nil {
 		return x.TenantId
+	}
+	return ""
+}
+
+func (x *ListObjectsRequest) GetAtLeastConsistencyToken() string {
+	if x != nil {
+		return x.AtLeastConsistencyToken
 	}
 	return ""
 }
@@ -7023,8 +7090,9 @@ const file_workspace_v1_workspace_proto_rawDesc = "" +
 	"\aupdates\x18\x01 \x03(\v2\x19.workspace.v1.TupleUpdateR\aupdates\x12\x1d\n" +
 	"\n" +
 	"project_id\x18\x02 \x01(\tR\tprojectId\x12\x1b\n" +
-	"\ttenant_id\x18\x03 \x01(\tR\btenantId\"\x1d\n" +
-	"\x1bWriteRelationTuplesResponse\"\xd6\x01\n" +
+	"\ttenant_id\x18\x03 \x01(\tR\btenantId\"J\n" +
+	"\x1bWriteRelationTuplesResponse\x12+\n" +
+	"\x11consistency_token\x18\x01 \x01(\tR\x10consistencyToken\"\x93\x02\n" +
 	"\x19ReadRelationTuplesRequest\x12\x1c\n" +
 	"\tnamespace\x18\x01 \x01(\tR\tnamespace\x12\x1b\n" +
 	"\tobject_id\x18\x02 \x01(\tR\bobjectId\x12\x1a\n" +
@@ -7032,9 +7100,10 @@ const file_workspace_v1_workspace_proto_rawDesc = "" +
 	"\x0fsubject_user_id\x18\x04 \x01(\tR\rsubjectUserId\x12\x1d\n" +
 	"\n" +
 	"project_id\x18\x05 \x01(\tR\tprojectId\x12\x1b\n" +
-	"\ttenant_id\x18\x06 \x01(\tR\btenantId\"Q\n" +
+	"\ttenant_id\x18\x06 \x01(\tR\btenantId\x12;\n" +
+	"\x1aat_least_consistency_token\x18\a \x01(\tR\x17atLeastConsistencyToken\"Q\n" +
 	"\x1aReadRelationTuplesResponse\x123\n" +
-	"\x06tuples\x18\x01 \x03(\v2\x1b.workspace.v1.RelationTupleR\x06tuples\"\xb7\x02\n" +
+	"\x06tuples\x18\x01 \x03(\v2\x1b.workspace.v1.RelationTupleR\x06tuples\"\xf4\x02\n" +
 	"\fCheckRequest\x12\x1c\n" +
 	"\tnamespace\x18\x01 \x01(\tR\tnamespace\x12\x1b\n" +
 	"\tobject_id\x18\x02 \x01(\tR\bobjectId\x12\x1a\n" +
@@ -7045,31 +7114,34 @@ const file_workspace_v1_workspace_proto_rawDesc = "" +
 	"\ttenant_id\x18\x06 \x01(\tR\btenantId\x129\n" +
 	"\vsubject_set\x18\a \x01(\v2\x18.workspace.v1.SubjectSetR\n" +
 	"subjectSet\x121\n" +
-	"\acontext\x18\b \x01(\v2\x17.google.protobuf.StructR\acontext\")\n" +
+	"\acontext\x18\b \x01(\v2\x17.google.protobuf.StructR\acontext\x12;\n" +
+	"\x1aat_least_consistency_token\x18\t \x01(\tR\x17atLeastConsistencyToken\")\n" +
 	"\rCheckResponse\x12\x18\n" +
 	"\aallowed\x18\x01 \x01(\bR\aallowed\"\x8f\x01\n" +
 	"\x0eBatchCheckItem\x12\x1c\n" +
 	"\tnamespace\x18\x01 \x01(\tR\tnamespace\x12\x1b\n" +
 	"\tobject_id\x18\x02 \x01(\tR\bobjectId\x12\x1a\n" +
 	"\brelation\x18\x03 \x01(\tR\brelation\x12&\n" +
-	"\x0fsubject_user_id\x18\x04 \x01(\tR\rsubjectUserId\"\x83\x01\n" +
+	"\x0fsubject_user_id\x18\x04 \x01(\tR\rsubjectUserId\"\xc0\x01\n" +
 	"\x11BatchCheckRequest\x12\x1d\n" +
 	"\n" +
 	"project_id\x18\x01 \x01(\tR\tprojectId\x12\x1b\n" +
 	"\ttenant_id\x18\x02 \x01(\tR\btenantId\x122\n" +
-	"\x05items\x18\x03 \x03(\v2\x1c.workspace.v1.BatchCheckItemR\x05items\"B\n" +
+	"\x05items\x18\x03 \x03(\v2\x1c.workspace.v1.BatchCheckItemR\x05items\x12;\n" +
+	"\x1aat_least_consistency_token\x18\x04 \x01(\tR\x17atLeastConsistencyToken\"B\n" +
 	"\x10BatchCheckResult\x12\x18\n" +
 	"\aallowed\x18\x01 \x01(\bR\aallowed\x12\x14\n" +
 	"\x05error\x18\x02 \x01(\tR\x05error\"N\n" +
 	"\x12BatchCheckResponse\x128\n" +
-	"\aresults\x18\x01 \x03(\v2\x1e.workspace.v1.BatchCheckResultR\aresults\"\xa2\x01\n" +
+	"\aresults\x18\x01 \x03(\v2\x1e.workspace.v1.BatchCheckResultR\aresults\"\xdf\x01\n" +
 	"\rExpandRequest\x12\x1c\n" +
 	"\tnamespace\x18\x01 \x01(\tR\tnamespace\x12\x1b\n" +
 	"\tobject_id\x18\x02 \x01(\tR\bobjectId\x12\x1a\n" +
 	"\brelation\x18\x03 \x01(\tR\brelation\x12\x1d\n" +
 	"\n" +
 	"project_id\x18\x04 \x01(\tR\tprojectId\x12\x1b\n" +
-	"\ttenant_id\x18\x05 \x01(\tR\btenantId\"\x9d\x03\n" +
+	"\ttenant_id\x18\x05 \x01(\tR\btenantId\x12;\n" +
+	"\x1aat_least_consistency_token\x18\x06 \x01(\tR\x17atLeastConsistencyToken\"\x9d\x03\n" +
 	"\vUsersetTree\x126\n" +
 	"\x04type\x18\x01 \x01(\x0e2\".workspace.v1.UsersetTree.NodeTypeR\x04type\x12\x19\n" +
 	"\buser_ids\x18\x02 \x03(\tR\auserIds\x12,\n" +
@@ -7084,14 +7156,15 @@ const file_workspace_v1_workspace_proto_rawDesc = "" +
 	"\x16NODE_TYPE_INTERSECTION\x10\x03\x12\x17\n" +
 	"\x13NODE_TYPE_EXCLUSION\x10\x04\"?\n" +
 	"\x0eExpandResponse\x12-\n" +
-	"\x04tree\x18\x01 \x01(\v2\x19.workspace.v1.UsersetTreeR\x04tree\"\xb2\x01\n" +
+	"\x04tree\x18\x01 \x01(\v2\x19.workspace.v1.UsersetTreeR\x04tree\"\xef\x01\n" +
 	"\x12ListObjectsRequest\x12\x1c\n" +
 	"\tnamespace\x18\x01 \x01(\tR\tnamespace\x12\x1a\n" +
 	"\brelation\x18\x02 \x01(\tR\brelation\x12&\n" +
 	"\x0fsubject_user_id\x18\x03 \x01(\tR\rsubjectUserId\x12\x1d\n" +
 	"\n" +
 	"project_id\x18\x04 \x01(\tR\tprojectId\x12\x1b\n" +
-	"\ttenant_id\x18\x05 \x01(\tR\btenantId\"4\n" +
+	"\ttenant_id\x18\x05 \x01(\tR\btenantId\x12;\n" +
+	"\x1aat_least_consistency_token\x18\x06 \x01(\tR\x17atLeastConsistencyToken\"4\n" +
 	"\x13ListObjectsResponse\x12\x1d\n" +
 	"\n" +
 	"object_ids\x18\x01 \x03(\tR\tobjectIds\"m\n" +

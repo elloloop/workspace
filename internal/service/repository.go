@@ -24,6 +24,11 @@ type Repository interface {
 	WriteTuples(ctx context.Context, projectID, tenantID string, inserts, deletes []authz.Tuple) error
 	// ReadTuples returns stored tuples matching the non-empty filter fields.
 	ReadTuples(ctx context.Context, projectID, tenantID string, f TupleFilter) ([]authz.Tuple, error)
+	// ConsistencyToken returns the current monotonic write sequence for a
+	// (project, tenant) shard — the value a WriteTuples reaches and that a read
+	// carrying a consistency token is checked against. It only ever increases
+	// (per shard) and is 0 for a shard that has never been written.
+	ConsistencyToken(ctx context.Context, projectID, tenantID string) (int64, error)
 	// DeleteAllSubjectTuplesInProject deletes every tuple whose concrete subject
 	// is userID, across all namespaces AND ALL TENANTS of the project, in one
 	// transaction. It returns the count deleted. This is the storage primitive

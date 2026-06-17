@@ -30,6 +30,9 @@ func (h *Handler) BatchCheck(ctx context.Context, req *connect.Request[workspace
 	}
 	h.metrics.observeBatchItems(len(items))
 	p := h.scope(ctx, req.Msg.ProjectId, req.Msg.TenantId)
+	if err := h.svc.EnsureConsistency(ctx, p, req.Msg.AtLeastConsistencyToken); err != nil {
+		return nil, errToConnect(err)
+	}
 
 	svcItems := make([]service.BatchCheckItem, len(items))
 	for i, it := range items {

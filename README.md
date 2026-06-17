@@ -22,7 +22,10 @@ them.
 - **A relation-tuple authorization engine** (`AuthzService`) — a Zanzibar-style
   ReBAC core. Write tuples, then ask `Check` "may this user do this?" and
   `Expand` "who can?". Generic over namespaces, so any consuming product
-  expresses its own access model as tuples.
+  expresses its own access model as tuples. `WriteRelationTuples` returns an
+  optional **consistency token**; pass it to a later read
+  (`at_least_consistency_token`) for **read-after-write** (observe at least that
+  write). See [docs/authorization-model.md](docs/authorization-model.md#consistency-tokens-read-after-write).
 - **Workspaces** (`WorkspaceService`) — every user automatically owns one
   **personal** workspace; they may create **team** workspaces and add members
   with a role (`owner` ⊃ `admin` ⊃ `member` ⊃ `guest`). This serves both B2C (a

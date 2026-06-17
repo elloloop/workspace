@@ -1008,6 +1008,15 @@
                   <td><p> </p></td>
                 </tr>
               
+                <tr>
+                  <td>at_least_consistency_token</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>at_least_consistency_token, when set, demands the batch observe state at
+least as fresh as the token (from a prior WriteRelationTuples). Empty =
+read latest. A malformed or foreign-shard token is rejected. </p></td>
+                </tr>
+              
             </tbody>
           </table>
 
@@ -1143,6 +1152,15 @@ member of the set has the relation. </p></td>
 evaluated against (e.g. {&#34;age&#34;: 9, &#34;consent&#34;: true, &#34;ip&#34;: &#34;1.2.3.4&#34;,
 &#34;now&#34;: &#34;2026-06-16T00:00:00Z&#34;}). Unset = no context; conditional grants
 then fail closed, while unconditional grants are unaffected. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>at_least_consistency_token</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>at_least_consistency_token, when set, demands the check observe state at
+least as fresh as the token (from a prior WriteRelationTuples). Empty =
+read latest. A malformed or foreign-shard token is rejected. </p></td>
                 </tr>
               
             </tbody>
@@ -1742,6 +1760,15 @@ every tenant of the project. </p></td>
                   <td><a href="#string">string</a></td>
                   <td></td>
                   <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>at_least_consistency_token</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>at_least_consistency_token, when set, demands the expansion reflect state at
+least as fresh as the token (from a prior WriteRelationTuples). Empty =
+read latest. A malformed or foreign-shard token is rejected. </p></td>
                 </tr>
               
             </tbody>
@@ -2690,6 +2717,15 @@ it out of band; it is never echoed by ListInvitations. </p></td>
                   <td><p> </p></td>
                 </tr>
               
+                <tr>
+                  <td>at_least_consistency_token</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>at_least_consistency_token, when set, demands the listing reflect state at
+least as fresh as the token (from a prior WriteRelationTuples). Empty =
+read latest. A malformed or foreign-shard token is rejected. </p></td>
+                </tr>
+              
             </tbody>
           </table>
 
@@ -3052,6 +3088,15 @@ means the project uses the built-in default model. </p></td>
                   <td><a href="#string">string</a></td>
                   <td></td>
                   <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>at_least_consistency_token</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>at_least_consistency_token, when set, demands the read reflect state at
+least as fresh as the token (from a prior WriteRelationTuples). Empty =
+read latest. A malformed or foreign-shard token is rejected. </p></td>
                 </tr>
               
             </tbody>
@@ -4418,6 +4463,26 @@ only way to undo a previously-set cap. </p></td>
         <p></p>
 
         
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>consistency_token</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>consistency_token is an opaque &#34;zookie&#34; naming the shard&#39;s write sequence
+reached by this batch. Pass it to a later Check/Expand/ListObjects/
+BatchCheck/ReadRelationTuples as at_least_consistency_token to demand
+read-after-write (observe at least this write). Optional to use. </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
 
         
       

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/elloloop/workspace/internal/consistencytoken"
 	"github.com/elloloop/workspace/pkg/authz"
 )
 
@@ -16,12 +17,15 @@ type TupleOp struct {
 
 // WriteTuples applies raw relation-tuple writes for the caller's project and
 // tenant. The caller is a trusted product backend holding a verified token;
-// writes are scoped to its (project, tenant) shard and validated for shape.
-func (s *Service) WriteTuples(ctx context.Context, p Principal, ops []TupleOp) error {
+// writes are scoped to its (project, tenant) shard and validated for shape. It
+// returns an opaque consistency token naming the shard's write sequence reached
+// by this batch; a caller may pass it to a later read (EnsureConsistency) to
+// demand read-after-write — observing at least this write.
+func (s *Service) WriteTuples(ctx context.Context, p Principal, ops []TupleOp) (string, error) {
 	var inserts, deletes []authz.Tuple
 	for _, op := range ops {
 		if err := validateTuple(op.Tuple); err != nil {
-			return err
+			return "", err
 		}
 		if op.Delete {
 			deletes = append(deletes, op.Tuple)
@@ -30,12 +34,46 @@ func (s *Service) WriteTuples(ctx context.Context, p Principal, ops []TupleOp) e
 		}
 	}
 	if err := s.ensureProjectActive(ctx, p); err != nil {
-		return err
+		return "", err
 	}
 	if err := s.repo.WriteTuples(ctx, p.ProjectID, p.TenantID, inserts, deletes); err != nil {
-		return err
+		return "", err
 	}
 	s.auditTupleChanges(ctx, p, inserts, deletes)
+	seq, err := s.repo.ConsistencyToken(ctx, p.ProjectID, p.TenantID)
+	if err != nil {
+		return "", err
+	}
+	return consistencytoken.Encode(p.ProjectID, p.TenantID, seq), nil
+}
+
+// EnsureConsistency enforces a caller-supplied read-after-write token before a
+// read. An empty token is a no-op (read latest — today's behavior). A malformed
+// token, or one issued for a different (project, tenant) shard, is rejected
+// (ErrInvalidArgument) rather than silently ignored. Otherwise the read must
+// reflect state at least as fresh as the token: on this single primary store a
+// read always sees every committed write, so any token the store could have
+// issued (seq <= the shard's current sequence) is satisfied immediately; a token
+// demanding state the store has not reached (a forged/foreign seq — or, once read
+// replicas exist, a lagging replica) fails closed with ErrFailedPrecondition.
+func (s *Service) EnsureConsistency(ctx context.Context, p Principal, token string) error {
+	if token == "" {
+		return nil
+	}
+	tok, err := consistencytoken.Decode(token)
+	if err != nil {
+		return fmt.Errorf("%w: %w", ErrInvalidArgument, err)
+	}
+	if tok.Project != p.ProjectID || tok.Tenant != p.TenantID {
+		return fmt.Errorf("%w: consistency token is for a different project/tenant", ErrInvalidArgument)
+	}
+	current, err := s.repo.ConsistencyToken(ctx, p.ProjectID, p.TenantID)
+	if err != nil {
+		return err
+	}
+	if current < tok.Seq {
+		return fmt.Errorf("%w: store has not reached the requested consistency sequence", ErrFailedPrecondition)
+	}
 	return nil
 }
 

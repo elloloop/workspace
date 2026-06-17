@@ -35,7 +35,8 @@ func TestPostgresConformance(t *testing.T) {
 	conformance.Run(t, func() service.Repository {
 		// Each Run gets a clean slate by truncating every table.
 		_, err := store.Pool().Exec(ctx,
-			`TRUNCATE workspaces, memberships, invitations, groups, relation_tuples`)
+			`TRUNCATE workspaces, memberships, invitations, groups, relation_tuples,
+				consistency_seq, enrollments, seat_limits, seat_assignments`)
 		if err != nil {
 			t.Fatalf("TRUNCATE: %v", err)
 		}
