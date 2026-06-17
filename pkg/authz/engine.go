@@ -25,10 +25,15 @@ type ObjectLister interface {
 	ListObjectIDs(ctx context.Context, projectID, tenantID, namespace string) ([]string, error)
 }
 
-// maxRecursionDepth bounds rewrite recursion as a cycle/runaway backstop. It is
-// generous enough for deeply nested folder/collection hierarchies; past it the
-// engine fails closed gracefully (a clean deny, not an error).
-const maxRecursionDepth = 100
+// maxRecursionDepth bounds rewrite recursion as a cycle/runaway backstop, and so
+// bounds worst-case per-request cost (a poisoning cycle degrades the memo to
+// O(depth^2)). Kept at the historical 32 — ample for nested folder/collection
+// hierarchies in practice — rather than raised, so this feature adds no new
+// cost ceiling for any recursive relation. Past it the engine fails closed
+// gracefully on EVERY path (Check, Expand, CheckSet): a clean deny / truncated
+// tree, never an error. Deeper nesting + a tighter per-request read budget are
+// tracked as a follow-up.
+const maxRecursionDepth = 32
 
 // evalState is the per-top-level-Check scratch state: the path-local cycle guard,
 // a request-scoped result memo, and a counter of cycle/depth hits used to decide

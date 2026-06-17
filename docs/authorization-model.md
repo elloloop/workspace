@@ -176,10 +176,12 @@ tuples, so a stray `workspace:w#editor@x` tuple is **inert** and cannot leak
 onto child resources. A `resource→resource` chain inherits level by level —
 `editor` on `folderA` flows to a `doc` nested two folders deep. Deep/branching
 hierarchies are bounded two ways: the engine caps recursion at `maxDepth`
-(`100`), past which it **fails closed gracefully** (a clean deny, never an
-error), and a **request-scoped memo** collapses the DAG so each node is
-evaluated once per `Check`/`Expand` (acyclic results are cached; cyclic models
-recompute and stay fail-closed).
+(`32`), past which **every** path — `Check`, `Expand`, and `CheckSet` — **fails
+closed gracefully** (a clean deny / truncated tree, never an error/`CodeInternal`),
+and a **request-scoped memo** collapses the DAG so each node is evaluated once
+per call (acyclic results are cached; cyclic models recompute and stay
+fail-closed). A tighter per-request read budget and deeper nesting are tracked
+follow-ups.
 
 So workspace admins can edit anything in the workspace and members can view it,
 with **zero** per-resource tuples — while individual users or groups can still be

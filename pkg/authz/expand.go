@@ -3,7 +3,6 @@ package authz
 import (
 	"context"
 	"errors"
-	"fmt"
 )
 
 // ErrExpandTooLarge is returned by Expand when the expanded tree would exceed
@@ -68,7 +67,10 @@ func (e *Engine) ExpandWithModel(ctx context.Context, m Model, projectID, tenant
 func (e *Engine) expand(ctx context.Context, m Model, projectID, tenantID, ns, obj, rel string, count *int, max int, visited map[string]bool, depth int) (Tree, error) {
 	self := SubjectSet{Namespace: ns, ObjectID: obj, Relation: rel}
 	if depth > e.maxDepth {
-		return Tree{Expanded: self}, fmt.Errorf("authz: max recursion depth exceeded at %s", visitKey(ns, obj, rel))
+		// Fail closed GRACEFULLY (consistent with Check/CheckSet): truncate the
+		// tree at a bare leaf rather than erroring, so a deeply nested or cyclic
+		// hierarchy can never turn Expand into a CodeInternal (500) / deep-nest DoS.
+		return Tree{Expanded: self}, nil
 	}
 	key := visitKey(ns, obj, rel)
 	if visited[key] {

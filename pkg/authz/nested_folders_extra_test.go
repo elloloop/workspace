@@ -93,19 +93,20 @@ func TestVeryDeepChainFailsClosedGracefully(t *testing.T) {
 		t.Fatal("over-deep chain for an ungranted user must deny")
 	}
 
-	// Within the bound: still grants.
-	const ok50 = 50
+	// Within the bound: still grants. Each resource level consumes a few units
+	// of recursion depth, so keep the chain comfortably under maxRecursionDepth.
+	const withinBound = 10
 	within := &fakeReader{}
-	for i := 0; i < ok50; i++ {
+	for i := 0; i < withinBound; i++ {
 		within.add("resource", fmt.Sprintf("g%d", i), "parent", set("resource", fmt.Sprintf("g%d", i+1), "viewer"))
 	}
-	within.add("resource", fmt.Sprintf("g%d", ok50), "editor", user("alice"))
+	within.add("resource", fmt.Sprintf("g%d", withinBound), "editor", user("alice"))
 	got, err := NewEngine(nil, within).Check(ctx, "p", "", "resource", "g0", "viewer", "alice", nil)
 	if err != nil {
 		t.Fatalf("within-bound deep chain errored: %v", err)
 	}
 	if !got {
-		t.Fatalf("alice's editor at level %d should grant viewer at the bottom", ok50)
+		t.Fatalf("alice's editor at level %d should grant viewer at the bottom", withinBound)
 	}
 }
 

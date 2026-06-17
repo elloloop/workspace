@@ -1,9 +1,6 @@
 package authz
 
-import (
-	"context"
-	"fmt"
-)
+import "context"
 
 // CheckSet answers whether the userset `set` has `relation` on
 // namespace:objectID — "does the queried userset intersect the relation's
@@ -74,7 +71,10 @@ func (e *Engine) CheckSetWithModel(ctx context.Context, m Model, projectID, tena
 // cannot be enumerated). visited + maxDepth bound cycles and runaway recursion.
 func (e *Engine) resolveMembers(ctx context.Context, m Model, projectID, tenantID string, set SubjectSet, visited map[string]bool, depth int) (map[string]struct{}, bool, error) {
 	if depth > e.maxDepth {
-		return nil, false, fmt.Errorf("authz: max recursion depth exceeded resolving %s", visitKey(set.Namespace, set.ObjectID, set.Relation))
+		// Fail closed GRACEFULLY (consistent with Check/Expand): a too-deep or
+		// cyclic userset resolves to no members rather than erroring, so a deep
+		// chain can never turn CheckSet into a CodeInternal (500) / deep-nest DoS.
+		return map[string]struct{}{}, false, nil
 	}
 	key := visitKey(set.Namespace, set.ObjectID, set.Relation)
 	if visited[key] {
