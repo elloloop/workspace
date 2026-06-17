@@ -42,6 +42,9 @@ type Deps struct {
 	// AdminRateLimitPerMinute throttles the admin API per caller; non-positive
 	// disables the limiter.
 	AdminRateLimitPerMinute int
+	// TenantRateLimitPerMinute throttles authz RPCs per (project, tenant);
+	// non-positive disables the limiter.
+	TenantRateLimitPerMinute int
 	// DecisionLogger, when non-nil, receives an audit record for every
 	// Check/CheckSet decision. The caller owns its lifecycle (Close).
 	DecisionLogger service.DecisionLogger
@@ -73,7 +76,7 @@ func New(ctx context.Context, d Deps) (http.Handler, error) {
 	if err := svc.EnsureDefaultProject(ctx, d.DefaultProjectID); err != nil {
 		return nil, err
 	}
-	h := connecthandler.NewHandler(svc, d.DefaultProjectID, d.DefaultTenantID, d.AdminAPISecret, d.MaxBatchCheckItems, d.AdminRateLimitPerMinute)
+	h := connecthandler.NewHandler(svc, d.DefaultProjectID, d.DefaultTenantID, d.AdminAPISecret, d.MaxBatchCheckItems, d.AdminRateLimitPerMinute, d.TenantRateLimitPerMinute)
 
 	mux := http.NewServeMux()
 	wsPath, wsHandler := workspacev1connect.NewWorkspaceServiceHandler(h)

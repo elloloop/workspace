@@ -227,6 +227,7 @@ All config is via environment variables (the `GATEWAY_` prefix matches identity)
 | `GATEWAY_MAX_EXPAND_NODES` | Maximum nodes/subjects in a single `Expand` result tree (over-cap returns `ResourceExhausted`) | `10000` |
 | `GATEWAY_MAX_BATCH_CHECK_ITEMS` | Maximum items in a single `BatchCheck` request | `1000` |
 | `GATEWAY_ADMIN_RATE_LIMIT_PER_MINUTE` | Per-caller request cap on the admin API (online brute-force protection); over-limit returns `ResourceExhausted`. `0` or negative disables it. | `30` |
+| `GATEWAY_TENANT_RATE_LIMIT_PER_MINUTE` | Per-`(project, tenant)` request cap on the authz data-plane RPCs (Check/BatchCheck/Expand/ListObjects/WriteRelationTuples/…); over-limit returns `ResourceExhausted`. `0` or negative (the default) disables it. | `0` |
 | `GATEWAY_DECISION_LOG` | Enable the append-only authorization decision audit log: every `Check`/`CheckSet` decision is emitted to the structured logger by an async, non-blocking drain (full buffer drops + counts; never slows or fails a check). | `false` |
 | `GATEWAY_AUDIT_LOG` | Enable the append-only change audit log: every relation-tuple grant/revocation (`WriteRelationTuples`) and admin mutation (`CreateProject`/`UpdateProject`, incl. status/model changes — the admin secret is never logged) is emitted to the structured logger by the same async, non-blocking drain. | `false` |
 
