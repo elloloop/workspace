@@ -1,9 +1,6 @@
 package authz
 
-import (
-	"context"
-	"fmt"
-)
+import "context"
 
 // CheckSet answers whether the userset `set` has `relation` on
 // namespace:objectID — "does the queried userset intersect the relation's
@@ -32,7 +29,7 @@ func (e *Engine) CheckSet(ctx context.Context, projectID, tenantID, namespace, o
 // CheckSetWithModel is CheckSet against an already-resolved model.
 func (e *Engine) CheckSetWithModel(ctx context.Context, m Model, projectID, tenantID, namespace, objectID, relation string, set SubjectSet) (bool, error) {
 	// (1) structural inclusion through the monotone fragment, or target-public.
-	ok, err := e.check(ctx, m, projectID, tenantID, namespace, objectID, relation, subjectQuery{set: &set}, nil, false, map[string]bool{}, 0)
+	ok, err := e.check(ctx, m, projectID, tenantID, namespace, objectID, relation, subjectQuery{set: &set}, nil, false, newEvalState(), 0)
 	if err != nil || ok {
 		return ok, err
 	}
@@ -43,7 +40,7 @@ func (e *Engine) CheckSetWithModel(ctx context.Context, m Model, projectID, tena
 		return false, err
 	}
 	for u := range members {
-		ok, err := e.check(ctx, m, projectID, tenantID, namespace, objectID, relation, subjectQuery{user: u}, nil, false, map[string]bool{}, 0)
+		ok, err := e.check(ctx, m, projectID, tenantID, namespace, objectID, relation, subjectQuery{user: u}, nil, false, newEvalState(), 0)
 		if err != nil {
 			return false, err
 		}
@@ -74,7 +71,10 @@ func (e *Engine) CheckSetWithModel(ctx context.Context, m Model, projectID, tena
 // cannot be enumerated). visited + maxDepth bound cycles and runaway recursion.
 func (e *Engine) resolveMembers(ctx context.Context, m Model, projectID, tenantID string, set SubjectSet, visited map[string]bool, depth int) (map[string]struct{}, bool, error) {
 	if depth > e.maxDepth {
-		return nil, false, fmt.Errorf("authz: max recursion depth exceeded resolving %s", visitKey(set.Namespace, set.ObjectID, set.Relation))
+		// Fail closed GRACEFULLY (consistent with Check/Expand): a too-deep or
+		// cyclic userset resolves to no members rather than erroring, so a deep
+		// chain can never turn CheckSet into a CodeInternal (500) / deep-nest DoS.
+		return map[string]struct{}{}, false, nil
 	}
 	key := visitKey(set.Namespace, set.ObjectID, set.Relation)
 	if visited[key] {

@@ -122,25 +122,41 @@ type Model map[string]Namespace
 //   - workspace: the membership grades, ordered owner ⊃ admin ⊃ member ⊃ guest.
 //   - group:     a nestable membership set (subjects may be group usersets).
 //   - resource:  a generic product object that inherits access from a parent
-//     workspace (tuple_to_userset) and supports direct per-object sharing
-//     (this) — covering Linear-style issues, learning-platform courses, and
-//     a personal-assistant task shared with another person.
+//     (a workspace OR another resource, for nested folders/collections) and
+//     supports direct per-object sharing (this) — covering Linear-style issues,
+//     learning-platform courses, and a personal-assistant task shared with
+//     another person.
 func DefaultModel() Model {
 	return Model{
+		// workspace: the grades owner ⊃ admin ⊃ member ⊃ guest, plus editor/viewer
+		// aliases (editor=admin, viewer=member) so a resource inherits from a
+		// workspace parent through a SINGLE editor/viewer leg. The aliases resolve
+		// through the model (computed), NOT raw tuples, so a stray
+		// `workspace:w#editor@x` tuple is inert and cannot leak onto child resources.
 		"workspace": {
 			"owner":  this(),
 			"admin":  union(this(), computed("owner")),
 			"member": union(this(), computed("admin")),
 			"guest":  union(this(), computed("member")),
+			"editor": computed("admin"),
+			"viewer": computed("member"),
 		},
 		"group": {
 			"member": this(),
 		},
+		// resource: a generic product object that inherits access from its
+		// `parent`, which may be a workspace OR another resource (nested
+		// folders/collections). editor/viewer flow transitively up the chain via a
+		// SINGLE parent leg per level: a WORKSPACE parent resolves editor→admin /
+		// viewer→member through the workspace aliases above; a RESOURCE parent
+		// recurses editor/viewer up the chain. A workspace-rooted resource behaves
+		// exactly as before. Deep chains are bounded by the engine's maxDepth and
+		// made cheap by request-scoped memoization.
 		"resource": {
 			"parent": this(),
 			"owner":  this(),
-			"editor": union(this(), computed("owner"), tupleToUserset("parent", "admin")),
-			"viewer": union(this(), computed("editor"), tupleToUserset("parent", "member")),
+			"editor": union(this(), computed("owner"), tupleToUserset("parent", "editor")),
+			"viewer": union(this(), computed("editor"), tupleToUserset("parent", "viewer")),
 		},
 	}
 }

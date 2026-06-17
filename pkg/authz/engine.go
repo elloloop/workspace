@@ -3,7 +3,7 @@ package authz
 import (
 	"context"
 	"errors"
-	"fmt"
+	"strconv"
 )
 
 // TupleReader is the store boundary the engine reads through. It returns the
@@ -25,6 +25,30 @@ type ObjectLister interface {
 	ListObjectIDs(ctx context.Context, projectID, tenantID, namespace string) ([]string, error)
 }
 
+// maxRecursionDepth bounds rewrite recursion as a cycle/runaway backstop, and so
+// bounds worst-case per-request cost (a poisoning cycle degrades the memo to
+// O(depth^2)). Kept at the historical 32 — ample for nested folder/collection
+// hierarchies in practice — rather than raised, so this feature adds no new
+// cost ceiling for any recursive relation. Past it the engine fails closed
+// gracefully on EVERY path (Check, Expand, CheckSet): a clean deny / truncated
+// tree, never an error. Deeper nesting + a tighter per-request read budget are
+// tracked as a follow-up.
+const maxRecursionDepth = 32
+
+// evalState is the per-top-level-Check scratch state: the path-local cycle guard,
+// a request-scoped result memo, and a counter of cycle/depth hits used to decide
+// which results are safe to memoize. q and cc are fixed for the lifetime of one
+// evalState, so the memo key need not include them.
+type evalState struct {
+	visited    map[string]bool
+	memo       map[string]bool
+	cyclesSeen int
+}
+
+func newEvalState() *evalState {
+	return &evalState{visited: map[string]bool{}, memo: map[string]bool{}}
+}
+
 // Engine evaluates Check/Expand against a per-project model and a tuple store.
 type Engine struct {
 	resolver ModelResolver
@@ -39,7 +63,7 @@ func NewEngine(resolver ModelResolver, reader TupleReader) *Engine {
 	if resolver == nil {
 		resolver = StaticResolver(DefaultModel())
 	}
-	return &Engine{resolver: resolver, reader: reader, maxDepth: 32}
+	return &Engine{resolver: resolver, reader: reader, maxDepth: maxRecursionDepth}
 }
 
 // subjectQuery is what a Check is testing for: exactly one of a concrete user
@@ -64,7 +88,7 @@ func (e *Engine) Check(ctx context.Context, projectID, tenantID, namespace, obje
 // has resolved the project once (e.g. for a suspension check) does not trigger a
 // second resolve.
 func (e *Engine) CheckWithModel(ctx context.Context, m Model, projectID, tenantID, namespace, objectID, relation, userID string, cc map[string]any) (bool, error) {
-	return e.check(ctx, m, projectID, tenantID, namespace, objectID, relation, subjectQuery{user: userID}, cc, false, map[string]bool{}, 0)
+	return e.check(ctx, m, projectID, tenantID, namespace, objectID, relation, subjectQuery{user: userID}, cc, false, newEvalState(), 0)
 }
 
 func visitKey(ns, obj, rel string) string { return ns + ":" + obj + "#" + rel }
@@ -74,27 +98,50 @@ func visitKey(ns, obj, rel string) string { return ns + ":" + obj + "#" + rel }
 // only changes what a CYCLE defaults to: positive context a cycle contributes
 // nothing (false); negated context a cycle fails CLOSED (true = "excluded"), so a
 // self-referential block/suspend denies instead of fanning open.
-func (e *Engine) check(ctx context.Context, m Model, projectID, tenantID, ns, obj, rel string, q subjectQuery, cc map[string]any, negated bool, visited map[string]bool, depth int) (bool, error) {
-	if depth > e.maxDepth {
-		return false, fmt.Errorf("authz: max recursion depth exceeded at %s", visitKey(ns, obj, rel))
-	}
+func (e *Engine) check(ctx context.Context, m Model, projectID, tenantID, ns, obj, rel string, q subjectQuery, cc map[string]any, negated bool, st *evalState, depth int) (bool, error) {
 	key := visitKey(ns, obj, rel)
-	if visited[key] {
-		return negated, nil // cycle: positive => contributes nothing; negated => fail closed
+	if st.visited[key] {
+		// Cycle back to an in-progress ancestor: positive context contributes
+		// nothing (false); negated context fails CLOSED (true = "excluded"). Mark
+		// the request as having touched a cycle so no ancestor caches a
+		// path-dependent result below.
+		st.cyclesSeen++
+		return negated, nil
 	}
-	visited[key] = true
-	defer delete(visited, key)
+	if depth > e.maxDepth {
+		// Runaway / over-deep chain: fail CLOSED gracefully (same polarity as a
+		// cycle) rather than erroring — a deeply nested hierarchy yields a clean
+		// deny, never a CodeInternal, and cannot be weaponized into 500s.
+		st.cyclesSeen++
+		return negated, nil
+	}
+	mk := key + "\x1f" + strconv.FormatBool(negated)
+	if r, ok := st.memo[mk]; ok {
+		return r, nil
+	}
 
-	return e.evalRewrite(ctx, m, projectID, tenantID, ns, obj, rel, q, cc, m.rewrite(ns, rel), negated, visited, depth)
+	st.visited[key] = true
+	before := st.cyclesSeen
+	res, err := e.evalRewrite(ctx, m, projectID, tenantID, ns, obj, rel, q, cc, m.rewrite(ns, rel), negated, st, depth)
+	delete(st.visited, key)
+	// A node's result for the request's fixed (q, cc, negated) is path-independent
+	// UNLESS its subtree touched a cycle/depth-limit (returns the polarity default
+	// of the in-progress ancestor). Cache only when the subtree was clean — so an
+	// acyclic folder DAG collapses to one evaluation per node, while cyclic models
+	// recompute and stay fail-closed exactly as before.
+	if err == nil && st.cyclesSeen == before {
+		st.memo[mk] = res
+	}
+	return res, err
 }
 
-func (e *Engine) evalRewrite(ctx context.Context, m Model, projectID, tenantID, ns, obj, rel string, q subjectQuery, cc map[string]any, rw Rewrite, negated bool, visited map[string]bool, depth int) (bool, error) {
+func (e *Engine) evalRewrite(ctx context.Context, m Model, projectID, tenantID, ns, obj, rel string, q subjectQuery, cc map[string]any, rw Rewrite, negated bool, st *evalState, depth int) (bool, error) {
 	switch {
 	case rw.isThis():
-		return e.evalThis(ctx, m, projectID, tenantID, ns, obj, rel, q, cc, negated, visited, depth)
+		return e.evalThis(ctx, m, projectID, tenantID, ns, obj, rel, q, cc, negated, st, depth)
 	case len(rw.Union) > 0:
 		for _, child := range rw.Union {
-			ok, err := e.evalRewrite(ctx, m, projectID, tenantID, ns, obj, rel, q, cc, child, negated, visited, depth)
+			ok, err := e.evalRewrite(ctx, m, projectID, tenantID, ns, obj, rel, q, cc, child, negated, st, depth)
 			if err != nil {
 				return false, err
 			}
@@ -112,7 +159,7 @@ func (e *Engine) evalRewrite(ctx context.Context, m Model, projectID, tenantID, 
 			return false, nil
 		}
 		for _, child := range rw.Intersection {
-			ok, err := e.evalRewrite(ctx, m, projectID, tenantID, ns, obj, rel, q, cc, child, negated, visited, depth)
+			ok, err := e.evalRewrite(ctx, m, projectID, tenantID, ns, obj, rel, q, cc, child, negated, st, depth)
 			if err != nil {
 				return false, err
 			}
@@ -125,20 +172,20 @@ func (e *Engine) evalRewrite(ctx context.Context, m Model, projectID, tenantID, 
 		if q.set != nil {
 			return false, nil // a set query cannot be matched structurally through exclusion
 		}
-		ok, err := e.evalRewrite(ctx, m, projectID, tenantID, ns, obj, rel, q, cc, rw.Exclusion.Include, negated, visited, depth)
+		ok, err := e.evalRewrite(ctx, m, projectID, tenantID, ns, obj, rel, q, cc, rw.Exclusion.Include, negated, st, depth)
 		if err != nil || !ok {
 			return false, err
 		}
 		// The Exclude branch flips polarity: a cycle here must fail closed.
-		excluded, err := e.evalRewrite(ctx, m, projectID, tenantID, ns, obj, rel, q, cc, rw.Exclusion.Exclude, !negated, visited, depth)
+		excluded, err := e.evalRewrite(ctx, m, projectID, tenantID, ns, obj, rel, q, cc, rw.Exclusion.Exclude, !negated, st, depth)
 		if err != nil {
 			return false, err
 		}
 		return !excluded, nil
 	case rw.Computed != "":
-		return e.check(ctx, m, projectID, tenantID, ns, obj, rw.Computed, q, cc, negated, visited, depth+1)
+		return e.check(ctx, m, projectID, tenantID, ns, obj, rw.Computed, q, cc, negated, st, depth+1)
 	case rw.TuplesetRelation != "":
-		return e.evalTupleToUserset(ctx, m, projectID, tenantID, ns, obj, rw, q, cc, negated, visited, depth)
+		return e.evalTupleToUserset(ctx, m, projectID, tenantID, ns, obj, rw, q, cc, negated, st, depth)
 	default:
 		return false, nil
 	}
@@ -150,7 +197,7 @@ func (e *Engine) evalRewrite(ctx context.Context, m Model, projectID, tenantID, 
 // to the query matches structurally (other stored sets are followed, so the query
 // can be matched transitively/nested); concrete members of the query are handled by
 // CheckSet's member resolution.
-func (e *Engine) evalThis(ctx context.Context, m Model, projectID, tenantID, ns, obj, rel string, q subjectQuery, cc map[string]any, negated bool, visited map[string]bool, depth int) (bool, error) {
+func (e *Engine) evalThis(ctx context.Context, m Model, projectID, tenantID, ns, obj, rel string, q subjectQuery, cc map[string]any, negated bool, st *evalState, depth int) (bool, error) {
 	subjects, err := e.reader.ListSubjects(ctx, projectID, tenantID, ns, obj, rel)
 	if err != nil {
 		return false, err
@@ -174,7 +221,7 @@ func (e *Engine) evalThis(ctx context.Context, m Model, projectID, tenantID, ns,
 		if q.set != nil && *s.Set == *q.set {
 			return true, nil // structural match: the queried userset is stored here
 		}
-		ok, err := e.check(ctx, m, projectID, tenantID, s.Set.Namespace, s.Set.ObjectID, s.Set.Relation, q, cc, negated, visited, depth+1)
+		ok, err := e.check(ctx, m, projectID, tenantID, s.Set.Namespace, s.Set.ObjectID, s.Set.Relation, q, cc, negated, st, depth+1)
 		if err != nil {
 			return false, err
 		}
@@ -187,7 +234,7 @@ func (e *Engine) evalThis(ctx context.Context, m Model, projectID, tenantID, ns,
 
 // evalTupleToUserset walks every userset stored under the tupleset relation
 // and checks the computed relation on each referenced object.
-func (e *Engine) evalTupleToUserset(ctx context.Context, m Model, projectID, tenantID, ns, obj string, rw Rewrite, q subjectQuery, cc map[string]any, negated bool, visited map[string]bool, depth int) (bool, error) {
+func (e *Engine) evalTupleToUserset(ctx context.Context, m Model, projectID, tenantID, ns, obj string, rw Rewrite, q subjectQuery, cc map[string]any, negated bool, st *evalState, depth int) (bool, error) {
 	subjects, err := e.reader.ListSubjects(ctx, projectID, tenantID, ns, obj, rw.TuplesetRelation)
 	if err != nil {
 		return false, err
@@ -199,7 +246,7 @@ func (e *Engine) evalTupleToUserset(ctx context.Context, m Model, projectID, ten
 		if s.Set == nil {
 			continue // tupleset entries must be usersets to walk
 		}
-		ok, err := e.check(ctx, m, projectID, tenantID, s.Set.Namespace, s.Set.ObjectID, rw.ComputedRelation, q, cc, negated, visited, depth+1)
+		ok, err := e.check(ctx, m, projectID, tenantID, s.Set.Namespace, s.Set.ObjectID, rw.ComputedRelation, q, cc, negated, st, depth+1)
 		if err != nil {
 			return false, err
 		}
