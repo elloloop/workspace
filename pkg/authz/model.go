@@ -111,6 +111,53 @@ func (r Rewrite) isThis() bool {
 		r.Computed == "" && r.TuplesetRelation == ""
 }
 
+// readsStoredTuples reports whether evaluating this rewrite ever consults the
+// relation's OWN directly-stored tuples — i.e. whether a `this` leaf is
+// reachable through the same-relation operators (union/intersection/both sides
+// of exclusion). It deliberately does NOT descend into Computed or
+// TupleToUserset: those evaluate a DIFFERENT relation/object, so a tuple stored
+// directly on this relation is never read through them. A relation whose rewrite
+// returns false here is "computed-only" — a direct tuple on it is inert (stored
+// but never consulted by Check).
+func (r Rewrite) readsStoredTuples() bool {
+	if r.isThis() {
+		return true
+	}
+	for _, c := range r.Union {
+		if c.readsStoredTuples() {
+			return true
+		}
+	}
+	for _, c := range r.Intersection {
+		if c.readsStoredTuples() {
+			return true
+		}
+	}
+	if r.Exclusion != nil {
+		if r.Exclusion.Include.readsStoredTuples() || r.Exclusion.Exclude.readsStoredTuples() {
+			return true
+		}
+	}
+	return false
+}
+
+// WritableRelation reports whether a directly-stored tuple on namespace#relation
+// would ever be consulted by Check under this model. A relation ABSENT from the
+// model defaults to `this` (direct tuples) and is writable; a relation the model
+// EXPLICITLY defines as computed-only (no reachable `this` leg) is NOT writable —
+// a stored tuple on it would be an inert no-op grant.
+func (m Model) WritableRelation(namespace, relation string) bool {
+	ns, ok := m[namespace]
+	if !ok {
+		return true // unknown namespace → ad-hoc direct tuples
+	}
+	rw, ok := ns[relation]
+	if !ok {
+		return true // unknown relation → defaults to `this`
+	}
+	return rw.readsStoredTuples()
+}
+
 // Namespace maps each relation name to its rewrite rule.
 type Namespace map[string]Rewrite
 
