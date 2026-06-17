@@ -23,7 +23,9 @@ type Config struct {
 	DefaultProjectID string
 	// DefaultTenantID is applied when a request omits tenant_id.
 	DefaultTenantID string
-	AllowedOrigins  []string
+	// DataRegion is the region this instance serves; empty = region-agnostic.
+	DataRegion     string
+	AllowedOrigins []string
 	// ServiceAuthTokens are the accepted service credentials. Empty disables
 	// the requirement (trusted network / mesh).
 	ServiceAuthTokens []string
@@ -90,6 +92,7 @@ func New(ctx context.Context, opts Options) (*Server, error) {
 		Repo:                     repo,
 		DefaultProjectID:         projectID,
 		DefaultTenantID:          opts.Config.DefaultTenantID,
+		DataRegion:               opts.Config.DataRegion,
 		AllowedOrigins:           opts.Config.AllowedOrigins,
 		ServiceAuthTokens:        opts.Config.ServiceAuthTokens,
 		ServiceCredentials:       opts.Config.ServiceCredentials,

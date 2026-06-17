@@ -80,11 +80,11 @@ func TestAuditAdminMutations(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ParseModel: %v", err)
 	}
-	if _, err := svc.CreateProject(ctx, "prj", "Kids", model); err != nil {
+	if _, err := svc.CreateProject(ctx, "prj", "Kids", model, ""); err != nil {
 		t.Fatalf("CreateProject: %v", err)
 	}
 	// status-only update: StatusChanged true, ModelChanged false.
-	if _, err := svc.UpdateProject(ctx, "prj", "", service.ProjectSuspended, nil); err != nil {
+	if _, err := svc.UpdateProject(ctx, "prj", "", service.ProjectSuspended, nil, ""); err != nil {
 		t.Fatalf("UpdateProject: %v", err)
 	}
 	recs := a.adminRecs()

@@ -26,6 +26,11 @@ type Config struct {
 	// (the project's default tenant). Empty is the conventional default.
 	DefaultTenantID string
 
+	// DataRegion is the region this instance serves: it refuses to operate on a
+	// project pinned to a different data_region (fail closed). Empty (default)
+	// is region-agnostic — serves every project, today's behavior.
+	DataRegion string
+
 	// PostgresDSN selects the postgres driver when set; empty uses memory.
 	PostgresDSN string
 	// PostgresAutoMigrate runs pending migrations on boot when true.
@@ -94,6 +99,7 @@ func Load() (*Config, error) {
 		MetricsPort:              envInt("GATEWAY_METRICS_PORT", 9090),
 		DefaultProjectID:         envStr("GATEWAY_DEFAULT_PROJECT_ID", DefaultProjectIDFallback),
 		DefaultTenantID:          envStr("GATEWAY_DEFAULT_TENANT_ID", ""),
+		DataRegion:               envStr("GATEWAY_DATA_REGION", ""),
 		PostgresDSN:              envStr("GATEWAY_POSTGRES_DSN", ""),
 		PostgresAutoMigrate:      envBool("GATEWAY_POSTGRES_AUTO_MIGRATE", true),
 		ServiceAuthTokens:        envCSV("GATEWAY_SERVICE_AUTH_TOKENS"),

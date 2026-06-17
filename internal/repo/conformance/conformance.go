@@ -582,7 +582,7 @@ func testProjects(t *testing.T, r service.Repository) {
 		t.Fatalf("ParseModel: %v", err)
 	}
 
-	p1 := &service.Project{ID: "prj1", Name: "Kids", Status: service.ProjectActive, Model: model, CreatedAt: now, UpdatedAt: now}
+	p1 := &service.Project{ID: "prj1", Name: "Kids", Status: service.ProjectActive, Model: model, DataRegion: "us-east-1", CreatedAt: now, UpdatedAt: now}
 	if err := r.CreateProject(ctx(), p1); err != nil {
 		t.Fatalf("CreateProject: %v", err)
 	}
@@ -603,8 +603,11 @@ func testProjects(t *testing.T, r service.Repository) {
 	if string(gotJSON) != string(wantJSON) {
 		t.Fatalf("model round-trip:\n got %s\nwant %s", gotJSON, wantJSON)
 	}
-	if got2, _ := r.GetProject(ctx(), "prj2"); got2.Model != nil {
-		t.Fatalf("prj2 model = %v, want nil", got2.Model)
+	if got.DataRegion != "us-east-1" {
+		t.Fatalf("data region round-trip = %q, want us-east-1", got.DataRegion)
+	}
+	if got2, _ := r.GetProject(ctx(), "prj2"); got2.Model != nil || got2.DataRegion != "" {
+		t.Fatalf("prj2 = %+v, want nil model + empty region", got2)
 	}
 
 	list, err := r.ListProjects(ctx())

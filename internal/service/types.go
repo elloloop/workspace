@@ -25,12 +25,16 @@ const (
 // boundary and are addressed by tenant_id on every scoped call (no separate
 // row is required for the default tenant).
 type Project struct {
-	ID        string
-	Name      string
-	Status    ProjectStatus
-	Model     authz.Model // nil ⇒ DefaultModel
-	CreatedAt time.Time
-	UpdatedAt time.Time
+	ID     string
+	Name   string
+	Status ProjectStatus
+	Model  authz.Model // nil ⇒ DefaultModel
+	// DataRegion, when set, pins the project's data to a region/storage target.
+	// An instance configured with GATEWAY_DATA_REGION serves only projects whose
+	// region matches (or is unset); a mismatch fails closed. Empty ⇒ unpinned.
+	DataRegion string
+	CreatedAt  time.Time
+	UpdatedAt  time.Time
 }
 
 // Role is a workspace membership grade. It is also the relation name written

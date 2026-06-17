@@ -48,6 +48,8 @@ type Deps struct {
 	// TenantRateLimitPerMinute throttles authz RPCs per (project, tenant);
 	// non-positive disables the limiter.
 	TenantRateLimitPerMinute int
+	// DataRegion is the region this instance serves; empty = region-agnostic.
+	DataRegion string
 	// DecisionLogger, when non-nil, receives an audit record for every
 	// Check/CheckSet decision. The caller owns its lifecycle (Close).
 	DecisionLogger service.DecisionLogger
@@ -68,6 +70,7 @@ func New(ctx context.Context, d Deps) (http.Handler, error) {
 	opts := []service.Option{
 		service.WithMaxListObjects(d.MaxListObjects),
 		service.WithMaxExpandNodes(d.MaxExpandNodes),
+		service.WithDataRegion(d.DataRegion),
 	}
 	if d.DecisionLogger != nil {
 		opts = append(opts, service.WithDecisionLogger(d.DecisionLogger))

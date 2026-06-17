@@ -68,12 +68,13 @@ func projectToProto(p *service.Project) (*workspacev1.Project, error) {
 		modelJSON = string(raw)
 	}
 	return &workspacev1.Project{
-		Id:        p.ID,
-		Name:      p.Name,
-		Status:    projectStatusToProto(p.Status),
-		ModelJson: modelJSON,
-		CreatedAt: timestamppb.New(p.CreatedAt),
-		UpdatedAt: timestamppb.New(p.UpdatedAt),
+		Id:         p.ID,
+		Name:       p.Name,
+		Status:     projectStatusToProto(p.Status),
+		ModelJson:  modelJSON,
+		DataRegion: p.DataRegion,
+		CreatedAt:  timestamppb.New(p.CreatedAt),
+		UpdatedAt:  timestamppb.New(p.UpdatedAt),
 	}, nil
 }
 
@@ -99,7 +100,7 @@ func (h *Handler) CreateProject(ctx context.Context, req *connect.Request[worksp
 	if err != nil {
 		return nil, err
 	}
-	p, err := h.svc.CreateProject(ctx, req.Msg.Id, req.Msg.Name, model)
+	p, err := h.svc.CreateProject(ctx, req.Msg.Id, req.Msg.Name, model, req.Msg.DataRegion)
 	if err != nil {
 		return nil, errToConnect(err)
 	}
@@ -133,7 +134,7 @@ func (h *Handler) UpdateProject(ctx context.Context, req *connect.Request[worksp
 	if err != nil {
 		return nil, err
 	}
-	p, err := h.svc.UpdateProject(ctx, req.Msg.Id, req.Msg.Name, projectStatusFromProto(req.Msg.Status), model)
+	p, err := h.svc.UpdateProject(ctx, req.Msg.Id, req.Msg.Name, projectStatusFromProto(req.Msg.Status), model, req.Msg.DataRegion)
 	if err != nil {
 		return nil, errToConnect(err)
 	}

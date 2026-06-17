@@ -50,6 +50,10 @@ type Service struct {
 	// auditLog, when non-nil, receives an append-only audit record for every
 	// relation-tuple change and admin mutation. Nil disables it.
 	auditLog AuditLogger
+	// dataRegion, when set, is the region this instance serves; it refuses to
+	// operate on a project pinned to a different region (fail closed). Empty =
+	// region-agnostic (serves all) — today's behavior.
+	dataRegion string
 }
 
 // Option configures a Service at construction.
@@ -63,6 +67,13 @@ func WithMaxListObjects(n int) Option {
 			s.maxListObjects = n
 		}
 	}
+}
+
+// WithDataRegion sets the region this instance serves; it then refuses to
+// operate on a project pinned to a different data region (fail closed). Empty
+// keeps the instance region-agnostic (serves all projects).
+func WithDataRegion(region string) Option {
+	return func(s *Service) { s.dataRegion = region }
 }
 
 // WithMaxExpandNodes caps the size of an Expand result tree; a non-positive

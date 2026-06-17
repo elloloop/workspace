@@ -347,6 +347,23 @@ or route-to-primary rather than serve a stale read. It is **not** a point-in-tim
 / snapshot read (out of scope) — it asserts a *lower bound* on freshness, not an
 exact version.
 
+## Data residency
+
+A project may declare a `data_region` (set via `AdminService.CreateProject` /
+`UpdateProject`); an instance declares the region it serves via
+`GATEWAY_DATA_REGION`. When both are set and **differ**, the service **fails
+closed** (`FailedPrecondition`) on every data-plane and management path that
+resolves the project, so a mis-routed request can never silently read or write
+that project's data in the wrong region. When either is empty the instance is
+**region-agnostic** and serves the project (today's behavior); the region check
+short-circuits with zero overhead.
+
+**Today vs. tomorrow.** This is the recording + validation + **serving guard**
+half. The actual multi-region storage **routing** (steering a project's reads and
+writes to a regional store, data movement on a region change) is forward-compat —
+not implemented here. The guard ensures correctness in the interim: an instance
+only ever touches data for the region it is configured to serve.
+
 ## Adding a new namespace
 
 A consuming product can use the engine in two ways:

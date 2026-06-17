@@ -756,12 +756,18 @@ message Project {
   string model_json = 4;
   google.protobuf.Timestamp created_at = 5;
   google.protobuf.Timestamp updated_at = 6;
+  // data_region, when set, pins the project's data to a region/storage target.
+  // An instance configured for a different region refuses to serve it (fail
+  // closed). Empty means unpinned. Multi-region storage ROUTING is forward-
+  // compat; today this is recorded, validated, and enforced as a serving guard.
+  string data_region = 7;
 }
 
 message CreateProjectRequest {
   string id = 1;
   string name = 2;
   string model_json = 3;
+  string data_region = 4;
 }
 message CreateProjectResponse { Project project = 1; }
 
@@ -773,6 +779,8 @@ message UpdateProjectRequest {
   string name = 2;
   ProjectStatus status = 3;
   string model_json = 4;
+  // data_region: empty leaves it unchanged (like name/model).
+  string data_region = 5;
 }
 message UpdateProjectResponse { Project project = 1; }
 

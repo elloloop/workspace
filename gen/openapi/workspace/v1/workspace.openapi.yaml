@@ -577,6 +577,9 @@ components:
         modelJson:
           type: string
           title: model_json
+        dataRegion:
+          type: string
+          title: data_region
       title: CreateProjectRequest
       additionalProperties: false
     workspace.v1.CreateProjectResponse:
@@ -1261,6 +1264,14 @@ components:
         updatedAt:
           title: updated_at
           $ref: '#/components/schemas/google.protobuf.Timestamp'
+        dataRegion:
+          type: string
+          title: data_region
+          description: |-
+            data_region, when set, pins the project's data to a region/storage target.
+             An instance configured for a different region refuses to serve it (fail
+             closed). Empty means unpinned. Multi-region storage ROUTING is forward-
+             compat; today this is recorded, validated, and enforced as a serving guard.
       title: Project
       additionalProperties: false
     workspace.v1.ReadRelationTuplesRequest:
@@ -1763,6 +1774,10 @@ components:
         modelJson:
           type: string
           title: model_json
+        dataRegion:
+          type: string
+          title: data_region
+          description: 'data_region: empty leaves it unchanged (like name/model).'
       title: UpdateProjectRequest
       additionalProperties: false
     workspace.v1.UpdateProjectResponse:

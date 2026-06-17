@@ -28,11 +28,13 @@ const resolverMaxEntries = 4096
 var sharedDefaultModel = authz.DefaultModel()
 
 // resolved is a cached project resolution: its overlaid model (nil = the shared
-// default) plus whether the project is suspended, with the time it was loaded.
+// default), whether the project is suspended, and its pinned data region (empty
+// = unpinned), with the time it was loaded.
 type resolved struct {
-	model     authz.Model
-	suspended bool
-	at        time.Time
+	model      authz.Model
+	suspended  bool
+	dataRegion string
+	at         time.Time
 }
 
 func (e resolved) modelOrDefault() authz.Model {
@@ -129,7 +131,7 @@ func (r *modelResolver) load(ctx context.Context, projectID string) (resolved, e
 		// is diagnosable rather than surfacing as an opaque CodeInternal.
 		return resolved{}, fmt.Errorf("authz: resolve project %q: %w", projectID, err)
 	}
-	e := resolved{suspended: p.Status == ProjectSuspended, at: r.now()}
+	e := resolved{suspended: p.Status == ProjectSuspended, dataRegion: p.DataRegion, at: r.now()}
 	if len(p.Model) > 0 {
 		// Overlay the project's namespaces onto a fresh copy of the defaults so
 		// the built-in product surface survives a custom model; never mutate
@@ -194,21 +196,25 @@ func (r *modelResolver) invalidate(projectID string) {
 // A nil model means the project uses the built-in default model. This is the
 // configuration surface that lets two products (e.g. a kids platform and a
 // professionals platform) run distinct models on one deployment.
-func (s *Service) CreateProject(ctx context.Context, id, name string, model authz.Model) (*Project, error) {
+func (s *Service) CreateProject(ctx context.Context, id, name string, model authz.Model, dataRegion string) (*Project, error) {
 	if id == "" {
 		return nil, fmt.Errorf("%w: project id is required", ErrInvalidArgument)
 	}
 	if err := validateModel(model); err != nil {
 		return nil, err
 	}
+	if err := validateRegion(dataRegion); err != nil {
+		return nil, err
+	}
 	now := s.now()
 	p := &Project{
-		ID:        id,
-		Name:      name,
-		Status:    ProjectActive,
-		Model:     model,
-		CreatedAt: now,
-		UpdatedAt: now,
+		ID:         id,
+		Name:       name,
+		Status:     ProjectActive,
+		Model:      model,
+		DataRegion: dataRegion,
+		CreatedAt:  now,
+		UpdatedAt:  now,
 	}
 	if err := s.repo.CreateProject(ctx, p); err != nil {
 		return nil, err
@@ -241,7 +247,7 @@ func (s *Service) ListProjects(ctx context.Context) ([]*Project, error) {
 // custom model or name. An empty name and an empty/nil model both mean "leave
 // unchanged", and an empty/unspecified status means "leave unchanged".
 // (Resetting a model back to the default is not expressed through Update.)
-func (s *Service) UpdateProject(ctx context.Context, id, name string, status ProjectStatus, model authz.Model) (*Project, error) {
+func (s *Service) UpdateProject(ctx context.Context, id, name string, status ProjectStatus, model authz.Model, dataRegion string) (*Project, error) {
 	if id == "" {
 		return nil, fmt.Errorf("%w: project id is required", ErrInvalidArgument)
 	}
@@ -249,6 +255,9 @@ func (s *Service) UpdateProject(ctx context.Context, id, name string, status Pro
 		return nil, fmt.Errorf("%w: status must be active or suspended", ErrInvalidArgument)
 	}
 	if err := validateModel(model); err != nil {
+		return nil, err
+	}
+	if err := validateRegion(dataRegion); err != nil {
 		return nil, err
 	}
 	p, err := s.repo.GetProject(ctx, id)
@@ -264,6 +273,9 @@ func (s *Service) UpdateProject(ctx context.Context, id, name string, status Pro
 	}
 	if len(model) > 0 {
 		p.Model = model
+	}
+	if dataRegion != "" {
+		p.DataRegion = dataRegion
 	}
 	p.UpdatedAt = s.now()
 	if err := s.repo.UpdateProject(ctx, p); err != nil {
@@ -292,11 +304,61 @@ func (s *Service) EnsureDefaultProject(ctx context.Context, id string) error {
 	} else if !isNotFound(err) {
 		return err
 	}
-	_, err := s.CreateProject(ctx, id, "Default", nil)
+	_, err := s.CreateProject(ctx, id, "Default", nil, "")
 	if isAlreadyExists(err) {
 		return nil // lost a race; the winner seeded it
 	}
 	return err
+}
+
+// maxDataRegionLen bounds a project's data-region identifier.
+const maxDataRegionLen = 64
+
+// validateRegion rejects a malformed data-region identifier. Empty is allowed
+// (the project is unpinned). A region is a short token of lowercase letters,
+// digits, '-' and '_' (e.g. "us-east-1", "eu_west").
+func validateRegion(region string) error {
+	if region == "" {
+		return nil
+	}
+	if len(region) > maxDataRegionLen {
+		return fmt.Errorf("%w: data region must be at most %d characters", ErrInvalidArgument, maxDataRegionLen)
+	}
+	for _, c := range region {
+		ok := c >= 'a' && c <= 'z' || c >= '0' && c <= '9' || c == '-' || c == '_'
+		if !ok {
+			return fmt.Errorf("%w: data region must be lowercase [a-z0-9_-]", ErrInvalidArgument)
+		}
+	}
+	return nil
+}
+
+// regionServable reports a fail-closed error when this instance is pinned to a
+// data region (GATEWAY_DATA_REGION) that differs from the project's pinned
+// region — so a mis-routed request is refused rather than silently reading or
+// writing data in the wrong region. When either side is empty the instance is
+// region-agnostic and serves the project (today's behavior). Multi-region
+// STORAGE routing is forward-compat; this is the enforcement half.
+func (s *Service) regionServable(p Principal, res resolved) error {
+	if s.dataRegion == "" || res.dataRegion == "" || res.dataRegion == s.dataRegion {
+		return nil
+	}
+	return fmt.Errorf("%w: project %q is pinned to data region %q; this instance serves %q",
+		ErrFailedPrecondition, p.ProjectID, res.dataRegion, s.dataRegion)
+}
+
+// ensureRegion resolves the project and applies the region guard. It is for
+// repo-direct paths that do not otherwise resolve; a region-agnostic instance
+// short-circuits with zero overhead (no resolve).
+func (s *Service) ensureRegion(ctx context.Context, p Principal) error {
+	if s.dataRegion == "" {
+		return nil
+	}
+	res, err := s.resolver.resolve(ctx, p.ProjectID)
+	if err != nil {
+		return err
+	}
+	return s.regionServable(p, res)
 }
 
 // validateModel round-trips the model through its JSON form to reject any

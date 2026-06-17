@@ -307,11 +307,12 @@ func isUniqueViolation(err error) bool {
 // projectConfig is the JSON envelope persisted in projects.config_json. The
 // model is optional; an absent model means the project uses the default model.
 type projectConfig struct {
-	Model json.RawMessage `json:"model,omitempty"`
+	Model      json.RawMessage `json:"model,omitempty"`
+	DataRegion string          `json:"data_region,omitempty"`
 }
 
-func encodeProjectConfig(m authz.Model) (string, error) {
-	cfg := projectConfig{}
+func encodeProjectConfig(m authz.Model, dataRegion string) (string, error) {
+	cfg := projectConfig{DataRegion: dataRegion}
 	if len(m) > 0 {
 		raw, err := authz.MarshalModel(m)
 		if err != nil {
@@ -326,22 +327,23 @@ func encodeProjectConfig(m authz.Model) (string, error) {
 	return string(b), nil
 }
 
-func decodeProjectConfig(blob string) (authz.Model, error) {
+func decodeProjectConfig(blob string) (model authz.Model, dataRegion string, err error) {
 	if blob == "" {
-		return nil, nil
+		return nil, "", nil
 	}
 	var cfg projectConfig
 	if err := json.Unmarshal([]byte(blob), &cfg); err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	if len(cfg.Model) == 0 {
-		return nil, nil
+		return nil, cfg.DataRegion, nil
 	}
-	return authz.ParseModel(cfg.Model)
+	m, err := authz.ParseModel(cfg.Model)
+	return m, cfg.DataRegion, err
 }
 
 func (s *Store) CreateProject(ctx context.Context, p *service.Project) error {
-	cfg, err := encodeProjectConfig(p.Model)
+	cfg, err := encodeProjectConfig(p.Model, p.DataRegion)
 	if err != nil {
 		return err
 	}
@@ -366,11 +368,12 @@ func scanProject(row pgx.Row) (*service.Project, error) {
 		return nil, err
 	}
 	p.Status = service.ProjectStatus(status)
-	model, err := decodeProjectConfig(cfg)
+	model, dataRegion, err := decodeProjectConfig(cfg)
 	if err != nil {
 		return nil, err
 	}
 	p.Model = model
+	p.DataRegion = dataRegion
 	return &p, nil
 }
 
@@ -382,7 +385,7 @@ func (s *Store) GetProject(ctx context.Context, id string) (*service.Project, er
 }
 
 func (s *Store) UpdateProject(ctx context.Context, p *service.Project) error {
-	cfg, err := encodeProjectConfig(p.Model)
+	cfg, err := encodeProjectConfig(p.Model, p.DataRegion)
 	if err != nil {
 		return err
 	}
