@@ -19,7 +19,7 @@ import (
 func (h *Handler) BatchCheck(ctx context.Context, req *connect.Request[workspacev1.BatchCheckRequest]) (*connect.Response[workspacev1.BatchCheckResponse], error) {
 	start := time.Now()
 	defer func() { h.metrics.observe("BatchCheck", start) }()
-	if err := h.requireTenantRate(req.Msg.ProjectId, req.Msg.TenantId); err != nil {
+	if err := h.requireTenantRate(ctx, req.Msg.ProjectId, req.Msg.TenantId); err != nil {
 		return nil, err
 	}
 
@@ -29,7 +29,7 @@ func (h *Handler) BatchCheck(ctx context.Context, req *connect.Request[workspace
 			fmt.Errorf("batch_check: %d items exceeds max %d", len(items), h.maxBatchCheckItems))
 	}
 	h.metrics.observeBatchItems(len(items))
-	p := h.scope(req.Msg.ProjectId, req.Msg.TenantId)
+	p := h.scope(ctx, req.Msg.ProjectId, req.Msg.TenantId)
 
 	svcItems := make([]service.BatchCheckItem, len(items))
 	for i, it := range items {

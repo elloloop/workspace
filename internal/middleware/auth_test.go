@@ -22,7 +22,7 @@ func do(t *testing.T, h http.Handler, method, path, authz string) int {
 }
 
 func TestServiceAuthEnforced(t *testing.T) {
-	h := ServiceAuth([]string{"secret-a", "secret-b"}, nil)(okHandler())
+	h := ServiceAuth([]string{"secret-a", "secret-b"}, nil, nil)(okHandler())
 
 	if code := do(t, h, http.MethodPost, "/workspace.v1.AuthzService/Check", "Bearer secret-a"); code != http.StatusOK {
 		t.Fatalf("valid token a: got %d", code)
@@ -39,7 +39,7 @@ func TestServiceAuthEnforced(t *testing.T) {
 }
 
 func TestServiceAuthBypassesInfraAndPreflight(t *testing.T) {
-	h := ServiceAuth([]string{"secret"}, nil)(okHandler())
+	h := ServiceAuth([]string{"secret"}, nil, nil)(okHandler())
 
 	for _, p := range []string{"/healthz", "/readyz", "/metrics"} {
 		if code := do(t, h, http.MethodGet, p, ""); code != http.StatusOK {
@@ -52,7 +52,7 @@ func TestServiceAuthBypassesInfraAndPreflight(t *testing.T) {
 }
 
 func TestServiceAuthDisabledWhenNoTokens(t *testing.T) {
-	h := ServiceAuth(nil, nil)(okHandler())
+	h := ServiceAuth(nil, nil, nil)(okHandler())
 	if code := do(t, h, http.MethodPost, "/workspace.v1.AuthzService/Check", ""); code != http.StatusOK {
 		t.Fatalf("no tokens configured should allow all: got %d", code)
 	}

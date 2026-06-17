@@ -9,7 +9,7 @@ import (
 )
 
 func (h *Handler) CreateWorkspace(ctx context.Context, req *connect.Request[workspacev1.CreateWorkspaceRequest]) (*connect.Response[workspacev1.CreateWorkspaceResponse], error) {
-	p, err := h.acting(req.Msg.ActingUserId, req.Msg.ProjectId, req.Msg.TenantId)
+	p, err := h.acting(ctx, req.Msg.ActingUserId, req.Msg.ProjectId, req.Msg.TenantId)
 	if err != nil {
 		return nil, err
 	}
@@ -21,7 +21,7 @@ func (h *Handler) CreateWorkspace(ctx context.Context, req *connect.Request[work
 }
 
 func (h *Handler) GetWorkspace(ctx context.Context, req *connect.Request[workspacev1.GetWorkspaceRequest]) (*connect.Response[workspacev1.GetWorkspaceResponse], error) {
-	p, err := h.acting(req.Msg.ActingUserId, req.Msg.ProjectId, req.Msg.TenantId)
+	p, err := h.acting(ctx, req.Msg.ActingUserId, req.Msg.ProjectId, req.Msg.TenantId)
 	if err != nil {
 		return nil, err
 	}
@@ -33,7 +33,7 @@ func (h *Handler) GetWorkspace(ctx context.Context, req *connect.Request[workspa
 }
 
 func (h *Handler) ListWorkspaces(ctx context.Context, req *connect.Request[workspacev1.ListWorkspacesRequest]) (*connect.Response[workspacev1.ListWorkspacesResponse], error) {
-	p, err := h.acting(req.Msg.ActingUserId, req.Msg.ProjectId, req.Msg.TenantId)
+	p, err := h.acting(ctx, req.Msg.ActingUserId, req.Msg.ProjectId, req.Msg.TenantId)
 	if err != nil {
 		return nil, err
 	}
@@ -49,7 +49,7 @@ func (h *Handler) ListWorkspaces(ctx context.Context, req *connect.Request[works
 }
 
 func (h *Handler) UpdateWorkspace(ctx context.Context, req *connect.Request[workspacev1.UpdateWorkspaceRequest]) (*connect.Response[workspacev1.UpdateWorkspaceResponse], error) {
-	p, err := h.acting(req.Msg.ActingUserId, req.Msg.ProjectId, req.Msg.TenantId)
+	p, err := h.acting(ctx, req.Msg.ActingUserId, req.Msg.ProjectId, req.Msg.TenantId)
 	if err != nil {
 		return nil, err
 	}
@@ -61,7 +61,7 @@ func (h *Handler) UpdateWorkspace(ctx context.Context, req *connect.Request[work
 }
 
 func (h *Handler) TransferOwnership(ctx context.Context, req *connect.Request[workspacev1.TransferOwnershipRequest]) (*connect.Response[workspacev1.TransferOwnershipResponse], error) {
-	p, err := h.acting(req.Msg.ActingUserId, req.Msg.ProjectId, req.Msg.TenantId)
+	p, err := h.acting(ctx, req.Msg.ActingUserId, req.Msg.ProjectId, req.Msg.TenantId)
 	if err != nil {
 		return nil, err
 	}
@@ -73,7 +73,7 @@ func (h *Handler) TransferOwnership(ctx context.Context, req *connect.Request[wo
 }
 
 func (h *Handler) DeleteWorkspace(ctx context.Context, req *connect.Request[workspacev1.DeleteWorkspaceRequest]) (*connect.Response[workspacev1.DeleteWorkspaceResponse], error) {
-	p, err := h.acting(req.Msg.ActingUserId, req.Msg.ProjectId, req.Msg.TenantId)
+	p, err := h.acting(ctx, req.Msg.ActingUserId, req.Msg.ProjectId, req.Msg.TenantId)
 	if err != nil {
 		return nil, err
 	}
@@ -84,7 +84,7 @@ func (h *Handler) DeleteWorkspace(ctx context.Context, req *connect.Request[work
 }
 
 func (h *Handler) AddMember(ctx context.Context, req *connect.Request[workspacev1.AddMemberRequest]) (*connect.Response[workspacev1.AddMemberResponse], error) {
-	p, err := h.acting(req.Msg.ActingUserId, req.Msg.ProjectId, req.Msg.TenantId)
+	p, err := h.acting(ctx, req.Msg.ActingUserId, req.Msg.ProjectId, req.Msg.TenantId)
 	if err != nil {
 		return nil, err
 	}
@@ -96,7 +96,7 @@ func (h *Handler) AddMember(ctx context.Context, req *connect.Request[workspacev
 }
 
 func (h *Handler) UpdateMemberRole(ctx context.Context, req *connect.Request[workspacev1.UpdateMemberRoleRequest]) (*connect.Response[workspacev1.UpdateMemberRoleResponse], error) {
-	p, err := h.acting(req.Msg.ActingUserId, req.Msg.ProjectId, req.Msg.TenantId)
+	p, err := h.acting(ctx, req.Msg.ActingUserId, req.Msg.ProjectId, req.Msg.TenantId)
 	if err != nil {
 		return nil, err
 	}
@@ -108,7 +108,7 @@ func (h *Handler) UpdateMemberRole(ctx context.Context, req *connect.Request[wor
 }
 
 func (h *Handler) RemoveMember(ctx context.Context, req *connect.Request[workspacev1.RemoveMemberRequest]) (*connect.Response[workspacev1.RemoveMemberResponse], error) {
-	p, err := h.acting(req.Msg.ActingUserId, req.Msg.ProjectId, req.Msg.TenantId)
+	p, err := h.acting(ctx, req.Msg.ActingUserId, req.Msg.ProjectId, req.Msg.TenantId)
 	if err != nil {
 		return nil, err
 	}
@@ -119,7 +119,7 @@ func (h *Handler) RemoveMember(ctx context.Context, req *connect.Request[workspa
 }
 
 func (h *Handler) SuspendMember(ctx context.Context, req *connect.Request[workspacev1.SuspendMemberRequest]) (*connect.Response[workspacev1.SuspendMemberResponse], error) {
-	p, err := h.acting(req.Msg.ActingUserId, req.Msg.ProjectId, req.Msg.TenantId)
+	p, err := h.acting(ctx, req.Msg.ActingUserId, req.Msg.ProjectId, req.Msg.TenantId)
 	if err != nil {
 		return nil, err
 	}
@@ -131,7 +131,7 @@ func (h *Handler) SuspendMember(ctx context.Context, req *connect.Request[worksp
 }
 
 func (h *Handler) ReinstateMember(ctx context.Context, req *connect.Request[workspacev1.ReinstateMemberRequest]) (*connect.Response[workspacev1.ReinstateMemberResponse], error) {
-	p, err := h.acting(req.Msg.ActingUserId, req.Msg.ProjectId, req.Msg.TenantId)
+	p, err := h.acting(ctx, req.Msg.ActingUserId, req.Msg.ProjectId, req.Msg.TenantId)
 	if err != nil {
 		return nil, err
 	}
@@ -143,7 +143,7 @@ func (h *Handler) ReinstateMember(ctx context.Context, req *connect.Request[work
 }
 
 func (h *Handler) ListMembers(ctx context.Context, req *connect.Request[workspacev1.ListMembersRequest]) (*connect.Response[workspacev1.ListMembersResponse], error) {
-	p, err := h.acting(req.Msg.ActingUserId, req.Msg.ProjectId, req.Msg.TenantId)
+	p, err := h.acting(ctx, req.Msg.ActingUserId, req.Msg.ProjectId, req.Msg.TenantId)
 	if err != nil {
 		return nil, err
 	}
@@ -159,7 +159,7 @@ func (h *Handler) ListMembers(ctx context.Context, req *connect.Request[workspac
 }
 
 func (h *Handler) CreateInvitation(ctx context.Context, req *connect.Request[workspacev1.CreateInvitationRequest]) (*connect.Response[workspacev1.CreateInvitationResponse], error) {
-	p, err := h.acting(req.Msg.ActingUserId, req.Msg.ProjectId, req.Msg.TenantId)
+	p, err := h.acting(ctx, req.Msg.ActingUserId, req.Msg.ProjectId, req.Msg.TenantId)
 	if err != nil {
 		return nil, err
 	}
@@ -171,7 +171,7 @@ func (h *Handler) CreateInvitation(ctx context.Context, req *connect.Request[wor
 }
 
 func (h *Handler) AcceptInvitation(ctx context.Context, req *connect.Request[workspacev1.AcceptInvitationRequest]) (*connect.Response[workspacev1.AcceptInvitationResponse], error) {
-	p, err := h.acting(req.Msg.ActingUserId, req.Msg.ProjectId, req.Msg.TenantId)
+	p, err := h.acting(ctx, req.Msg.ActingUserId, req.Msg.ProjectId, req.Msg.TenantId)
 	if err != nil {
 		return nil, err
 	}
@@ -183,7 +183,7 @@ func (h *Handler) AcceptInvitation(ctx context.Context, req *connect.Request[wor
 }
 
 func (h *Handler) ListInvitations(ctx context.Context, req *connect.Request[workspacev1.ListInvitationsRequest]) (*connect.Response[workspacev1.ListInvitationsResponse], error) {
-	p, err := h.acting(req.Msg.ActingUserId, req.Msg.ProjectId, req.Msg.TenantId)
+	p, err := h.acting(ctx, req.Msg.ActingUserId, req.Msg.ProjectId, req.Msg.TenantId)
 	if err != nil {
 		return nil, err
 	}
@@ -199,7 +199,7 @@ func (h *Handler) ListInvitations(ctx context.Context, req *connect.Request[work
 }
 
 func (h *Handler) RevokeInvitation(ctx context.Context, req *connect.Request[workspacev1.RevokeInvitationRequest]) (*connect.Response[workspacev1.RevokeInvitationResponse], error) {
-	p, err := h.acting(req.Msg.ActingUserId, req.Msg.ProjectId, req.Msg.TenantId)
+	p, err := h.acting(ctx, req.Msg.ActingUserId, req.Msg.ProjectId, req.Msg.TenantId)
 	if err != nil {
 		return nil, err
 	}

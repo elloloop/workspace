@@ -60,6 +60,7 @@ func main() {
 			DefaultTenantID:          cfg.DefaultTenantID,
 			AllowedOrigins:           cfg.AllowedOrigins,
 			ServiceAuthTokens:        cfg.ServiceAuthTokens,
+			ServiceCredentials:       cfg.ServiceCredentials,
 			AdminAPISecret:           cfg.AdminAPISecret,
 			MaxListObjects:           cfg.MaxListObjects,
 			MaxExpandNodes:           cfg.MaxExpandNodes,

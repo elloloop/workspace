@@ -4,11 +4,14 @@
 package config
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"strconv"
 	"strings"
+
+	"github.com/elloloop/workspace/internal/middleware"
 )
 
 // DefaultProjectIDFallback is used when no default project is configured.
@@ -34,6 +37,12 @@ type Config struct {
 	// tokens); the user is passed as data in the request. Empty disables the
 	// requirement — trust the network/mesh — and the service logs a warning.
 	ServiceAuthTokens []string
+
+	// ServiceCredentials is the OPTIONAL typed mapping (from GATEWAY_SERVICE_
+	// CREDENTIALS, a JSON list of {token, name, project}) of a service credential
+	// to a named calling-service identity with an optional project pin. It is
+	// additive: ServiceAuthTokens keep working as anonymous credentials.
+	ServiceCredentials []middleware.ServiceCredential
 
 	// AdminAPISecret gates the AdminService (project configuration), presented
 	// as the `X-Admin-Secret` header. Empty disables the admin RPCs entirely.
@@ -99,10 +108,40 @@ func Load() (*Config, error) {
 		DecisionLog:              envBool("GATEWAY_DECISION_LOG", false),
 		AuditLog:                 envBool("GATEWAY_AUDIT_LOG", false),
 	}
+	creds, err := parseServiceCredentials(os.Getenv("GATEWAY_SERVICE_CREDENTIALS"))
+	if err != nil {
+		return nil, fmt.Errorf("GATEWAY_SERVICE_CREDENTIALS: %w", err)
+	}
+	c.ServiceCredentials = creds
 	if err := c.Validate(); err != nil {
 		return nil, err
 	}
 	return c, nil
+}
+
+// parseServiceCredentials decodes the optional GATEWAY_SERVICE_CREDENTIALS JSON
+// (a list of {token, name, project}); empty/unset yields no credentials. Each
+// entry must carry a non-empty token and name.
+func parseServiceCredentials(raw string) ([]middleware.ServiceCredential, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil, nil
+	}
+	var creds []middleware.ServiceCredential
+	dec := json.NewDecoder(strings.NewReader(raw))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&creds); err != nil {
+		return nil, fmt.Errorf("invalid JSON: %w", err)
+	}
+	for i, c := range creds {
+		if strings.TrimSpace(c.Token) == "" {
+			return nil, fmt.Errorf("credential %d: token is required", i)
+		}
+		if strings.TrimSpace(c.Name) == "" {
+			return nil, fmt.Errorf("credential %d (%q): name is required", i, c.Token)
+		}
+	}
+	return creds, nil
 }
 
 // Validate checks invariants that defaults cannot express.

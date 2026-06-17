@@ -6,6 +6,7 @@
 package connect
 
 import (
+	"context"
 	"errors"
 	"strings"
 
@@ -14,6 +15,7 @@ import (
 
 	workspacev1 "github.com/elloloop/workspace/gen/go/workspace/v1"
 	"github.com/elloloop/workspace/internal/config"
+	"github.com/elloloop/workspace/internal/middleware"
 	"github.com/elloloop/workspace/internal/service"
 )
 
@@ -87,11 +89,11 @@ func rejectNUL(ids ...string) error {
 // (project, tenant). A nil tenantLimiter (disabled) always allows. Over-limit
 // returns ResourceExhausted. The key uses the resolved scope so empty project_id/
 // tenant_id map to the deployment defaults, consistent with the handler.
-func (h *Handler) requireTenantRate(projectID, tenantID string) error {
+func (h *Handler) requireTenantRate(ctx context.Context, projectID, tenantID string) error {
 	if err := rejectNUL(projectID, tenantID); err != nil {
 		return err
 	}
-	if h.tenantLimiter.allow(h.projectOr(projectID) + "\x00" + h.tenantOr(tenantID)) {
+	if h.tenantLimiter.allow(h.callerProject(ctx, projectID) + "\x00" + h.tenantOr(tenantID)) {
 		return nil
 	}
 	return connect.NewError(connect.CodeResourceExhausted, errors.New("tenant rate limit exceeded"))
@@ -102,11 +104,11 @@ func (h *Handler) requireTenantRate(projectID, tenantID string) error {
 // export/erase storm cannot starve the per-tenant Check hot path. The "\x00\x00"
 // + rpc sentinel can never be produced by the per-tenant key (project + single
 // \x00 + a NUL-free tenant), keeping the buckets disjoint.
-func (h *Handler) requireRPCRate(projectID, rpc string) error {
+func (h *Handler) requireRPCRate(ctx context.Context, projectID, rpc string) error {
 	if err := rejectNUL(projectID); err != nil {
 		return err
 	}
-	if h.tenantLimiter.allow(h.projectOr(projectID) + "\x00\x00" + rpc) {
+	if h.tenantLimiter.allow(h.callerProject(ctx, projectID) + "\x00\x00" + rpc) {
 		return nil
 	}
 	return connect.NewError(connect.CodeResourceExhausted, errors.New("rate limit exceeded"))
@@ -116,17 +118,29 @@ func (h *Handler) requireRPCRate(projectID, rpc string) error {
 // required (the action must be authorized against a known user); project_id
 // falls back to the deployment default when empty; tenant_id is the
 // data-isolation shard (empty = default tenant).
-func (h *Handler) acting(actingUserID, projectID, tenantID string) (service.Principal, error) {
+func (h *Handler) acting(ctx context.Context, actingUserID, projectID, tenantID string) (service.Principal, error) {
 	if actingUserID == "" {
 		return service.Principal{}, connect.NewError(connect.CodeInvalidArgument, errors.New("acting_user_id is required"))
 	}
-	return service.Principal{UserID: actingUserID, ProjectID: h.projectOr(projectID), TenantID: h.tenantOr(tenantID)}, nil
+	return service.Principal{UserID: actingUserID, ProjectID: h.callerProject(ctx, projectID), TenantID: h.tenantOr(tenantID)}, nil
 }
 
 // scope is the Principal for an authz RPC: only the project/tenant matter; the
 // subject is a request argument, not the caller.
-func (h *Handler) scope(projectID, tenantID string) service.Principal {
-	return service.Principal{ProjectID: h.projectOr(projectID), TenantID: h.tenantOr(tenantID)}
+func (h *Handler) scope(ctx context.Context, projectID, tenantID string) service.Principal {
+	return service.Principal{ProjectID: h.callerProject(ctx, projectID), TenantID: h.tenantOr(tenantID)}
+}
+
+// callerProject resolves the project a request operates in. A credential pinned
+// to a project (via ServiceCredentials) FORCES that project — so an integration
+// cannot operate outside its assigned project regardless of the request's
+// project_id. Otherwise the request's project_id is used, falling back to the
+// deployment default.
+func (h *Handler) callerProject(ctx context.Context, projectID string) string {
+	if pinned := middleware.CallerFrom(ctx).ProjectID; pinned != "" {
+		return pinned
+	}
+	return h.projectOr(projectID)
 }
 
 func (h *Handler) projectOr(projectID string) string {

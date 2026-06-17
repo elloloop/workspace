@@ -13,6 +13,7 @@ import (
 	"github.com/elloloop/workspace/internal/app"
 	"github.com/elloloop/workspace/internal/auditlog"
 	"github.com/elloloop/workspace/internal/decisionlog"
+	"github.com/elloloop/workspace/internal/middleware"
 	"github.com/elloloop/workspace/internal/repo/memory"
 	"github.com/elloloop/workspace/internal/service"
 )
@@ -26,6 +27,9 @@ type Config struct {
 	// ServiceAuthTokens are the accepted service credentials. Empty disables
 	// the requirement (trusted network / mesh).
 	ServiceAuthTokens []string
+	// ServiceCredentials optionally maps a credential to a named calling-service
+	// identity (and project pin); additive to ServiceAuthTokens.
+	ServiceCredentials []middleware.ServiceCredential
 	// AdminAPISecret gates the AdminService (project configuration). Empty
 	// disables the admin RPCs.
 	AdminAPISecret string
@@ -88,6 +92,7 @@ func New(ctx context.Context, opts Options) (*Server, error) {
 		DefaultTenantID:          opts.Config.DefaultTenantID,
 		AllowedOrigins:           opts.Config.AllowedOrigins,
 		ServiceAuthTokens:        opts.Config.ServiceAuthTokens,
+		ServiceCredentials:       opts.Config.ServiceCredentials,
 		AdminAPISecret:           opts.Config.AdminAPISecret,
 		MaxListObjects:           opts.Config.MaxListObjects,
 		MaxExpandNodes:           opts.Config.MaxExpandNodes,

@@ -27,6 +27,9 @@ type Deps struct {
 	// ServiceAuthTokens are the accepted service credentials. Empty disables
 	// the requirement (trusted network / mesh); see middleware.ServiceAuth.
 	ServiceAuthTokens []string
+	// ServiceCredentials optionally maps a credential to a named calling-service
+	// identity (and project pin); additive to ServiceAuthTokens.
+	ServiceCredentials []middleware.ServiceCredential
 	// AdminAPISecret gates the AdminService (project configuration). Empty
 	// disables the admin RPCs.
 	AdminAPISecret string
@@ -95,6 +98,6 @@ func New(ctx context.Context, d Deps) (http.Handler, error) {
 	return middleware.Chain(mux,
 		middleware.Recover(logger),
 		middleware.CORS(d.AllowedOrigins),
-		middleware.ServiceAuth(d.ServiceAuthTokens, logger),
+		middleware.ServiceAuth(d.ServiceAuthTokens, d.ServiceCredentials, logger),
 	), nil
 }

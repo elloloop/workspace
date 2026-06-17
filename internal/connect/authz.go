@@ -117,10 +117,10 @@ func optTimestamp(t *time.Time) *timestamppb.Timestamp {
 }
 
 func (h *Handler) WriteRelationTuples(ctx context.Context, req *connect.Request[workspacev1.WriteRelationTuplesRequest]) (*connect.Response[workspacev1.WriteRelationTuplesResponse], error) {
-	if err := h.requireTenantRate(req.Msg.ProjectId, req.Msg.TenantId); err != nil {
+	if err := h.requireTenantRate(ctx, req.Msg.ProjectId, req.Msg.TenantId); err != nil {
 		return nil, err
 	}
-	p := h.scope(req.Msg.ProjectId, req.Msg.TenantId)
+	p := h.scope(ctx, req.Msg.ProjectId, req.Msg.TenantId)
 	ops := make([]service.TupleOp, 0, len(req.Msg.Updates))
 	for _, u := range req.Msg.Updates {
 		t, err := tupleFromProto(u.Tuple)
@@ -143,7 +143,7 @@ func (h *Handler) WriteRelationTuples(ctx context.Context, req *connect.Request[
 }
 
 func (h *Handler) ReadRelationTuples(ctx context.Context, req *connect.Request[workspacev1.ReadRelationTuplesRequest]) (*connect.Response[workspacev1.ReadRelationTuplesResponse], error) {
-	p := h.scope(req.Msg.ProjectId, req.Msg.TenantId)
+	p := h.scope(ctx, req.Msg.ProjectId, req.Msg.TenantId)
 	tuples, err := h.svc.ReadTuples(ctx, p, service.TupleFilter{
 		Namespace:     req.Msg.Namespace,
 		ObjectID:      req.Msg.ObjectId,
@@ -163,11 +163,11 @@ func (h *Handler) ReadRelationTuples(ctx context.Context, req *connect.Request[w
 func (h *Handler) Check(ctx context.Context, req *connect.Request[workspacev1.CheckRequest]) (*connect.Response[workspacev1.CheckResponse], error) {
 	start := time.Now()
 	defer func() { h.metrics.observe("Check", start) }()
-	if err := h.requireTenantRate(req.Msg.ProjectId, req.Msg.TenantId); err != nil {
+	if err := h.requireTenantRate(ctx, req.Msg.ProjectId, req.Msg.TenantId); err != nil {
 		return nil, err
 	}
 
-	p := h.scope(req.Msg.ProjectId, req.Msg.TenantId)
+	p := h.scope(ctx, req.Msg.ProjectId, req.Msg.TenantId)
 	userID, set := req.Msg.SubjectUserId, req.Msg.SubjectSet
 	if (userID == "") == (set == nil) {
 		return nil, connect.NewError(connect.CodeInvalidArgument,
@@ -195,11 +195,11 @@ func (h *Handler) Check(ctx context.Context, req *connect.Request[workspacev1.Ch
 func (h *Handler) Expand(ctx context.Context, req *connect.Request[workspacev1.ExpandRequest]) (*connect.Response[workspacev1.ExpandResponse], error) {
 	start := time.Now()
 	defer func() { h.metrics.observe("Expand", start) }()
-	if err := h.requireTenantRate(req.Msg.ProjectId, req.Msg.TenantId); err != nil {
+	if err := h.requireTenantRate(ctx, req.Msg.ProjectId, req.Msg.TenantId); err != nil {
 		return nil, err
 	}
 
-	p := h.scope(req.Msg.ProjectId, req.Msg.TenantId)
+	p := h.scope(ctx, req.Msg.ProjectId, req.Msg.TenantId)
 	tree, err := h.svc.Expand(ctx, p, req.Msg.Namespace, req.Msg.ObjectId, req.Msg.Relation)
 	if err != nil {
 		h.metrics.recordError("Expand")
@@ -245,11 +245,11 @@ func treeToProto(t authz.Tree) *workspacev1.UsersetTree {
 func (h *Handler) ListObjects(ctx context.Context, req *connect.Request[workspacev1.ListObjectsRequest]) (*connect.Response[workspacev1.ListObjectsResponse], error) {
 	start := time.Now()
 	defer func() { h.metrics.observe("ListObjects", start) }()
-	if err := h.requireTenantRate(req.Msg.ProjectId, req.Msg.TenantId); err != nil {
+	if err := h.requireTenantRate(ctx, req.Msg.ProjectId, req.Msg.TenantId); err != nil {
 		return nil, err
 	}
 
-	p := h.scope(req.Msg.ProjectId, req.Msg.TenantId)
+	p := h.scope(ctx, req.Msg.ProjectId, req.Msg.TenantId)
 	ids, err := h.svc.ListObjects(ctx, p, req.Msg.Namespace, req.Msg.Relation, req.Msg.SubjectUserId)
 	if err != nil {
 		h.metrics.recordError("ListObjects")
@@ -262,10 +262,10 @@ func (h *Handler) DeprovisionUser(ctx context.Context, req *connect.Request[work
 	// Project-wide erase: throttle on the project's own RPC bucket (it ignores
 	// tenant_id, so a per-tenant key would let tenant_id rotation evade it, and
 	// its own keyspace keeps an erase storm from starving the Check hot path).
-	if err := h.requireRPCRate(req.Msg.ProjectId, "deprovision"); err != nil {
+	if err := h.requireRPCRate(ctx, req.Msg.ProjectId, "deprovision"); err != nil {
 		return nil, err
 	}
-	p := h.scope(req.Msg.ProjectId, req.Msg.TenantId)
+	p := h.scope(ctx, req.Msg.ProjectId, req.Msg.TenantId)
 	n, err := h.svc.DeprovisionUser(ctx, p, req.Msg.UserId)
 	if err != nil {
 		return nil, errToConnect(err)
@@ -276,10 +276,10 @@ func (h *Handler) DeprovisionUser(ctx context.Context, req *connect.Request[work
 func (h *Handler) ExportSubjectGrants(ctx context.Context, req *connect.Request[workspacev1.ExportSubjectGrantsRequest]) (*connect.Response[workspacev1.ExportSubjectGrantsResponse], error) {
 	// Project-wide export gets its OWN rate bucket so an export storm cannot
 	// starve the per-tenant Check hot path.
-	if err := h.requireRPCRate(req.Msg.ProjectId, "export"); err != nil {
+	if err := h.requireRPCRate(ctx, req.Msg.ProjectId, "export"); err != nil {
 		return nil, err
 	}
-	p := service.Principal{ProjectID: h.projectOr(req.Msg.ProjectId)}
+	p := service.Principal{ProjectID: h.callerProject(ctx, req.Msg.ProjectId)}
 	grants, err := h.svc.ExportSubjectGrants(ctx, p, req.Msg.UserId)
 	if err != nil {
 		return nil, errToConnect(err)
