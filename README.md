@@ -261,7 +261,11 @@ rebuild still takes heavy `ACCESS EXCLUSIVE` locks while it runs: for that
 deploy, set `GATEWAY_POSTGRES_AUTO_MIGRATE=false` and run `workspace migrate`
 out of band during a maintenance window rather than on the request-serving boot
 path. Health probes are `GET /healthz` and `GET /readyz`; Prometheus metrics
-are on `:9090/metrics`.
+are on `:9090/metrics`, including authorization-decision metrics:
+`authz_check_decisions_total{namespace,relation,allowed}` (Check/CheckSet and
+per-item BatchCheck outcomes), `authz_check_duration_seconds{rpc}` latency,
+`authz_decision_errors_total{rpc}`, and `authz_batchcheck_items` (items per
+BatchCheck). Labels are deliberately low-cardinality — no object or subject.
 
 ## Storage
 

@@ -158,6 +158,9 @@ func (h *Handler) ReadRelationTuples(ctx context.Context, req *connect.Request[w
 }
 
 func (h *Handler) Check(ctx context.Context, req *connect.Request[workspacev1.CheckRequest]) (*connect.Response[workspacev1.CheckResponse], error) {
+	start := time.Now()
+	defer func() { h.metrics.observe("Check", start) }()
+
 	p := h.scope(req.Msg.ProjectId, req.Msg.TenantId)
 	userID, set := req.Msg.SubjectUserId, req.Msg.SubjectSet
 	if (userID == "") == (set == nil) {
@@ -176,15 +179,21 @@ func (h *Handler) Check(ctx context.Context, req *connect.Request[workspacev1.Ch
 		allowed, err = h.svc.Check(ctx, p, req.Msg.Namespace, req.Msg.ObjectId, req.Msg.Relation, userID, structMap(req.Msg.Context))
 	}
 	if err != nil {
+		h.metrics.recordError("Check")
 		return nil, errToConnect(err)
 	}
+	h.metrics.recordDecision(req.Msg.Namespace, req.Msg.Relation, allowed)
 	return connect.NewResponse(&workspacev1.CheckResponse{Allowed: allowed}), nil
 }
 
 func (h *Handler) Expand(ctx context.Context, req *connect.Request[workspacev1.ExpandRequest]) (*connect.Response[workspacev1.ExpandResponse], error) {
+	start := time.Now()
+	defer func() { h.metrics.observe("Expand", start) }()
+
 	p := h.scope(req.Msg.ProjectId, req.Msg.TenantId)
 	tree, err := h.svc.Expand(ctx, p, req.Msg.Namespace, req.Msg.ObjectId, req.Msg.Relation)
 	if err != nil {
+		h.metrics.recordError("Expand")
 		return nil, errToConnect(err)
 	}
 	return connect.NewResponse(&workspacev1.ExpandResponse{Tree: treeToProto(tree)}), nil
@@ -225,9 +234,13 @@ func treeToProto(t authz.Tree) *workspacev1.UsersetTree {
 }
 
 func (h *Handler) ListObjects(ctx context.Context, req *connect.Request[workspacev1.ListObjectsRequest]) (*connect.Response[workspacev1.ListObjectsResponse], error) {
+	start := time.Now()
+	defer func() { h.metrics.observe("ListObjects", start) }()
+
 	p := h.scope(req.Msg.ProjectId, req.Msg.TenantId)
 	ids, err := h.svc.ListObjects(ctx, p, req.Msg.Namespace, req.Msg.Relation, req.Msg.SubjectUserId)
 	if err != nil {
+		h.metrics.recordError("ListObjects")
 		return nil, errToConnect(err)
 	}
 	return connect.NewResponse(&workspacev1.ListObjectsResponse{ObjectIds: ids}), nil
