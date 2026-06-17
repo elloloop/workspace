@@ -214,6 +214,12 @@ func (s *Service) CreateProject(ctx context.Context, id, name string, model auth
 		return nil, err
 	}
 	s.resolver.invalidate(id)
+	if s.auditLog != nil {
+		s.auditLog.LogAdminMutation(ctx, AdminAuditRecord{
+			Action: AdminActionCreateProject, ProjectID: id, NewStatus: p.Status,
+			StatusChanged: true, ModelChanged: len(model) > 0, At: now,
+		})
+	}
 	return p, nil
 }
 
@@ -249,6 +255,7 @@ func (s *Service) UpdateProject(ctx context.Context, id, name string, status Pro
 	if err != nil {
 		return nil, err
 	}
+	oldStatus := p.Status
 	if name != "" {
 		p.Name = name
 	}
@@ -263,6 +270,13 @@ func (s *Service) UpdateProject(ctx context.Context, id, name string, status Pro
 		return nil, err
 	}
 	s.resolver.invalidate(id)
+	if s.auditLog != nil {
+		s.auditLog.LogAdminMutation(ctx, AdminAuditRecord{
+			Action: AdminActionUpdateProject, ProjectID: id, NewStatus: p.Status,
+			StatusChanged: status != "" && status != oldStatus,
+			ModelChanged:  len(model) > 0, At: p.UpdatedAt,
+		})
+	}
 	return p, nil
 }
 

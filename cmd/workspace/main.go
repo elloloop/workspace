@@ -66,6 +66,7 @@ func main() {
 			MaxBatchCheckItems:      cfg.MaxBatchCheckItems,
 			AdminRateLimitPerMinute: cfg.AdminRateLimitPerMinute,
 			DecisionLog:             cfg.DecisionLog,
+			AuditLog:                cfg.AuditLog,
 		},
 	})
 	if err != nil {

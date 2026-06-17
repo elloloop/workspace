@@ -43,6 +43,9 @@ type Service struct {
 	// decisionLog, when non-nil, receives an audit record for every
 	// Check/CheckSet decision. Nil disables it with zero hot-path overhead.
 	decisionLog DecisionLogger
+	// auditLog, when non-nil, receives an append-only audit record for every
+	// relation-tuple change and admin mutation. Nil disables it.
+	auditLog AuditLogger
 }
 
 // Option configures a Service at construction.
