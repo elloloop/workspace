@@ -89,9 +89,10 @@ func (s *Service) Check(ctx context.Context, p Principal, namespace, objectID, r
 
 // CheckSet evaluates whether a USERSET (e.g. group:cohort-7#member) has the
 // relation — "does the queried userset intersect the relation's effective
-// userset". It mirrors Check (same suspension fail-closed) but for a set-valued
-// query subject rather than a concrete user.
-func (s *Service) CheckSet(ctx context.Context, p Principal, namespace, objectID, relation string, set authz.SubjectSet) (allowed bool, err error) {
+// userset". It mirrors Check (same suspension fail-closed AND the same
+// reqContext for conditional grants) but for a set-valued query subject rather
+// than a concrete user.
+func (s *Service) CheckSet(ctx context.Context, p Principal, namespace, objectID, relation string, set authz.SubjectSet, reqContext map[string]any) (allowed bool, err error) {
 	if namespace == "" || objectID == "" || relation == "" {
 		return false, fmt.Errorf("%w: namespace, object_id, relation are required", ErrInvalidArgument)
 	}
@@ -116,7 +117,7 @@ func (s *Service) CheckSet(ctx context.Context, p Principal, namespace, objectID
 	if res.suspended {
 		return false, nil // a suspended project denies every check
 	}
-	allowed, err = s.engine.CheckSetWithModel(ctx, res.modelOrDefault(), p.ProjectID, p.TenantID, namespace, objectID, relation, set)
+	allowed, err = s.engine.CheckSetWithModel(ctx, res.modelOrDefault(), p.ProjectID, p.TenantID, namespace, objectID, relation, set, reqContext)
 	return allowed, err
 }
 

@@ -140,10 +140,26 @@ Check{ namespace:"resource", object_id:"doc1", relation:"editor",
 Check{ … subject_user_id:"svc:slack", context: { "scope": "membership:write" } } // → deny
 ```
 
-Combine conditions for stricter delegation — e.g. a `not_after` grant lapses the
-delegation automatically (no tuple revoke needed), and `ip_in_cidrs` binds it to
-the integration's egress. Because every grant is fail-closed, a request that
-omits the expected context is denied.
+**One condition per grant.** A grant carries exactly one `condition_name`, so
+`scope_in`, `not_after`, and `ip_in_cidrs` cannot be AND-composed on a single
+tuple — pick the strictest single condition the grant needs. Two notes:
+
+- For **auto-expiry**, prefer the orthogonal per-tuple `expires_at` field (it
+  composes with *any* condition — the tuple stops granting once it lapses,
+  evaluated at read time) rather than the `not_after` condition, so you can have
+  a `scope_in` grant that also expires.
+- **Multiple grants on the same object combine as a UNION (OR)** — more
+  permissive, never an AND. Do not model two conditioned grants expecting their
+  conditions to both have to hold. Conjunctive (AND-composed) conditions on one
+  grant are a tracked follow-up; today, where conjunction is required, express it
+  as a single relation built from `intersection` over separately-conditioned
+  relations, or pre-combine the predicate into one custom condition.
+
+Because every grant is fail-closed, a request that omits the expected context is
+denied. Conditions are evaluated identically on `Check` and `CheckSet` (both
+carry request context). **`BatchCheck` does NOT carry request context**, so a
+conditional grant is denied through it — use `Check`/`CheckSet` for conditional
+(delegated) grants.
 
 **Auditing.** When a credential is mapped to a named principal, that name is the
 `Principal.Caller`, and every `Check`/`CheckSet` decision and tuple-change is

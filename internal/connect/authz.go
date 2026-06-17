@@ -180,7 +180,8 @@ func (h *Handler) Check(ctx context.Context, req *connect.Request[workspacev1.Ch
 	)
 	if set != nil {
 		allowed, err = h.svc.CheckSet(ctx, p, req.Msg.Namespace, req.Msg.ObjectId, req.Msg.Relation,
-			authz.SubjectSet{Namespace: set.Namespace, ObjectID: set.ObjectId, Relation: set.Relation})
+			authz.SubjectSet{Namespace: set.Namespace, ObjectID: set.ObjectId, Relation: set.Relation},
+			structMap(req.Msg.Context))
 	} else {
 		allowed, err = h.svc.Check(ctx, p, req.Msg.Namespace, req.Msg.ObjectId, req.Msg.Relation, userID, structMap(req.Msg.Context))
 	}

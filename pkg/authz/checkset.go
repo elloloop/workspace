@@ -18,29 +18,34 @@ import "context"
 // are answered soundly by member resolution. A query set whose own membership
 // is the public wildcard ("everyone") intersects the target iff the target
 // grants to at least one subject.
-func (e *Engine) CheckSet(ctx context.Context, projectID, tenantID, namespace, objectID, relation string, set SubjectSet) (bool, error) {
+func (e *Engine) CheckSet(ctx context.Context, projectID, tenantID, namespace, objectID, relation string, set SubjectSet, cc map[string]any) (bool, error) {
 	m, err := e.resolver.ModelFor(ctx, projectID)
 	if err != nil {
 		return false, err
 	}
-	return e.CheckSetWithModel(ctx, m, projectID, tenantID, namespace, objectID, relation, set)
+	return e.CheckSetWithModel(ctx, m, projectID, tenantID, namespace, objectID, relation, set, cc)
 }
 
-// CheckSetWithModel is CheckSet against an already-resolved model.
-func (e *Engine) CheckSetWithModel(ctx context.Context, m Model, projectID, tenantID, namespace, objectID, relation string, set SubjectSet) (bool, error) {
+// CheckSetWithModel is CheckSet against an already-resolved model. cc is the
+// request context conditional grants (caveats) are evaluated against, threaded
+// to the target Check exactly as the concrete-user Check path does, so a
+// conditional grant behaves identically whether queried by a user or a userset.
+func (e *Engine) CheckSetWithModel(ctx context.Context, m Model, projectID, tenantID, namespace, objectID, relation string, set SubjectSet, cc map[string]any) (bool, error) {
 	// (1) structural inclusion through the monotone fragment, or target-public.
-	ok, err := e.check(ctx, m, projectID, tenantID, namespace, objectID, relation, subjectQuery{set: &set}, nil, false, newEvalState(), 0)
+	ok, err := e.check(ctx, m, projectID, tenantID, namespace, objectID, relation, subjectQuery{set: &set}, cc, false, newEvalState(), 0)
 	if err != nil || ok {
 		return ok, err
 	}
 
 	// (2) member intersection: any concrete member of the query set has access.
+	// Membership resolution is condition-independent; the conditional grant on
+	// the TARGET is evaluated by the per-member Check below (with cc).
 	members, everyone, err := e.resolveMembers(ctx, m, projectID, tenantID, set, map[string]bool{}, 0)
 	if err != nil {
 		return false, err
 	}
 	for u := range members {
-		ok, err := e.check(ctx, m, projectID, tenantID, namespace, objectID, relation, subjectQuery{user: u}, nil, false, newEvalState(), 0)
+		ok, err := e.check(ctx, m, projectID, tenantID, namespace, objectID, relation, subjectQuery{user: u}, cc, false, newEvalState(), 0)
 		if err != nil {
 			return false, err
 		}
