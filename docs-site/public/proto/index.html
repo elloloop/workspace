@@ -291,6 +291,14 @@
                 </li>
               
                 <li>
+                  <a href="#workspace.v1.ExportSubjectGrantsRequest"><span class="badge">M</span>ExportSubjectGrantsRequest</a>
+                </li>
+              
+                <li>
+                  <a href="#workspace.v1.ExportSubjectGrantsResponse"><span class="badge">M</span>ExportSubjectGrantsResponse</a>
+                </li>
+              
+                <li>
                   <a href="#workspace.v1.GetGroupRequest"><span class="badge">M</span>GetGroupRequest</a>
                 </li>
               
@@ -436,6 +444,10 @@
               
                 <li>
                   <a href="#workspace.v1.Subject"><span class="badge">M</span>Subject</a>
+                </li>
+              
+                <li>
+                  <a href="#workspace.v1.SubjectGrant"><span class="badge">M</span>SubjectGrant</a>
                 </li>
               
                 <li>
@@ -776,7 +788,7 @@
         
       
         <h3 id="workspace.v1.BatchCheckItem">BatchCheckItem</h3>
-        <p>BatchCheck answers many Check questions in one round-trip — the list/grid hot</p><p>path (filter N documents/lessons to those a user can see). Results are</p><p>index-aligned to items; a per-item validation error is reported in that</p><p>item's result rather than failing the whole batch. Every item shares the</p><p>request's project_id and tenant_id.</p>
+        <p>BatchCheck answers many Check questions in one round-trip — the list/grid hot</p><p>path (filter N documents/lessons to those a user can see). Results are</p><p>index-aligned to items; a per-item validation error is reported in that</p><p>item's result rather than failing the whole batch. Every item shares the</p><p>request's project_id and tenant_id.</p><p>NOTE: BatchCheck carries NO request context, so CONDITIONAL grants (caveats:</p><p>scope_in / not_after / ip_in_cidrs / consent_granted / age_at_least) cannot be</p><p>evaluated through it and a conditioned grant is denied. Use Check (which takes</p><p>`context`) for conditional grants.</p>
 
         
           <table class="field-table">
@@ -1556,6 +1568,61 @@ every tenant of the project. </p></td>
                   <td>tree</td>
                   <td><a href="#workspace.v1.UsersetTree">UsersetTree</a></td>
                   <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="workspace.v1.ExportSubjectGrantsRequest">ExportSubjectGrantsRequest</h3>
+        <p>ExportSubjectGrants returns every authorization grant a user holds in a</p><p>project — across ALL tenants (mirroring DeprovisionUser's erase scope) — for</p><p>GDPR/COPPA data-subject access requests. Read-only.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>project_id</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>user_id</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
+        <h3 id="workspace.v1.ExportSubjectGrantsResponse">ExportSubjectGrantsResponse</h3>
+        <p></p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>grants</td>
+                  <td><a href="#workspace.v1.SubjectGrant">SubjectGrant</a></td>
+                  <td>repeated</td>
                   <td><p> </p></td>
                 </tr>
               
@@ -2982,6 +3049,58 @@ time (e.g. {&#34;min_age&#34;: 13} for age_at_least). </p></td>
 
         
       
+        <h3 id="workspace.v1.SubjectGrant">SubjectGrant</h3>
+        <p>SubjectGrant is one access grant the subject holds. via_group is empty for a</p><p>DIRECT grant (a tuple whose subject is the user, including the user's group</p><p>memberships); otherwise it is the group id whose membership confers the grant.</p>
+
+        
+          <table class="field-table">
+            <thead>
+              <tr><td>Field</td><td>Type</td><td>Label</td><td>Description</td></tr>
+            </thead>
+            <tbody>
+              
+                <tr>
+                  <td>tenant_id</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>namespace</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>object_id</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>relation</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>via_group</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
+            </tbody>
+          </table>
+
+          
+
+        
+      
         <h3 id="workspace.v1.SubjectSet">SubjectSet</h3>
         <p>SubjectSet references the set of subjects related to another object — the</p><p>userset `namespace:object_id#relation`. When relation is empty it denotes</p><p>the object itself (rarely needed).</p>
 
@@ -3962,6 +4081,13 @@ a family, a project group, or a whole company.</p></td>
                 <td>DeprovisionUser</td>
                 <td><a href="#workspace.v1.DeprovisionUserRequest">DeprovisionUserRequest</a></td>
                 <td><a href="#workspace.v1.DeprovisionUserResponse">DeprovisionUserResponse</a></td>
+                <td><p></p></td>
+              </tr>
+            
+              <tr>
+                <td>ExportSubjectGrants</td>
+                <td><a href="#workspace.v1.ExportSubjectGrantsRequest">ExportSubjectGrantsRequest</a></td>
+                <td><a href="#workspace.v1.ExportSubjectGrantsResponse">ExportSubjectGrantsResponse</a></td>
                 <td><p></p></td>
               </tr>
             

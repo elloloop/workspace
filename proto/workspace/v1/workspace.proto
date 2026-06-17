@@ -533,6 +533,11 @@ message CheckResponse { bool allowed = 1; }
 // index-aligned to items; a per-item validation error is reported in that
 // item's result rather than failing the whole batch. Every item shares the
 // request's project_id and tenant_id.
+//
+// NOTE: BatchCheck carries NO request context, so CONDITIONAL grants (caveats:
+// scope_in / not_after / ip_in_cidrs / consent_granted / age_at_least) cannot be
+// evaluated through it and a conditioned grant is denied. Use Check (which takes
+// `context`) for conditional grants.
 message BatchCheckItem {
   string namespace = 1;
   string object_id = 2;

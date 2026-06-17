@@ -30,6 +30,10 @@ func TestEvalConditionFailClosed(t *testing.T) {
 		{"ip outside cidr denies", &Condition{Name: "ip_in_cidrs", Params: map[string]any{"cidrs": []any{"10.0.0.0/8"}}}, map[string]any{"ip": "192.168.0.1"}, false},
 		{"not_after before deadline allows", &Condition{Name: "not_after", Params: map[string]any{"until": "2030-01-01T00:00:00Z"}}, map[string]any{"now": "2026-06-16T00:00:00Z"}, true},
 		{"not_after past deadline denies", &Condition{Name: "not_after", Params: map[string]any{"until": "2020-01-01T00:00:00Z"}}, map[string]any{"now": "2026-06-16T00:00:00Z"}, false},
+		{"scope_in missing context fails closed", &Condition{Name: "scope_in", Params: map[string]any{"allowed": []any{"tasks:read"}}}, map[string]any{}, false},
+		{"scope_in missing params fails closed", &Condition{Name: "scope_in"}, map[string]any{"scope": "tasks:read"}, false},
+		{"scope_in in scope allows", &Condition{Name: "scope_in", Params: map[string]any{"allowed": []any{"tasks:read", "tasks:write"}}}, map[string]any{"scope": "tasks:read"}, true},
+		{"scope_in out of scope denies", &Condition{Name: "scope_in", Params: map[string]any{"allowed": []any{"tasks:read"}}}, map[string]any{"scope": "membership:write"}, false},
 	}
 	for _, c := range cases {
 		if got := EvalCondition(c.c, c.ctx); got != c.want {

@@ -36,7 +36,7 @@ func TestCheckSetDirectAndMember(t *testing.T) {
 		{"no match: empty/unknown set", "doc2", ss("group", "eng", "member"), false},
 	}
 	for _, c := range cases {
-		got, err := e.CheckSet(ctx, "p", "", "doc", c.obj, "viewer", c.query)
+		got, err := e.CheckSet(ctx, "p", "", "doc", c.obj, "viewer", c.query, nil)
 		if err != nil {
 			t.Fatalf("%s: %v", c.name, err)
 		}
@@ -65,7 +65,7 @@ func TestCheckSetNestedGroup(t *testing.T) {
 	e := NewEngine(StaticResolver(m), r)
 	ctx := context.Background()
 
-	if ok, err := e.CheckSet(ctx, "p", "", "doc", "doc1", "viewer", ss("group", "eng", "member")); err != nil || !ok {
+	if ok, err := e.CheckSet(ctx, "p", "", "doc", "doc1", "viewer", ss("group", "eng", "member"), nil); err != nil || !ok {
 		t.Fatalf("nested-group set should match: ok=%v err=%v", ok, err)
 	}
 	// And via a concrete member of the nested group.
@@ -97,14 +97,43 @@ func TestCheckSetExclusionSound(t *testing.T) {
 
 	// Only alice in g, and alice is banned → set g has NO active access.
 	r.add("doc", "doc1", "banned", user("alice"))
-	if ok, err := e.CheckSet(ctx, "p", "", "doc", "doc1", "active", ss("group", "g", "member")); err != nil || ok {
+	if ok, err := e.CheckSet(ctx, "p", "", "doc", "doc1", "active", ss("group", "g", "member"), nil); err != nil || ok {
 		t.Fatalf("excluded-only set must NOT have active: ok=%v err=%v", ok, err)
 	}
 
 	// Add bob (not banned) to g → now the set intersects active via bob.
 	r.add("group", "g", "member", user("bob"))
-	if ok, err := e.CheckSet(ctx, "p", "", "doc", "doc1", "active", ss("group", "g", "member")); err != nil || !ok {
+	if ok, err := e.CheckSet(ctx, "p", "", "doc", "doc1", "active", ss("group", "g", "member"), nil); err != nil || !ok {
 		t.Fatalf("set with a non-excluded member must have active: ok=%v err=%v", ok, err)
+	}
+}
+
+// TestCheckSetEvaluatesConditions: a CONDITIONAL grant reached via a userset
+// query honors the request context exactly as the concrete-user Check path does
+// (in-scope allows, out-of-scope/missing-context denies) — Check and CheckSet
+// stay in lockstep, so a conditioned grant cannot be bypassed by querying as a
+// set instead of a user.
+func TestCheckSetEvaluatesConditions(t *testing.T) {
+	r := &fakeReader{}
+	// group:eng#member = alice; doc1#editor granted to alice, gated by scope_in.
+	r.add("group", "eng", "member", user("alice"))
+	r.add("doc", "doc1", "editor", Subject{
+		UserID:    "alice",
+		Condition: &Condition{Name: "scope_in", Params: map[string]any{"allowed": []any{"tasks:read"}}},
+	})
+	m := Model{"doc": {"editor": this()}, "group": {"member": this()}}
+	e := NewEngine(StaticResolver(m), r)
+	ctx := context.Background()
+	q := ss("group", "eng", "member")
+
+	if ok, err := e.CheckSet(ctx, "p", "", "doc", "doc1", "editor", q, map[string]any{"scope": "tasks:read"}); err != nil || !ok {
+		t.Fatalf("in-scope set query must allow the conditioned grant: ok=%v err=%v", ok, err)
+	}
+	if ok, err := e.CheckSet(ctx, "p", "", "doc", "doc1", "editor", q, map[string]any{"scope": "membership:write"}); err != nil || ok {
+		t.Fatalf("out-of-scope set query must be denied: ok=%v err=%v", ok, err)
+	}
+	if ok, err := e.CheckSet(ctx, "p", "", "doc", "doc1", "editor", q, nil); err != nil || ok {
+		t.Fatalf("missing-context set query must fail closed: ok=%v err=%v", ok, err)
 	}
 }
 
@@ -116,7 +145,7 @@ func TestCheckSetPublicTarget(t *testing.T) {
 	r.add("group", "eng", "member", user("alice"))
 	m := Model{"doc": {"viewer": this()}, "group": {"member": this()}}
 	e := NewEngine(StaticResolver(m), r)
-	if ok, err := e.CheckSet(context.Background(), "p", "", "doc", "pub", "viewer", ss("group", "eng", "member")); err != nil || !ok {
+	if ok, err := e.CheckSet(context.Background(), "p", "", "doc", "pub", "viewer", ss("group", "eng", "member"), nil); err != nil || !ok {
 		t.Fatalf("public target should admit any set: ok=%v err=%v", ok, err)
 	}
 }
