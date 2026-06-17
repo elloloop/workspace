@@ -120,7 +120,10 @@ func (h *Handler) WriteRelationTuples(ctx context.Context, req *connect.Request[
 	if err := h.requireTenantRate(ctx, req.Msg.ProjectId, req.Msg.TenantId); err != nil {
 		return nil, err
 	}
-	p := h.scope(ctx, req.Msg.ProjectId, req.Msg.TenantId)
+	p, err := h.scope(ctx, req.Msg.ProjectId, req.Msg.TenantId)
+	if err != nil {
+		return nil, err
+	}
 	ops := make([]service.TupleOp, 0, len(req.Msg.Updates))
 	for _, u := range req.Msg.Updates {
 		t, err := tupleFromProto(u.Tuple)
@@ -144,7 +147,10 @@ func (h *Handler) WriteRelationTuples(ctx context.Context, req *connect.Request[
 }
 
 func (h *Handler) ReadRelationTuples(ctx context.Context, req *connect.Request[workspacev1.ReadRelationTuplesRequest]) (*connect.Response[workspacev1.ReadRelationTuplesResponse], error) {
-	p := h.scope(ctx, req.Msg.ProjectId, req.Msg.TenantId)
+	p, err := h.scope(ctx, req.Msg.ProjectId, req.Msg.TenantId)
+	if err != nil {
+		return nil, err
+	}
 	if err := h.svc.EnsureConsistency(ctx, p, req.Msg.AtLeastConsistencyToken); err != nil {
 		return nil, errToConnect(err)
 	}
@@ -171,7 +177,10 @@ func (h *Handler) Check(ctx context.Context, req *connect.Request[workspacev1.Ch
 		return nil, err
 	}
 
-	p := h.scope(ctx, req.Msg.ProjectId, req.Msg.TenantId)
+	p, err := h.scope(ctx, req.Msg.ProjectId, req.Msg.TenantId)
+	if err != nil {
+		return nil, err
+	}
 	if err := h.svc.EnsureConsistency(ctx, p, req.Msg.AtLeastConsistencyToken); err != nil {
 		h.metrics.recordError("Check")
 		return nil, errToConnect(err)
@@ -182,10 +191,7 @@ func (h *Handler) Check(ctx context.Context, req *connect.Request[workspacev1.Ch
 			errors.New("exactly one of subject_user_id or subject_set is required"))
 	}
 
-	var (
-		allowed bool
-		err     error
-	)
+	var allowed bool
 	if set != nil {
 		allowed, err = h.svc.CheckSet(ctx, p, req.Msg.Namespace, req.Msg.ObjectId, req.Msg.Relation,
 			authz.SubjectSet{Namespace: set.Namespace, ObjectID: set.ObjectId, Relation: set.Relation},
@@ -208,7 +214,10 @@ func (h *Handler) Expand(ctx context.Context, req *connect.Request[workspacev1.E
 		return nil, err
 	}
 
-	p := h.scope(ctx, req.Msg.ProjectId, req.Msg.TenantId)
+	p, err := h.scope(ctx, req.Msg.ProjectId, req.Msg.TenantId)
+	if err != nil {
+		return nil, err
+	}
 	if err := h.svc.EnsureConsistency(ctx, p, req.Msg.AtLeastConsistencyToken); err != nil {
 		h.metrics.recordError("Expand")
 		return nil, errToConnect(err)
@@ -262,7 +271,10 @@ func (h *Handler) ListObjects(ctx context.Context, req *connect.Request[workspac
 		return nil, err
 	}
 
-	p := h.scope(ctx, req.Msg.ProjectId, req.Msg.TenantId)
+	p, err := h.scope(ctx, req.Msg.ProjectId, req.Msg.TenantId)
+	if err != nil {
+		return nil, err
+	}
 	if err := h.svc.EnsureConsistency(ctx, p, req.Msg.AtLeastConsistencyToken); err != nil {
 		h.metrics.recordError("ListObjects")
 		return nil, errToConnect(err)
@@ -282,7 +294,10 @@ func (h *Handler) DeprovisionUser(ctx context.Context, req *connect.Request[work
 	if err := h.requireRPCRate(ctx, req.Msg.ProjectId, "deprovision"); err != nil {
 		return nil, err
 	}
-	p := h.scope(ctx, req.Msg.ProjectId, req.Msg.TenantId)
+	p, err := h.scope(ctx, req.Msg.ProjectId, req.Msg.TenantId)
+	if err != nil {
+		return nil, err
+	}
 	n, err := h.svc.DeprovisionUser(ctx, p, req.Msg.UserId)
 	if err != nil {
 		return nil, errToConnect(err)
@@ -296,7 +311,13 @@ func (h *Handler) ExportSubjectGrants(ctx context.Context, req *connect.Request[
 	if err := h.requireRPCRate(ctx, req.Msg.ProjectId, "export"); err != nil {
 		return nil, err
 	}
-	p := service.Principal{ProjectID: h.callerProject(ctx, req.Msg.ProjectId)}
+	// Route through scope so the data-residency guard runs at the same chokepoint
+	// as every other RPC (and a residency refusal increments the refused metric);
+	// the export is project-wide and ignores the tenant.
+	p, err := h.scope(ctx, req.Msg.ProjectId, "")
+	if err != nil {
+		return nil, err
+	}
 	grants, err := h.svc.ExportSubjectGrants(ctx, p, req.Msg.UserId)
 	if err != nil {
 		return nil, errToConnect(err)

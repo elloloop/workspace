@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 
+	"go.uber.org/zap"
+
 	"github.com/elloloop/workspace/pkg/authz"
 )
 
@@ -50,6 +52,13 @@ type Service struct {
 	// auditLog, when non-nil, receives an append-only audit record for every
 	// relation-tuple change and admin mutation. Nil disables it.
 	auditLog AuditLogger
+	// dataRegion, when set, is the region this instance serves; it refuses to
+	// operate on a project pinned to a different region (fail closed). Empty =
+	// region-agnostic (serves all) — today's behavior.
+	dataRegion string
+	// log is the structured logger for operability breadcrumbs (e.g. a
+	// residency refusal); never nil after New (defaults to a no-op).
+	log *zap.Logger
 }
 
 // Option configures a Service at construction.
@@ -63,6 +72,13 @@ func WithMaxListObjects(n int) Option {
 			s.maxListObjects = n
 		}
 	}
+}
+
+// WithDataRegion sets the region this instance serves; it then refuses to
+// operate on a project pinned to a different data region (fail closed). Empty
+// keeps the instance region-agnostic (serves all projects).
+func WithDataRegion(region string) Option {
+	return func(s *Service) { s.dataRegion = region }
 }
 
 // WithMaxExpandNodes caps the size of an Expand result tree; a non-positive
@@ -95,11 +111,22 @@ func New(repo Repository, clock func() time.Time, idgen func() string, opts ...O
 		newID:          idgen,
 		maxListObjects: DefaultMaxListObjects,
 		maxExpandNodes: DefaultMaxExpandNodes,
+		log:            zap.NewNop(),
 	}
 	for _, opt := range opts {
 		opt(s)
 	}
 	return s
+}
+
+// WithLogger sets the service's structured logger for operability breadcrumbs
+// (residency refusals, risky repins). A nil logger keeps the no-op default.
+func WithLogger(l *zap.Logger) Option {
+	return func(s *Service) {
+		if l != nil {
+			s.log = l
+		}
+	}
 }
 
 // Engine exposes the authz engine for the AuthzService handler.

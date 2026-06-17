@@ -347,6 +347,52 @@ or route-to-primary rather than serve a stale read. It is **not** a point-in-tim
 / snapshot read (out of scope) — it asserts a *lower bound* on freshness, not an
 exact version.
 
+## Data residency
+
+A project may declare a `data_region` (set via `AdminService.CreateProject` /
+`UpdateProject`); an instance declares the region it serves via
+`GATEWAY_DATA_REGION` (validated to the same `[a-z0-9_-]`, ≤64 charset, so a
+typo can't silently fail closed). When both are set and **differ**, the service
+**fails closed** (`FailedPrecondition`). The guard is enforced at the connect
+handler boundary while building the request Principal, so it covers **every
+project-scoped RPC by construction** — Workspace/Group/Seat reads *and* writes,
+the personal-workspace auto-provision, and the repo-direct Authz paths
+(`ReadRelationTuples`/`DeprovisionUser`/`ExportSubjectGrants`) — not just the
+data plane; the data-plane methods also guard internally as defense in depth.
+The `AdminService` is intentionally exempt: it is the region-agnostic control
+plane that *configures* a project's region. When either side is empty the
+instance is **region-agnostic** and serves the project (today's behavior); the
+check short-circuits with zero overhead. A region pin/repin is recorded in the
+admin audit log (`region_changed`). The shared **default project is seeded
+region-agnostic** (never auto-pinned to the booting instance), so a multi-region
+fleet sharing one store all boot against it; only an operator's **explicit** pin
+of the default project to a different region fails an instance fast at boot.
+
+**Rolling deploy / rollback:** roll the new binary to the entire fleet before
+pinning any project's region. The `data_region` write path exists only in the
+new binary, so a pin cannot be created until the fleet is updated; the sole
+residual exposure is an in-flight *old-binary* `UpdateProject` racing the very
+first pin (its config-blob rewrite would drop the new key). A rollback to the
+old binary likewise drops any region pins (the field lives in the project
+config blob the old code does not preserve).
+
+A repin is **not instantaneous fleet-wide**: each instance caches a project's
+resolution for the resolver TTL (~30s), so after an `UpdateProject` repin a
+horizontally-scaled fleet converges within that window — during it, some
+instances may still serve under the old region. Repinning a project to a region
+**no running instance serves** makes it fail closed everywhere after the TTL
+(the writing instance logs a `data_region_repin_unservable_here` warning when it
+detects this). To revert a project to region-agnostic, use `clear_data_region`
+on `UpdateProject` (an empty `data_region` means "leave unchanged"). A residency
+refusal emits the `authz_region_refused_total` metric and a `data_region_refused`
+log breadcrumb so a mis-routed instance is alertable.
+
+**Today vs. tomorrow.** This is the recording + validation + **serving guard**
+half. The actual multi-region storage **routing** (steering a project's reads and
+writes to a regional store, data movement on a region change) is forward-compat —
+not implemented here. The guard ensures correctness in the interim: an instance
+only ever touches data for the region it is configured to serve.
+
 ## Adding a new namespace
 
 A consuming product can use the engine in two ways:

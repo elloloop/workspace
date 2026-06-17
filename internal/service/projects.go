@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"go.uber.org/zap"
 	"golang.org/x/sync/singleflight"
 
 	"github.com/elloloop/workspace/pkg/authz"
@@ -28,11 +29,13 @@ const resolverMaxEntries = 4096
 var sharedDefaultModel = authz.DefaultModel()
 
 // resolved is a cached project resolution: its overlaid model (nil = the shared
-// default) plus whether the project is suspended, with the time it was loaded.
+// default), whether the project is suspended, and its pinned data region (empty
+// = unpinned), with the time it was loaded.
 type resolved struct {
-	model     authz.Model
-	suspended bool
-	at        time.Time
+	model      authz.Model
+	suspended  bool
+	dataRegion string
+	at         time.Time
 }
 
 func (e resolved) modelOrDefault() authz.Model {
@@ -110,15 +113,6 @@ func (r *modelResolver) ModelFor(ctx context.Context, projectID string) (authz.M
 	return e.modelOrDefault(), nil
 }
 
-// suspended reports whether projectID is an explicitly suspended project.
-func (r *modelResolver) suspended(ctx context.Context, projectID string) (bool, error) {
-	e, err := r.resolve(ctx, projectID)
-	if err != nil {
-		return false, err
-	}
-	return e.suspended, nil
-}
-
 func (r *modelResolver) load(ctx context.Context, projectID string) (resolved, error) {
 	p, err := r.repo.GetProject(ctx, projectID)
 	switch {
@@ -129,7 +123,7 @@ func (r *modelResolver) load(ctx context.Context, projectID string) (resolved, e
 		// is diagnosable rather than surfacing as an opaque CodeInternal.
 		return resolved{}, fmt.Errorf("authz: resolve project %q: %w", projectID, err)
 	}
-	e := resolved{suspended: p.Status == ProjectSuspended, at: r.now()}
+	e := resolved{suspended: p.Status == ProjectSuspended, dataRegion: p.DataRegion, at: r.now()}
 	if len(p.Model) > 0 {
 		// Overlay the project's namespaces onto a fresh copy of the defaults so
 		// the built-in product surface survives a custom model; never mutate
@@ -194,21 +188,25 @@ func (r *modelResolver) invalidate(projectID string) {
 // A nil model means the project uses the built-in default model. This is the
 // configuration surface that lets two products (e.g. a kids platform and a
 // professionals platform) run distinct models on one deployment.
-func (s *Service) CreateProject(ctx context.Context, id, name string, model authz.Model) (*Project, error) {
+func (s *Service) CreateProject(ctx context.Context, id, name string, model authz.Model, dataRegion string) (*Project, error) {
 	if id == "" {
 		return nil, fmt.Errorf("%w: project id is required", ErrInvalidArgument)
 	}
 	if err := validateModel(model); err != nil {
 		return nil, err
 	}
+	if err := ValidateRegion(dataRegion); err != nil {
+		return nil, err
+	}
 	now := s.now()
 	p := &Project{
-		ID:        id,
-		Name:      name,
-		Status:    ProjectActive,
-		Model:     model,
-		CreatedAt: now,
-		UpdatedAt: now,
+		ID:         id,
+		Name:       name,
+		Status:     ProjectActive,
+		Model:      model,
+		DataRegion: dataRegion,
+		CreatedAt:  now,
+		UpdatedAt:  now,
 	}
 	if err := s.repo.CreateProject(ctx, p); err != nil {
 		return nil, err
@@ -217,7 +215,8 @@ func (s *Service) CreateProject(ctx context.Context, id, name string, model auth
 	if s.auditLog != nil {
 		s.auditLog.LogAdminMutation(ctx, AdminAuditRecord{
 			Action: AdminActionCreateProject, ProjectID: id, NewStatus: p.Status,
-			StatusChanged: true, ModelChanged: len(model) > 0, At: now,
+			StatusChanged: true, ModelChanged: len(model) > 0,
+			RegionChanged: dataRegion != "", At: now,
 		})
 	}
 	return p, nil
@@ -241,7 +240,7 @@ func (s *Service) ListProjects(ctx context.Context) ([]*Project, error) {
 // custom model or name. An empty name and an empty/nil model both mean "leave
 // unchanged", and an empty/unspecified status means "leave unchanged".
 // (Resetting a model back to the default is not expressed through Update.)
-func (s *Service) UpdateProject(ctx context.Context, id, name string, status ProjectStatus, model authz.Model) (*Project, error) {
+func (s *Service) UpdateProject(ctx context.Context, id, name string, status ProjectStatus, model authz.Model, dataRegion string, clearRegion bool) (*Project, error) {
 	if id == "" {
 		return nil, fmt.Errorf("%w: project id is required", ErrInvalidArgument)
 	}
@@ -251,11 +250,17 @@ func (s *Service) UpdateProject(ctx context.Context, id, name string, status Pro
 	if err := validateModel(model); err != nil {
 		return nil, err
 	}
+	if err := ValidateRegion(dataRegion); err != nil {
+		return nil, err
+	}
+	if clearRegion && dataRegion != "" {
+		return nil, fmt.Errorf("%w: set clear_data_region OR data_region, not both", ErrInvalidArgument)
+	}
 	p, err := s.repo.GetProject(ctx, id)
 	if err != nil {
 		return nil, err
 	}
-	oldStatus := p.Status
+	oldStatus, oldRegion := p.Status, p.DataRegion
 	if name != "" {
 		p.Name = name
 	}
@@ -264,6 +269,21 @@ func (s *Service) UpdateProject(ctx context.Context, id, name string, status Pro
 	}
 	if len(model) > 0 {
 		p.Model = model
+	}
+	switch {
+	case clearRegion:
+		p.DataRegion = "" // explicit revert to region-agnostic
+	case dataRegion != "":
+		p.DataRegion = dataRegion
+	}
+	// A repin to a region THIS instance does not serve would, after the resolver
+	// TTL, make every request to the project fail closed fleet-wide — warn the
+	// operator who triggered it (a hard check is impossible from one instance).
+	if p.DataRegion != "" && s.dataRegion != "" && p.DataRegion != s.dataRegion {
+		s.log.Warn("data_region_repin_unservable_here",
+			zap.String("project_id", id),
+			zap.String("target_region", p.DataRegion),
+			zap.String("instance_region", s.dataRegion))
 	}
 	p.UpdatedAt = s.now()
 	if err := s.repo.UpdateProject(ctx, p); err != nil {
@@ -274,7 +294,8 @@ func (s *Service) UpdateProject(ctx context.Context, id, name string, status Pro
 		s.auditLog.LogAdminMutation(ctx, AdminAuditRecord{
 			Action: AdminActionUpdateProject, ProjectID: id, NewStatus: p.Status,
 			StatusChanged: status != "" && status != oldStatus,
-			ModelChanged:  len(model) > 0, At: p.UpdatedAt,
+			ModelChanged:  len(model) > 0,
+			RegionChanged: p.DataRegion != oldRegion, At: p.UpdatedAt,
 		})
 	}
 	return p, nil
@@ -287,16 +308,96 @@ func (s *Service) EnsureDefaultProject(ctx context.Context, id string) error {
 	if id == "" {
 		return nil
 	}
-	if _, err := s.repo.GetProject(ctx, id); err == nil {
+	// Seed the default project REGION-AGNOSTIC (empty region), never auto-pinned
+	// to the booting instance's region. The default shard is shared — it backs
+	// every user's personal-workspace auto-provision — so auto-pinning it to
+	// whichever instance booted first would deadlock every other region's
+	// instances against one shared row. An agnostic default is servable by all.
+	// An operator may still EXPLICITLY pin the default project, in which case the
+	// fail-fast below correctly refuses to boot a mismatched instance.
+	if existing, err := s.repo.GetProject(ctx, id); err == nil {
+		if s.dataRegion != "" && existing.DataRegion != "" && existing.DataRegion != s.dataRegion {
+			return fmt.Errorf("%w: default project %q is explicitly pinned to data region %q but this instance serves %q",
+				ErrFailedPrecondition, id, existing.DataRegion, s.dataRegion)
+		}
 		return nil
 	} else if !isNotFound(err) {
 		return err
 	}
-	_, err := s.CreateProject(ctx, id, "Default", nil)
+	_, err := s.CreateProject(ctx, id, "Default", nil, "") // region-agnostic; never auto-pinned
 	if isAlreadyExists(err) {
 		return nil // lost a race; the winner seeded it
 	}
 	return err
+}
+
+// maxDataRegionLen bounds a project's data-region identifier.
+const maxDataRegionLen = 64
+
+// validateRegion rejects a malformed data-region identifier. Empty is allowed
+// (the project is unpinned). A region is a short token of lowercase letters,
+// digits, '-' and '_' (e.g. "us-east-1", "eu_west").
+func ValidateRegion(region string) error {
+	if region == "" {
+		return nil
+	}
+	if len(region) > maxDataRegionLen {
+		return fmt.Errorf("%w: data region must be at most %d characters", ErrInvalidArgument, maxDataRegionLen)
+	}
+	for _, c := range region {
+		ok := c >= 'a' && c <= 'z' || c >= '0' && c <= '9' || c == '-' || c == '_'
+		if !ok {
+			return fmt.Errorf("%w: data region must be lowercase [a-z0-9_-]", ErrInvalidArgument)
+		}
+	}
+	return nil
+}
+
+// regionServable reports a fail-closed error when this instance is pinned to a
+// data region (GATEWAY_DATA_REGION) that differs from the project's pinned
+// region — so a mis-routed request is refused rather than silently reading or
+// writing data in the wrong region. When either side is empty the instance is
+// region-agnostic and serves the project (today's behavior). Multi-region
+// STORAGE routing is forward-compat; this is the enforcement half.
+func (s *Service) regionServable(p Principal, res resolved) error {
+	if s.dataRegion == "" || res.dataRegion == "" || res.dataRegion == s.dataRegion {
+		return nil
+	}
+	// A structured breadcrumb so on-call can see an instance is refusing a
+	// mis-routed project (paired with the authz_region_refused_total metric the
+	// handler increments). %w keeps the wire code FailedPrecondition while
+	// errors.Is(err, ErrRegionNotServable) distinguishes a residency refusal.
+	s.log.Warn("data_region_refused",
+		zap.String("project_id", p.ProjectID),
+		zap.String("project_region", res.dataRegion),
+		zap.String("instance_region", s.dataRegion))
+	return fmt.Errorf("%w: project %q is pinned to data region %q; this instance serves %q",
+		ErrRegionNotServable, p.ProjectID, res.dataRegion, s.dataRegion)
+}
+
+// ensureRegion resolves the project and applies the region guard. It is for
+// repo-direct paths that do not otherwise resolve; a region-agnostic instance
+// short-circuits with zero overhead (no resolve).
+func (s *Service) ensureRegion(ctx context.Context, p Principal) error {
+	if s.dataRegion == "" {
+		return nil
+	}
+	res, err := s.resolver.resolve(ctx, p.ProjectID)
+	if err != nil {
+		return err
+	}
+	return s.regionServable(p, res)
+}
+
+// EnsureServable is the data-residency chokepoint enforced at the transport
+// boundary: the connect handler calls it while building the Principal for EVERY
+// project-scoped RPC (via acting/scope), so no read or write — management or
+// data-plane — can touch a project whose pinned region differs from this
+// instance's GATEWAY_DATA_REGION. A region-agnostic instance returns nil with
+// zero overhead. (The data-plane methods also guard internally as defense in
+// depth.)
+func (s *Service) EnsureServable(ctx context.Context, p Principal) error {
+	return s.ensureRegion(ctx, p)
 }
 
 // validateModel round-trips the model through its JSON form to reject any

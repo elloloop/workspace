@@ -5618,9 +5618,14 @@ type Project struct {
 	Status ProjectStatus          `protobuf:"varint,3,opt,name=status,proto3,enum=workspace.v1.ProjectStatus" json:"status,omitempty"`
 	// model_json is the project's authorization model as a JSON document. Empty
 	// means the project uses the built-in default model.
-	ModelJson     string                 `protobuf:"bytes,4,opt,name=model_json,json=modelJson,proto3" json:"model_json,omitempty"`
-	CreatedAt     *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
-	UpdatedAt     *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
+	ModelJson string                 `protobuf:"bytes,4,opt,name=model_json,json=modelJson,proto3" json:"model_json,omitempty"`
+	CreatedAt *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	UpdatedAt *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
+	// data_region, when set, pins the project's data to a region/storage target.
+	// An instance configured for a different region refuses to serve it (fail
+	// closed). Empty means unpinned. Multi-region storage ROUTING is forward-
+	// compat; today this is recorded, validated, and enforced as a serving guard.
+	DataRegion    string `protobuf:"bytes,7,opt,name=data_region,json=dataRegion,proto3" json:"data_region,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -5697,11 +5702,19 @@ func (x *Project) GetUpdatedAt() *timestamppb.Timestamp {
 	return nil
 }
 
+func (x *Project) GetDataRegion() string {
+	if x != nil {
+		return x.DataRegion
+	}
+	return ""
+}
+
 type CreateProjectRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
 	Name          string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
 	ModelJson     string                 `protobuf:"bytes,3,opt,name=model_json,json=modelJson,proto3" json:"model_json,omitempty"`
+	DataRegion    string                 `protobuf:"bytes,4,opt,name=data_region,json=dataRegion,proto3" json:"data_region,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -5753,6 +5766,13 @@ func (x *CreateProjectRequest) GetName() string {
 func (x *CreateProjectRequest) GetModelJson() string {
 	if x != nil {
 		return x.ModelJson
+	}
+	return ""
+}
+
+func (x *CreateProjectRequest) GetDataRegion() string {
+	if x != nil {
+		return x.DataRegion
 	}
 	return ""
 }
@@ -5890,13 +5910,21 @@ func (x *GetProjectResponse) GetProject() *Project {
 }
 
 type UpdateProjectRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
-	Name          string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
-	Status        ProjectStatus          `protobuf:"varint,3,opt,name=status,proto3,enum=workspace.v1.ProjectStatus" json:"status,omitempty"`
-	ModelJson     string                 `protobuf:"bytes,4,opt,name=model_json,json=modelJson,proto3" json:"model_json,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state     protoimpl.MessageState `protogen:"open.v1"`
+	Id        string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	Name      string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	Status    ProjectStatus          `protobuf:"varint,3,opt,name=status,proto3,enum=workspace.v1.ProjectStatus" json:"status,omitempty"`
+	ModelJson string                 `protobuf:"bytes,4,opt,name=model_json,json=modelJson,proto3" json:"model_json,omitempty"`
+	// data_region: empty leaves it unchanged (like name/model). Setting it
+	// repins the project; a repin converges across a horizontally-scaled fleet
+	// only after the resolver TTL (~30s), so it is not instantaneous.
+	DataRegion string `protobuf:"bytes,5,opt,name=data_region,json=dataRegion,proto3" json:"data_region,omitempty"`
+	// clear_data_region, when true, reverts the project to region-agnostic
+	// (unpinned). Mutually exclusive with a non-empty data_region. This is the
+	// explicit "unpin" path, since an empty data_region means "leave unchanged".
+	ClearDataRegion bool `protobuf:"varint,6,opt,name=clear_data_region,json=clearDataRegion,proto3" json:"clear_data_region,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
 }
 
 func (x *UpdateProjectRequest) Reset() {
@@ -5955,6 +5983,20 @@ func (x *UpdateProjectRequest) GetModelJson() string {
 		return x.ModelJson
 	}
 	return ""
+}
+
+func (x *UpdateProjectRequest) GetDataRegion() string {
+	if x != nil {
+		return x.DataRegion
+	}
+	return ""
+}
+
+func (x *UpdateProjectRequest) GetClearDataRegion() bool {
+	if x != nil {
+		return x.ClearDataRegion
+	}
+	return false
 }
 
 type UpdateProjectResponse struct {
@@ -7186,7 +7228,7 @@ const file_workspace_v1_workspace_proto_rawDesc = "" +
 	"\brelation\x18\x04 \x01(\tR\brelation\x12\x1b\n" +
 	"\tvia_group\x18\x05 \x01(\tR\bviaGroup\"Q\n" +
 	"\x1bExportSubjectGrantsResponse\x122\n" +
-	"\x06grants\x18\x01 \x03(\v2\x1a.workspace.v1.SubjectGrantR\x06grants\"\xf7\x01\n" +
+	"\x06grants\x18\x01 \x03(\v2\x1a.workspace.v1.SubjectGrantR\x06grants\"\x98\x02\n" +
 	"\aProject\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x123\n" +
@@ -7196,24 +7238,31 @@ const file_workspace_v1_workspace_proto_rawDesc = "" +
 	"\n" +
 	"created_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x129\n" +
 	"\n" +
-	"updated_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\"Y\n" +
+	"updated_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\x12\x1f\n" +
+	"\vdata_region\x18\a \x01(\tR\n" +
+	"dataRegion\"z\n" +
 	"\x14CreateProjectRequest\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x1d\n" +
 	"\n" +
-	"model_json\x18\x03 \x01(\tR\tmodelJson\"H\n" +
+	"model_json\x18\x03 \x01(\tR\tmodelJson\x12\x1f\n" +
+	"\vdata_region\x18\x04 \x01(\tR\n" +
+	"dataRegion\"H\n" +
 	"\x15CreateProjectResponse\x12/\n" +
 	"\aproject\x18\x01 \x01(\v2\x15.workspace.v1.ProjectR\aproject\"#\n" +
 	"\x11GetProjectRequest\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\"E\n" +
 	"\x12GetProjectResponse\x12/\n" +
-	"\aproject\x18\x01 \x01(\v2\x15.workspace.v1.ProjectR\aproject\"\x8e\x01\n" +
+	"\aproject\x18\x01 \x01(\v2\x15.workspace.v1.ProjectR\aproject\"\xdb\x01\n" +
 	"\x14UpdateProjectRequest\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x123\n" +
 	"\x06status\x18\x03 \x01(\x0e2\x1b.workspace.v1.ProjectStatusR\x06status\x12\x1d\n" +
 	"\n" +
-	"model_json\x18\x04 \x01(\tR\tmodelJson\"H\n" +
+	"model_json\x18\x04 \x01(\tR\tmodelJson\x12\x1f\n" +
+	"\vdata_region\x18\x05 \x01(\tR\n" +
+	"dataRegion\x12*\n" +
+	"\x11clear_data_region\x18\x06 \x01(\bR\x0fclearDataRegion\"H\n" +
 	"\x15UpdateProjectResponse\x12/\n" +
 	"\aproject\x18\x01 \x01(\v2\x15.workspace.v1.ProjectR\aproject\"\x15\n" +
 	"\x13ListProjectsRequest\"I\n" +

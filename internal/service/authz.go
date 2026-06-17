@@ -77,14 +77,18 @@ func (s *Service) EnsureConsistency(ctx context.Context, p Principal, token stri
 	return nil
 }
 
-// ensureProjectActive fails closed when the caller's project is suspended, so a
-// suspended project's data plane stops authorizing and accepting writes.
+// ensureProjectActive fails closed when the caller's project is suspended or is
+// pinned to a data region this instance does not serve, so a suspended or
+// mis-routed project's data plane stops authorizing and accepting writes.
 func (s *Service) ensureProjectActive(ctx context.Context, p Principal) error {
-	suspended, err := s.resolver.suspended(ctx, p.ProjectID)
+	res, err := s.resolver.resolve(ctx, p.ProjectID)
 	if err != nil {
 		return err
 	}
-	if suspended {
+	if err := s.regionServable(p, res); err != nil {
+		return err
+	}
+	if res.suspended {
 		return fmt.Errorf("%w: project %q is suspended", ErrFailedPrecondition, p.ProjectID)
 	}
 	return nil
@@ -92,6 +96,9 @@ func (s *Service) ensureProjectActive(ctx context.Context, p Principal) error {
 
 // ReadTuples returns stored tuples in the caller's project/tenant matching f.
 func (s *Service) ReadTuples(ctx context.Context, p Principal, f TupleFilter) ([]authz.Tuple, error) {
+	if err := s.ensureRegion(ctx, p); err != nil {
+		return nil, err
+	}
 	return s.repo.ReadTuples(ctx, p.ProjectID, p.TenantID, f)
 }
 
@@ -116,6 +123,9 @@ func (s *Service) Check(ctx context.Context, p Principal, namespace, objectID, r
 	}
 	res, rerr := s.resolver.resolve(ctx, p.ProjectID)
 	if rerr != nil {
+		return false, rerr
+	}
+	if rerr := s.regionServable(p, res); rerr != nil {
 		return false, rerr
 	}
 	if res.suspended {
@@ -152,6 +162,9 @@ func (s *Service) CheckSet(ctx context.Context, p Principal, namespace, objectID
 	if rerr != nil {
 		return false, rerr
 	}
+	if rerr := s.regionServable(p, res); rerr != nil {
+		return false, rerr
+	}
 	if res.suspended {
 		return false, nil // a suspended project denies every check
 	}
@@ -166,6 +179,9 @@ func (s *Service) Expand(ctx context.Context, p Principal, namespace, objectID, 
 	}
 	res, err := s.resolver.resolve(ctx, p.ProjectID)
 	if err != nil {
+		return authz.Tree{}, err
+	}
+	if err := s.regionServable(p, res); err != nil {
 		return authz.Tree{}, err
 	}
 	if res.suspended {
@@ -186,6 +202,9 @@ func (s *Service) ListObjects(ctx context.Context, p Principal, namespace, relat
 	}
 	res, err := s.resolver.resolve(ctx, p.ProjectID)
 	if err != nil {
+		return nil, err
+	}
+	if err := s.regionServable(p, res); err != nil {
 		return nil, err
 	}
 	if res.suspended {
@@ -213,6 +232,9 @@ func (s *Service) DeprovisionUser(ctx context.Context, p Principal, userID strin
 	if userID == "" {
 		return 0, fmt.Errorf("%w: user_id is required", ErrInvalidArgument)
 	}
+	if err := s.ensureRegion(ctx, p); err != nil {
+		return 0, err
+	}
 	return s.repo.DeleteAllSubjectTuplesInProject(ctx, p.ProjectID, userID)
 }
 
@@ -236,6 +258,9 @@ type SubjectGrant struct {
 func (s *Service) ExportSubjectGrants(ctx context.Context, p Principal, userID string) ([]SubjectGrant, error) {
 	if userID == "" {
 		return nil, fmt.Errorf("%w: user_id is required", ErrInvalidArgument)
+	}
+	if err := s.ensureRegion(ctx, p); err != nil {
+		return nil, err
 	}
 	direct, err := s.repo.ListSubjectTuplesInProject(ctx, p.ProjectID, userID)
 	if err != nil {

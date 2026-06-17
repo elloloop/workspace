@@ -29,7 +29,10 @@ func (h *Handler) BatchCheck(ctx context.Context, req *connect.Request[workspace
 			fmt.Errorf("batch_check: %d items exceeds max %d", len(items), h.maxBatchCheckItems))
 	}
 	h.metrics.observeBatchItems(len(items))
-	p := h.scope(ctx, req.Msg.ProjectId, req.Msg.TenantId)
+	p, err := h.scope(ctx, req.Msg.ProjectId, req.Msg.TenantId)
+	if err != nil {
+		return nil, err
+	}
 	if err := h.svc.EnsureConsistency(ctx, p, req.Msg.AtLeastConsistencyToken); err != nil {
 		return nil, errToConnect(err)
 	}

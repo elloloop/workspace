@@ -32,7 +32,10 @@ func (h *Handler) SetSeatLimit(ctx context.Context, req *connect.Request[workspa
 	if err := h.requireTenantRate(ctx, req.Msg.ProjectId, req.Msg.TenantId); err != nil {
 		return nil, err
 	}
-	p := h.scope(ctx, req.Msg.ProjectId, req.Msg.TenantId)
+	p, err := h.scope(ctx, req.Msg.ProjectId, req.Msg.TenantId)
+	if err != nil {
+		return nil, err
+	}
 	var limit *int
 	if req.Msg.Limit != nil { // absent ⇒ clear the cap (unlimited)
 		l := int(req.Msg.GetLimit())
@@ -50,7 +53,10 @@ func (h *Handler) SetSeatLimit(ctx context.Context, req *connect.Request[workspa
 }
 
 func (h *Handler) GetSeatUsage(ctx context.Context, req *connect.Request[workspacev1.GetSeatUsageRequest]) (*connect.Response[workspacev1.GetSeatUsageResponse], error) {
-	p := h.scope(ctx, req.Msg.ProjectId, req.Msg.TenantId)
+	p, err := h.scope(ctx, req.Msg.ProjectId, req.Msg.TenantId)
+	if err != nil {
+		return nil, err
+	}
 	u, err := h.svc.SeatUsage(ctx, p, req.Msg.Sku)
 	if err != nil {
 		return nil, errToConnect(err)
@@ -64,7 +70,10 @@ func (h *Handler) AssignSeat(ctx context.Context, req *connect.Request[workspace
 	if err := h.requireTenantRate(ctx, req.Msg.ProjectId, req.Msg.TenantId); err != nil {
 		return nil, err
 	}
-	p := h.scope(ctx, req.Msg.ProjectId, req.Msg.TenantId)
+	p, err := h.scope(ctx, req.Msg.ProjectId, req.Msg.TenantId)
+	if err != nil {
+		return nil, err
+	}
 	alreadyHeld, err := h.svc.AssignSeat(ctx, p, req.Msg.Sku, req.Msg.UserId)
 	if err != nil {
 		return nil, errToConnect(err)
@@ -76,7 +85,10 @@ func (h *Handler) RevokeSeat(ctx context.Context, req *connect.Request[workspace
 	if err := h.requireTenantRate(ctx, req.Msg.ProjectId, req.Msg.TenantId); err != nil {
 		return nil, err
 	}
-	p := h.scope(ctx, req.Msg.ProjectId, req.Msg.TenantId)
+	p, err := h.scope(ctx, req.Msg.ProjectId, req.Msg.TenantId)
+	if err != nil {
+		return nil, err
+	}
 	if err := h.svc.RevokeSeat(ctx, p, req.Msg.Sku, req.Msg.UserId); err != nil {
 		return nil, errToConnect(err)
 	}
@@ -84,7 +96,10 @@ func (h *Handler) RevokeSeat(ctx context.Context, req *connect.Request[workspace
 }
 
 func (h *Handler) ListSeats(ctx context.Context, req *connect.Request[workspacev1.ListSeatsRequest]) (*connect.Response[workspacev1.ListSeatsResponse], error) {
-	p := h.scope(ctx, req.Msg.ProjectId, req.Msg.TenantId)
+	p, err := h.scope(ctx, req.Msg.ProjectId, req.Msg.TenantId)
+	if err != nil {
+		return nil, err
+	}
 	seats, err := h.svc.ListSeats(ctx, p, req.Msg.Sku)
 	if err != nil {
 		return nil, errToConnect(err)

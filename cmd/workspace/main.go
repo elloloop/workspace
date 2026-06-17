@@ -58,6 +58,7 @@ func main() {
 		Config: workspaceserver.Config{
 			DefaultProjectID:         cfg.DefaultProjectID,
 			DefaultTenantID:          cfg.DefaultTenantID,
+			DataRegion:               cfg.DataRegion,
 			AllowedOrigins:           cfg.AllowedOrigins,
 			ServiceAuthTokens:        cfg.ServiceAuthTokens,
 			ServiceCredentials:       cfg.ServiceCredentials,

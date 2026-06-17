@@ -23,7 +23,9 @@ type Config struct {
 	DefaultProjectID string
 	// DefaultTenantID is applied when a request omits tenant_id.
 	DefaultTenantID string
-	AllowedOrigins  []string
+	// DataRegion is the region this instance serves; empty = region-agnostic.
+	DataRegion     string
+	AllowedOrigins []string
 	// ServiceAuthTokens are the accepted service credentials. Empty disables
 	// the requirement (trusted network / mesh).
 	ServiceAuthTokens []string
@@ -81,6 +83,13 @@ func New(ctx context.Context, opts Options) (*Server, error) {
 	if repo == nil {
 		repo = memory.New()
 	}
+	// Validate the instance region on the embeddable path too — the env path
+	// validates in config.Validate, but an embedder builds Options.Config
+	// directly and would otherwise bypass it (a typo'd region silently fails
+	// closed for every matching project). One shared validator on every entry.
+	if err := service.ValidateRegion(opts.Config.DataRegion); err != nil {
+		return nil, err
+	}
 	projectID := opts.Config.DefaultProjectID
 	if projectID == "" {
 		projectID = "default"
@@ -90,6 +99,7 @@ func New(ctx context.Context, opts Options) (*Server, error) {
 		Repo:                     repo,
 		DefaultProjectID:         projectID,
 		DefaultTenantID:          opts.Config.DefaultTenantID,
+		DataRegion:               opts.Config.DataRegion,
 		AllowedOrigins:           opts.Config.AllowedOrigins,
 		ServiceAuthTokens:        opts.Config.ServiceAuthTokens,
 		ServiceCredentials:       opts.Config.ServiceCredentials,

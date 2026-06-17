@@ -1391,6 +1391,13 @@ read latest. A malformed or foreign-shard token is rejected. </p></td>
                   <td><p> </p></td>
                 </tr>
               
+                <tr>
+                  <td>data_region</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p> </p></td>
+                </tr>
+              
             </tbody>
           </table>
 
@@ -3031,6 +3038,16 @@ means the project uses the built-in default model. </p></td>
                   <td><p> </p></td>
                 </tr>
               
+                <tr>
+                  <td>data_region</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>data_region, when set, pins the project&#39;s data to a region/storage target.
+An instance configured for a different region refuses to serve it (fail
+closed). Empty means unpinned. Multi-region storage ROUTING is forward-
+compat; today this is recorded, validated, and enforced as a serving guard. </p></td>
+                </tr>
+              
             </tbody>
           </table>
 
@@ -4173,6 +4190,24 @@ only way to undo a previously-set cap. </p></td>
                   <td><a href="#string">string</a></td>
                   <td></td>
                   <td><p> </p></td>
+                </tr>
+              
+                <tr>
+                  <td>data_region</td>
+                  <td><a href="#string">string</a></td>
+                  <td></td>
+                  <td><p>data_region: empty leaves it unchanged (like name/model). Setting it
+repins the project; a repin converges across a horizontally-scaled fleet
+only after the resolver TTL (~30s), so it is not instantaneous. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>clear_data_region</td>
+                  <td><a href="#bool">bool</a></td>
+                  <td></td>
+                  <td><p>clear_data_region, when true, reverts the project to region-agnostic
+(unpinned). Mutually exclusive with a non-empty data_region. This is the
+explicit &#34;unpin&#34; path, since an empty data_region means &#34;leave unchanged&#34;. </p></td>
                 </tr>
               
             </tbody>

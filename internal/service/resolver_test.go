@@ -99,13 +99,20 @@ func TestResolverReportsSuspended(t *testing.T) {
 	r := newTestResolver(repo)
 	ctx := context.Background()
 
-	if susp, _ := r.suspended(ctx, "live"); susp {
+	suspended := func(id string) bool {
+		e, err := r.resolve(ctx, id)
+		if err != nil {
+			t.Fatalf("resolve(%s): %v", id, err)
+		}
+		return e.suspended
+	}
+	if suspended("live") {
 		t.Fatal("active project reported suspended")
 	}
-	if susp, _ := r.suspended(ctx, "dead"); !susp {
+	if !suspended("dead") {
 		t.Fatal("suspended project not reported suspended")
 	}
-	if susp, _ := r.suspended(ctx, "ghost"); susp {
+	if suspended("ghost") {
 		t.Fatal("unknown project reported suspended")
 	}
 }

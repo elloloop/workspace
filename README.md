@@ -242,6 +242,7 @@ All config is via environment variables (the `GATEWAY_` prefix matches identity)
 | `GATEWAY_METRICS_PORT` | Prometheus metrics listen port | `9090` |
 | `GATEWAY_DEFAULT_PROJECT_ID` | Project shard pinned for requests with no `project_id` | `default` |
 | `GATEWAY_DEFAULT_TENANT_ID` | Tenant (data-isolation shard within a project) pinned for requests with no `tenant_id` | — (empty = default tenant) |
+| `GATEWAY_DATA_REGION` | Data region this instance serves. When set, the service **refuses** (fail-closed, `FailedPrecondition`) to operate on a project whose `data_region` differs — so a mis-routed request never reads/writes data in the wrong region (emits `authz_region_refused_total` + a `data_region_refused` log). Empty = region-agnostic (serves all projects). A project repin converges fleet-wide only after the resolver TTL (~30s); unpin a project via `UpdateProject`'s `clear_data_region`. Multi-region storage **routing** is forward-compat; today this is the recording + validation + serving guard. | — (region-agnostic) |
 | `GATEWAY_ADMIN_API_SECRET` | Platform-operator secret for `AdminService` (project config), presented as `X-Admin-Secret`. **Empty disables the admin API** (`Unimplemented`). When set it must be a high-entropy value of **at least 32 characters** (startup fails otherwise). | — |
 | `GATEWAY_POSTGRES_DSN` | Postgres connection string; selects the postgres storage driver | — (memory driver if unset) |
 | `GATEWAY_POSTGRES_AUTO_MIGRATE` | Apply pending migrations on boot | `true` |
