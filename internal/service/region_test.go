@@ -13,28 +13,38 @@ import (
 	"github.com/elloloop/workspace/internal/service"
 )
 
-// TestEnsureDefaultProjectRegionFailFast: an instance must refuse to boot
-// against a default project pinned to a different region than it serves.
-func TestEnsureDefaultProjectRegionFailFast(t *testing.T) {
+// TestEnsureDefaultProjectRegion: the shared default project is seeded
+// REGION-AGNOSTIC so every region's instance can boot against one shared store
+// (no first-booter deadlock); only an EXPLICIT operator pin triggers the
+// boot fail-fast for a mismatched instance.
+func TestEnsureDefaultProjectRegion(t *testing.T) {
 	repo := memory.New()
 	ctx := context.Background()
 
-	// A us-east-1 instance seeds the default project pinned to its region.
+	// A us-east-1 instance seeds the shared default project region-agnostic.
 	east := service.New(repo, nil, nil, service.WithDataRegion("us-east-1"))
 	if err := east.EnsureDefaultProject(ctx, "default"); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
 	got, err := east.GetProject(ctx, "default")
-	if err != nil || got.DataRegion != "us-east-1" {
-		t.Fatalf("seeded default region = %+v, %v; want us-east-1", got, err)
+	if err != nil || got.DataRegion != "" {
+		t.Fatalf("seeded default region = %+v, %v; want agnostic (empty)", got, err)
 	}
 
-	// A different-region instance against the SAME store must fail fast.
+	// A DIFFERENT-region instance against the SAME shared store boots fine — the
+	// agnostic default cannot deadlock a multi-region fleet.
 	west := service.New(repo, nil, nil, service.WithDataRegion("eu-west-1"))
-	if err := west.EnsureDefaultProject(ctx, "default"); !errors.Is(err, service.ErrFailedPrecondition) {
-		t.Fatalf("mismatched-region boot = %v, want ErrFailedPrecondition", err)
+	if err := west.EnsureDefaultProject(ctx, "default"); err != nil {
+		t.Fatalf("agnostic default must boot in every region, got: %v", err)
 	}
-	// A matching-region instance boots fine (idempotent).
+
+	// Only an EXPLICIT pin to a different region triggers the boot fail-fast.
+	if _, err := east.UpdateProject(ctx, "default", "", "", nil, "us-east-1", false); err != nil {
+		t.Fatalf("pin default: %v", err)
+	}
+	if err := west.EnsureDefaultProject(ctx, "default"); !errors.Is(err, service.ErrFailedPrecondition) {
+		t.Fatalf("explicitly-pinned mismatched boot = %v, want ErrFailedPrecondition", err)
+	}
 	if err := east.EnsureDefaultProject(ctx, "default"); err != nil {
 		t.Fatalf("matching-region re-boot: %v", err)
 	}

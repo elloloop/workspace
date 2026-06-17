@@ -311,7 +311,13 @@ func (h *Handler) ExportSubjectGrants(ctx context.Context, req *connect.Request[
 	if err := h.requireRPCRate(ctx, req.Msg.ProjectId, "export"); err != nil {
 		return nil, err
 	}
-	p := service.Principal{ProjectID: h.callerProject(ctx, req.Msg.ProjectId)}
+	// Route through scope so the data-residency guard runs at the same chokepoint
+	// as every other RPC (and a residency refusal increments the refused metric);
+	// the export is project-wide and ignores the tenant.
+	p, err := h.scope(ctx, req.Msg.ProjectId, "")
+	if err != nil {
+		return nil, err
+	}
 	grants, err := h.svc.ExportSubjectGrants(ctx, p, req.Msg.UserId)
 	if err != nil {
 		return nil, errToConnect(err)

@@ -363,9 +363,18 @@ The `AdminService` is intentionally exempt: it is the region-agnostic control
 plane that *configures* a project's region. When either side is empty the
 instance is **region-agnostic** and serves the project (today's behavior); the
 check short-circuits with zero overhead. A region pin/repin is recorded in the
-admin audit log (`region_changed`), and the default project is seeded with the
-instance's region at bootstrap (a pre-existing default project pinned to a
-different region fails fast at boot).
+admin audit log (`region_changed`). The shared **default project is seeded
+region-agnostic** (never auto-pinned to the booting instance), so a multi-region
+fleet sharing one store all boot against it; only an operator's **explicit** pin
+of the default project to a different region fails an instance fast at boot.
+
+**Rolling deploy / rollback:** roll the new binary to the entire fleet before
+pinning any project's region. The `data_region` write path exists only in the
+new binary, so a pin cannot be created until the fleet is updated; the sole
+residual exposure is an in-flight *old-binary* `UpdateProject` racing the very
+first pin (its config-blob rewrite would drop the new key). A rollback to the
+old binary likewise drops any region pins (the field lives in the project
+config blob the old code does not preserve).
 
 A repin is **not instantaneous fleet-wide**: each instance caches a project's
 resolution for the resolver TTL (~30s), so after an `UpdateProject` repin a

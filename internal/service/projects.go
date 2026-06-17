@@ -308,22 +308,23 @@ func (s *Service) EnsureDefaultProject(ctx context.Context, id string) error {
 	if id == "" {
 		return nil
 	}
-	// Pin the default project to the instance's region so the default shard (which
-	// backs personal-workspace auto-provision) is servable here rather than being
-	// refused by the residency guard.
+	// Seed the default project REGION-AGNOSTIC (empty region), never auto-pinned
+	// to the booting instance's region. The default shard is shared — it backs
+	// every user's personal-workspace auto-provision — so auto-pinning it to
+	// whichever instance booted first would deadlock every other region's
+	// instances against one shared row. An agnostic default is servable by all.
+	// An operator may still EXPLICITLY pin the default project, in which case the
+	// fail-fast below correctly refuses to boot a mismatched instance.
 	if existing, err := s.repo.GetProject(ctx, id); err == nil {
-		// Already seeded: fail fast on a residency misconfiguration — an instance
-		// pinned to region X must not boot against a default project pinned to Y,
-		// since every default-project request would otherwise fail closed.
 		if s.dataRegion != "" && existing.DataRegion != "" && existing.DataRegion != s.dataRegion {
-			return fmt.Errorf("%w: default project %q is pinned to data region %q but this instance serves %q",
+			return fmt.Errorf("%w: default project %q is explicitly pinned to data region %q but this instance serves %q",
 				ErrFailedPrecondition, id, existing.DataRegion, s.dataRegion)
 		}
 		return nil
 	} else if !isNotFound(err) {
 		return err
 	}
-	_, err := s.CreateProject(ctx, id, "Default", nil, s.dataRegion)
+	_, err := s.CreateProject(ctx, id, "Default", nil, "") // region-agnostic; never auto-pinned
 	if isAlreadyExists(err) {
 		return nil // lost a race; the winner seeded it
 	}
