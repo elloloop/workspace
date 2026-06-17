@@ -121,6 +121,9 @@ func (z *ZapLogger) emit(e event) {
 		default:
 			fields = append(fields, zap.String("subject", r.SubjectUserID))
 		}
+		if r.Caller != "" {
+			fields = append(fields, zap.String("caller", r.Caller))
+		}
 		z.logger.Info("authz_tuple_change", fields...)
 	case e.admin != nil:
 		r := e.admin

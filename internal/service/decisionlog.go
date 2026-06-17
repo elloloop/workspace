@@ -22,7 +22,10 @@ type DecisionRecord struct {
 	SubjectSet    *authz.SubjectSet
 	Allowed       bool
 	// Err is non-empty when the decision could not be evaluated.
-	Err       string
+	Err string
+	// Caller is the calling-service identity that asked (e.g. "slack"), for
+	// attribution. Empty for an anonymous (flat-token) caller.
+	Caller    string
 	DecidedAt time.Time
 }
 
