@@ -64,6 +64,15 @@ type Repository interface {
 	GetMembership(ctx context.Context, projectID, tenantID, workspaceID, userID string) (*Membership, error)
 	ListMembers(ctx context.Context, projectID, tenantID, workspaceID string) ([]*Membership, error)
 	DeleteMembership(ctx context.Context, projectID, tenantID, workspaceID, userID string) error
+	// PutMembershipAndTuples upserts the membership row and applies the tuple
+	// writes (deletes then inserts, scoped to m's project/tenant) in ONE
+	// transaction, so a membership and its backing authz role tuple can never
+	// diverge on a crash between the two writes.
+	PutMembershipAndTuples(ctx context.Context, m *Membership, inserts, deletes []authz.Tuple) error
+	// DeleteMembershipAndTuples deletes the membership row and the given tuples
+	// in ONE transaction. Returns ErrNotFound (rolling back) if the membership
+	// is absent.
+	DeleteMembershipAndTuples(ctx context.Context, projectID, tenantID, workspaceID, userID string, deletes []authz.Tuple) error
 
 	// ── Invitations ──────────────────────────────────────────────────
 	CreateInvitation(ctx context.Context, inv *Invitation) error

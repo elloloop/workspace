@@ -50,10 +50,7 @@ func (s *Service) putMember(ctx context.Context, p Principal, workspaceID, userI
 		CreatedAt:   now,
 		UpdatedAt:   now,
 	}
-	if err := s.repo.PutMembership(ctx, m); err != nil {
-		return nil, err
-	}
-	if err := s.repo.WriteTuples(ctx, p.ProjectID, p.TenantID,
+	if err := s.repo.PutMembershipAndTuples(ctx, m,
 		[]authz.Tuple{userTuple("workspace", workspaceID, string(role), userID)}, nil); err != nil {
 		return nil, err
 	}
@@ -88,10 +85,7 @@ func (s *Service) UpdateMemberRole(ctx context.Context, p Principal, workspaceID
 	old := m.Role
 	m.Role = role
 	m.UpdatedAt = s.now()
-	if err := s.repo.PutMembership(ctx, m); err != nil {
-		return nil, err
-	}
-	if err := s.repo.WriteTuples(ctx, p.ProjectID, p.TenantID,
+	if err := s.repo.PutMembershipAndTuples(ctx, m,
 		[]authz.Tuple{userTuple("workspace", workspaceID, string(role), userID)},
 		[]authz.Tuple{userTuple("workspace", workspaceID, string(old), userID)}); err != nil {
 		return nil, err
@@ -111,10 +105,7 @@ func (s *Service) RemoveMember(ctx context.Context, p Principal, workspaceID, us
 	if m.Role == RoleOwner {
 		return fmt.Errorf("%w: the owner cannot be removed", ErrFailedPrecondition)
 	}
-	if err := s.repo.DeleteMembership(ctx, p.ProjectID, p.TenantID, workspaceID, userID); err != nil {
-		return err
-	}
-	return s.repo.WriteTuples(ctx, p.ProjectID, p.TenantID, nil,
+	return s.repo.DeleteMembershipAndTuples(ctx, p.ProjectID, p.TenantID, workspaceID, userID,
 		[]authz.Tuple{userTuple("workspace", workspaceID, string(m.Role), userID)})
 }
 
@@ -145,13 +136,11 @@ func (s *Service) SuspendMember(ctx context.Context, p Principal, workspaceID, u
 	if m.Status == StatusSuspended {
 		return m, nil
 	}
-	if err := s.repo.WriteTuples(ctx, p.ProjectID, p.TenantID, nil,
-		[]authz.Tuple{userTuple("workspace", workspaceID, string(m.Role), userID)}); err != nil {
-		return nil, err
-	}
 	m.Status = StatusSuspended
 	m.UpdatedAt = s.now()
-	if err := s.repo.PutMembership(ctx, m); err != nil {
+	// Atomic: mark suspended and remove the role tuple together.
+	if err := s.repo.PutMembershipAndTuples(ctx, m, nil,
+		[]authz.Tuple{userTuple("workspace", workspaceID, string(m.Role), userID)}); err != nil {
 		return nil, err
 	}
 	return m, nil
@@ -170,18 +159,11 @@ func (s *Service) ReinstateMember(ctx context.Context, p Principal, workspaceID,
 	if m.Status != StatusSuspended {
 		return m, nil
 	}
-	// Persist the membership row BEFORE writing the access-granting tuple: these
-	// are two non-atomic repo calls, so order them fail-closed — a crash between
-	// them leaves the row active but no tuple (Check denies) rather than granting
-	// access against a still-suspended row. (A single transactional membership+
-	// tuple write is the tracked follow-up; SuspendMember is already fail-closed
-	// because it removes the tuple first.)
 	m.Status = StatusActive
 	m.UpdatedAt = s.now()
-	if err := s.repo.PutMembership(ctx, m); err != nil {
-		return nil, err
-	}
-	if err := s.repo.WriteTuples(ctx, p.ProjectID, p.TenantID,
+	// Atomic: mark active and re-grant the role tuple together, so a crash can
+	// never leave the row active without its tuple (or vice versa).
+	if err := s.repo.PutMembershipAndTuples(ctx, m,
 		[]authz.Tuple{userTuple("workspace", workspaceID, string(m.Role), userID)}, nil); err != nil {
 		return nil, err
 	}

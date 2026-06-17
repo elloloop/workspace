@@ -116,6 +116,12 @@ func (s *Store) ListProjects(_ context.Context) ([]*service.Project, error) {
 func (s *Store) WriteTuples(_ context.Context, projectID, tenantID string, inserts, deletes []authz.Tuple) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.writeTuplesLocked(projectID, tenantID, inserts, deletes)
+	return nil
+}
+
+// writeTuplesLocked applies tuple deletes then inserts. The caller holds s.mu.
+func (s *Store) writeTuplesLocked(projectID, tenantID string, inserts, deletes []authz.Tuple) {
 	sk := scope(projectID, tenantID)
 	m := s.tuples[sk]
 	if m == nil {
@@ -128,7 +134,6 @@ func (s *Store) WriteTuples(_ context.Context, projectID, tenantID string, inser
 	for _, t := range inserts {
 		m[tupleKey(t)] = t
 	}
-	return nil
 }
 
 func (s *Store) ListSubjects(_ context.Context, projectID, tenantID, namespace, objectID, relation string) ([]authz.Subject, error) {
@@ -379,6 +384,12 @@ func (s *Store) WorkspacesForUser(_ context.Context, projectID, tenantID, userID
 func (s *Store) PutMembership(_ context.Context, m *service.Membership) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.putMembershipLocked(m)
+	return nil
+}
+
+// putMembershipLocked upserts the membership row. The caller holds s.mu.
+func (s *Store) putMembershipLocked(m *service.Membership) {
 	sk := scope(m.ProjectID, m.TenantID)
 	byWs := s.memberships[sk]
 	if byWs == nil {
@@ -391,6 +402,27 @@ func (s *Store) PutMembership(_ context.Context, m *service.Membership) error {
 		byWs[m.WorkspaceID] = byUser
 	}
 	byUser[m.UserID] = *m
+}
+
+// PutMembershipAndTuples upserts the membership and applies the tuple writes
+// atomically under a single lock.
+func (s *Store) PutMembershipAndTuples(_ context.Context, m *service.Membership, inserts, deletes []authz.Tuple) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.putMembershipLocked(m)
+	s.writeTuplesLocked(m.ProjectID, m.TenantID, inserts, deletes)
+	return nil
+}
+
+// DeleteMembershipAndTuples deletes the membership row and the given tuples
+// atomically under a single lock; ErrNotFound leaves both untouched.
+func (s *Store) DeleteMembershipAndTuples(_ context.Context, projectID, tenantID, workspaceID, userID string, deletes []authz.Tuple) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err := s.deleteMembershipLocked(projectID, tenantID, workspaceID, userID); err != nil {
+		return err
+	}
+	s.writeTuplesLocked(projectID, tenantID, nil, deletes)
 	return nil
 }
 
@@ -424,6 +456,11 @@ func (s *Store) ListMembers(_ context.Context, projectID, tenantID, workspaceID 
 func (s *Store) DeleteMembership(_ context.Context, projectID, tenantID, workspaceID, userID string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	return s.deleteMembershipLocked(projectID, tenantID, workspaceID, userID)
+}
+
+// deleteMembershipLocked removes the membership row. The caller holds s.mu.
+func (s *Store) deleteMembershipLocked(projectID, tenantID, workspaceID, userID string) error {
 	sk := scope(projectID, tenantID)
 	if _, ok := s.memberships[sk][workspaceID][userID]; !ok {
 		return service.ErrNotFound

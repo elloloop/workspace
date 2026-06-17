@@ -392,16 +392,29 @@ func tupleCols(t authz.Tuple) (kind, userID, ns, objID, rel string) {
 	}
 }
 
+// pgExec is the subset of *pgxpool.Pool / pgx.Tx the write helpers need, so the
+// same SQL backs both the standalone methods and the atomic combined ones.
+type pgExec interface {
+	Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
+}
+
 func (s *Store) WriteTuples(ctx context.Context, projectID, tenantID string, inserts, deletes []authz.Tuple) error {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
+	if err := writeTuplesExec(ctx, tx, projectID, tenantID, inserts, deletes); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
 
+// writeTuplesExec applies tuple deletes then inserts via q (a pool or a tx).
+func writeTuplesExec(ctx context.Context, q pgExec, projectID, tenantID string, inserts, deletes []authz.Tuple) error {
 	for _, t := range deletes {
 		kind, uid, sns, soid, srel := tupleCols(t)
-		_, err := tx.Exec(ctx,
+		_, err := q.Exec(ctx,
 			`DELETE FROM relation_tuples WHERE project_id=$1 AND tenant_id=$2 AND namespace=$3 AND object_id=$4
 			   AND relation=$5 AND subject_kind=$6 AND subject_user_id=$7
 			   AND subject_namespace=$8 AND subject_object_id=$9 AND subject_relation=$10`,
@@ -413,7 +426,7 @@ func (s *Store) WriteTuples(ctx context.Context, projectID, tenantID string, ins
 	for _, t := range inserts {
 		kind, uid, sns, soid, srel := tupleCols(t)
 		condName, condParams := conditionCols(t)
-		_, err := tx.Exec(ctx,
+		_, err := q.Exec(ctx,
 			`INSERT INTO relation_tuples
 			   (project_id, tenant_id, namespace, object_id, relation, subject_kind,
 			    subject_user_id, subject_namespace, subject_object_id, subject_relation,
@@ -430,7 +443,7 @@ func (s *Store) WriteTuples(ctx context.Context, projectID, tenantID string, ins
 			return err
 		}
 	}
-	return tx.Commit(ctx)
+	return nil
 }
 
 // conditionCols renders a tuple's optional condition into the stored columns:
@@ -772,7 +785,12 @@ func (s *Store) WorkspacesForUser(ctx context.Context, projectID, tenantID, user
 // ── memberships ─────────────────────────────────────────────────────────────
 
 func (s *Store) PutMembership(ctx context.Context, m *service.Membership) error {
-	_, err := s.pool.Exec(ctx,
+	return putMembershipExec(ctx, s.pool, m)
+}
+
+// putMembershipExec upserts the membership row via q (a pool or a tx).
+func putMembershipExec(ctx context.Context, q pgExec, m *service.Membership) error {
+	_, err := q.Exec(ctx,
 		`INSERT INTO memberships
 		   (project_id, tenant_id, workspace_id, user_id, role, status, created_at, updated_at)
 		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
@@ -781,6 +799,40 @@ func (s *Store) PutMembership(ctx context.Context, m *service.Membership) error 
 		       created_at=EXCLUDED.created_at, updated_at=EXCLUDED.updated_at`,
 		m.ProjectID, m.TenantID, m.WorkspaceID, m.UserID, string(m.Role), string(m.Status), m.CreatedAt, m.UpdatedAt)
 	return err
+}
+
+// PutMembershipAndTuples upserts the membership and applies the tuple writes in
+// one transaction.
+func (s *Store) PutMembershipAndTuples(ctx context.Context, m *service.Membership, inserts, deletes []authz.Tuple) error {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if err := putMembershipExec(ctx, tx, m); err != nil {
+		return err
+	}
+	if err := writeTuplesExec(ctx, tx, m.ProjectID, m.TenantID, inserts, deletes); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
+// DeleteMembershipAndTuples deletes the membership row and the given tuples in
+// one transaction; ErrNotFound rolls back, leaving both untouched.
+func (s *Store) DeleteMembershipAndTuples(ctx context.Context, projectID, tenantID, workspaceID, userID string, deletes []authz.Tuple) error {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if err := deleteMembershipExec(ctx, tx, projectID, tenantID, workspaceID, userID); err != nil {
+		return err
+	}
+	if err := writeTuplesExec(ctx, tx, projectID, tenantID, nil, deletes); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }
 
 func scanMembership(row pgx.Row) (*service.Membership, error) {
@@ -828,7 +880,12 @@ func (s *Store) ListMembers(ctx context.Context, projectID, tenantID, workspaceI
 }
 
 func (s *Store) DeleteMembership(ctx context.Context, projectID, tenantID, workspaceID, userID string) error {
-	tag, err := s.pool.Exec(ctx,
+	return deleteMembershipExec(ctx, s.pool, projectID, tenantID, workspaceID, userID)
+}
+
+// deleteMembershipExec deletes the membership row via q; ErrNotFound if absent.
+func deleteMembershipExec(ctx context.Context, q pgExec, projectID, tenantID, workspaceID, userID string) error {
+	tag, err := q.Exec(ctx,
 		`DELETE FROM memberships WHERE project_id=$1 AND tenant_id=$2 AND workspace_id=$3 AND user_id=$4`,
 		projectID, tenantID, workspaceID, userID)
 	if err != nil {
