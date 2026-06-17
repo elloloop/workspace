@@ -72,10 +72,12 @@ func TestValidate(t *testing.T) {
 		t.Fatalf("valid config rejected: %v", err)
 	}
 	for name, mut := range map[string]func(*Config){
-		"bad connect port":  func(c *Config) { c.ConnectPort = 0 },
-		"bad metrics port":  func(c *Config) { c.MetricsPort = 70000 },
-		"zero body bytes":   func(c *Config) { c.HTTPMaxBodyBytes = 0 },
-		"weak admin secret": func(c *Config) { c.AdminAPISecret = "short" },
+		"bad connect port":     func(c *Config) { c.ConnectPort = 0 },
+		"bad metrics port":     func(c *Config) { c.MetricsPort = 70000 },
+		"zero body bytes":      func(c *Config) { c.HTTPMaxBodyBytes = 0 },
+		"weak admin secret":    func(c *Config) { c.AdminAPISecret = "short" },
+		"low tenant rate":      func(c *Config) { c.TenantRateLimitPerMinute = 1 },
+		"low tenant rate (59)": func(c *Config) { c.TenantRateLimitPerMinute = minTenantRateLimitPerMinute - 1 },
 	} {
 		c := base()
 		mut(c)
@@ -93,5 +95,16 @@ func TestValidate(t *testing.T) {
 	c.AdminAPISecret = "this-is-a-sufficiently-long-admin-secret-0123456789"
 	if err := c.Validate(); err != nil {
 		t.Errorf("strong admin secret rejected: %v", err)
+	}
+
+	// 0 (disabled) and a value at/above the floor pass.
+	c = base()
+	c.TenantRateLimitPerMinute = 0
+	if err := c.Validate(); err != nil {
+		t.Errorf("disabled tenant rate (0) rejected: %v", err)
+	}
+	c.TenantRateLimitPerMinute = minTenantRateLimitPerMinute
+	if err := c.Validate(); err != nil {
+		t.Errorf("tenant rate at the floor rejected: %v", err)
 	}
 }

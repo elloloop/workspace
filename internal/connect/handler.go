@@ -7,6 +7,7 @@ package connect
 
 import (
 	"errors"
+	"strings"
 
 	"connectrpc.com/connect"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -68,15 +69,47 @@ func NewHandler(svc *service.Service, defaultProjectID, defaultTenantID, adminSe
 	}
 }
 
-// requireTenantRate throttles authz data-plane RPCs per resolved (project,
-// tenant). A nil tenantLimiter (disabled) always allows. Over-limit returns
-// ResourceExhausted. The key uses the resolved scope so empty project_id/
+// rejectNUL guards the rate-limit (and storage) key invariant that ids never
+// contain a NUL byte: the bucket key joins project/tenant with NUL, so a caller
+// could otherwise forge the separator to mint extra buckets and evade its own
+// limit (or collide across tenants). It also enforces the "no NUL in an id"
+// assumption the memory driver's scope key already relies on.
+func rejectNUL(ids ...string) error {
+	for _, id := range ids {
+		if strings.IndexByte(id, 0) >= 0 {
+			return connect.NewError(connect.CodeInvalidArgument, errors.New("project_id/tenant_id must not contain a NUL byte"))
+		}
+	}
+	return nil
+}
+
+// requireTenantRate throttles per-tenant authz data-plane RPCs per resolved
+// (project, tenant). A nil tenantLimiter (disabled) always allows. Over-limit
+// returns ResourceExhausted. The key uses the resolved scope so empty project_id/
 // tenant_id map to the deployment defaults, consistent with the handler.
 func (h *Handler) requireTenantRate(projectID, tenantID string) error {
+	if err := rejectNUL(projectID, tenantID); err != nil {
+		return err
+	}
 	if h.tenantLimiter.allow(h.projectOr(projectID) + "\x00" + h.tenantOr(tenantID)) {
 		return nil
 	}
 	return connect.NewError(connect.CodeResourceExhausted, errors.New("tenant rate limit exceeded"))
+}
+
+// requireRPCRate throttles a project-scoped RPC (no real tenant — e.g. the
+// project-wide DeprovisionUser/ExportSubjectGrants) on its OWN keyspace, so an
+// export/erase storm cannot starve the per-tenant Check hot path. The "\x00\x00"
+// + rpc sentinel can never be produced by the per-tenant key (project + single
+// \x00 + a NUL-free tenant), keeping the buckets disjoint.
+func (h *Handler) requireRPCRate(projectID, rpc string) error {
+	if err := rejectNUL(projectID); err != nil {
+		return err
+	}
+	if h.tenantLimiter.allow(h.projectOr(projectID) + "\x00\x00" + rpc) {
+		return nil
+	}
+	return connect.NewError(connect.CodeResourceExhausted, errors.New("rate limit exceeded"))
 }
 
 // acting builds the Principal a management RPC acts as. acting_user_id is

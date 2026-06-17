@@ -259,7 +259,10 @@ func (h *Handler) ListObjects(ctx context.Context, req *connect.Request[workspac
 }
 
 func (h *Handler) DeprovisionUser(ctx context.Context, req *connect.Request[workspacev1.DeprovisionUserRequest]) (*connect.Response[workspacev1.DeprovisionUserResponse], error) {
-	if err := h.requireTenantRate(req.Msg.ProjectId, req.Msg.TenantId); err != nil {
+	// Project-wide erase: throttle on the project's own RPC bucket (it ignores
+	// tenant_id, so a per-tenant key would let tenant_id rotation evade it, and
+	// its own keyspace keeps an erase storm from starving the Check hot path).
+	if err := h.requireRPCRate(req.Msg.ProjectId, "deprovision"); err != nil {
 		return nil, err
 	}
 	p := h.scope(req.Msg.ProjectId, req.Msg.TenantId)
@@ -271,7 +274,9 @@ func (h *Handler) DeprovisionUser(ctx context.Context, req *connect.Request[work
 }
 
 func (h *Handler) ExportSubjectGrants(ctx context.Context, req *connect.Request[workspacev1.ExportSubjectGrantsRequest]) (*connect.Response[workspacev1.ExportSubjectGrantsResponse], error) {
-	if err := h.requireTenantRate(req.Msg.ProjectId, ""); err != nil {
+	// Project-wide export gets its OWN rate bucket so an export storm cannot
+	// starve the per-tenant Check hot path.
+	if err := h.requireRPCRate(req.Msg.ProjectId, "export"); err != nil {
 		return nil, err
 	}
 	p := service.Principal{ProjectID: h.projectOr(req.Msg.ProjectId)}

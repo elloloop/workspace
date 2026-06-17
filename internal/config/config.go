@@ -122,11 +122,21 @@ func (c *Config) Validate() error {
 	if c.AdminAPISecret != "" && len(c.AdminAPISecret) < minAdminSecretLen {
 		return fmt.Errorf("GATEWAY_ADMIN_API_SECRET must be a high-entropy value of at least %d characters", minAdminSecretLen)
 	}
+	// A small positive per-minute cap would silently throttle the authz data
+	// plane to a near-zero rate; require a sane floor when enabled (0 disables).
+	if c.TenantRateLimitPerMinute > 0 && c.TenantRateLimitPerMinute < minTenantRateLimitPerMinute {
+		return fmt.Errorf("GATEWAY_TENANT_RATE_LIMIT_PER_MINUTE, when enabled, must be >= %d (use 0 to disable)", minTenantRateLimitPerMinute)
+	}
 	return nil
 }
 
 // minAdminSecretLen is the minimum length for a configured admin secret.
 const minAdminSecretLen = 32
+
+// minTenantRateLimitPerMinute is the floor for an enabled per-tenant rate limit,
+// above any plausible single-tenant burst, so a misconfigured small value cannot
+// throttle the authz data plane to a near-zero cap.
+const minTenantRateLimitPerMinute = 60
 
 func envStr(key, def string) string {
 	if v, ok := os.LookupEnv(key); ok {
