@@ -125,7 +125,6 @@ func (s *Store) WriteTuples(_ context.Context, projectID, tenantID string, inser
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.writeTuplesLocked(projectID, tenantID, inserts, deletes)
-	s.seqs[scope(projectID, tenantID)]++ // advance the shard's consistency sequence
 	return nil
 }
 
@@ -150,6 +149,10 @@ func (s *Store) writeTuplesLocked(projectID, tenantID string, inserts, deletes [
 	for _, t := range inserts {
 		m[tupleKey(t)] = t
 	}
+	// Advance the shard's consistency sequence for ANY tuple mutation (every
+	// atomic membership/seat/enrollment write routes through here), so the
+	// read-after-write contract covers them, not just the standalone WriteTuples.
+	s.seqs[sk]++
 }
 
 func (s *Store) ListSubjects(_ context.Context, projectID, tenantID, namespace, objectID, relation string) ([]authz.Subject, error) {
@@ -367,6 +370,7 @@ func (s *Store) DeleteWorkspace(_ context.Context, projectID, tenantID, id strin
 			delete(s.invitations[sk], k)
 		}
 	}
+	s.seqs[sk]++ // a cascade delete is a tuple mutation; advance the seq
 	return nil
 }
 
@@ -628,6 +632,7 @@ func (s *Store) DeleteGroup(_ context.Context, projectID, tenantID, id string) e
 			delete(s.tuples[sk], k)
 		}
 	}
+	s.seqs[sk]++ // a cascade delete is a tuple mutation; advance the seq
 	return nil
 }
 

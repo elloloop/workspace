@@ -443,16 +443,18 @@ func (s *Store) WriteTuples(ctx context.Context, projectID, tenantID string, ins
 	if err := writeTuplesExec(ctx, tx, projectID, tenantID, inserts, deletes); err != nil {
 		return err
 	}
-	// Advance the shard's monotonic consistency sequence in the SAME tx, so the
-	// bump commits atomically with the write and a token issued for this write
-	// is always observed by a later read on this (single) store.
-	if _, err := tx.Exec(ctx,
+	return tx.Commit(ctx)
+}
+
+// bumpSeqExec advances the shard's monotonic consistency sequence via q (a tx),
+// so the bump commits atomically with the tuple write in the same transaction
+// and a token issued for that write is always observed by a later read.
+func bumpSeqExec(ctx context.Context, q pgExec, projectID, tenantID string) error {
+	_, err := q.Exec(ctx,
 		`INSERT INTO consistency_seq (project_id, tenant_id, seq) VALUES ($1,$2,1)
 		 ON CONFLICT (project_id, tenant_id) DO UPDATE SET seq = consistency_seq.seq + 1`,
-		projectID, tenantID); err != nil {
-		return err
-	}
-	return tx.Commit(ctx)
+		projectID, tenantID)
+	return err
 }
 
 // ConsistencyToken returns the shard's current monotonic write sequence (0 if
@@ -501,7 +503,10 @@ func writeTuplesExec(ctx context.Context, q pgExec, projectID, tenantID string, 
 			return err
 		}
 	}
-	return nil
+	// Advance the shard's consistency sequence for ANY tuple mutation — so a
+	// membership/seat/enrollment write (which all route through here) is visible
+	// to the read-after-write contract, not just the standalone WriteTuples.
+	return bumpSeqExec(ctx, q, projectID, tenantID)
 }
 
 // conditionCols renders a tuple's optional condition into the stored columns:
@@ -820,6 +825,9 @@ func (s *Store) DeleteWorkspace(ctx context.Context, projectID, tenantID, id str
 		projectID, tenantID, id); err != nil {
 		return err
 	}
+	if err := bumpSeqExec(ctx, tx, projectID, tenantID); err != nil {
+		return err
+	}
 	return tx.Commit(ctx)
 }
 
@@ -1127,6 +1135,9 @@ func (s *Store) DeleteGroup(ctx context.Context, projectID, tenantID, id string)
 	if _, err := tx.Exec(ctx,
 		`DELETE FROM enrollments WHERE project_id=$1 AND tenant_id=$2 AND group_id=$3`,
 		projectID, tenantID, id); err != nil {
+		return err
+	}
+	if err := bumpSeqExec(ctx, tx, projectID, tenantID); err != nil {
 		return err
 	}
 	return tx.Commit(ctx)
