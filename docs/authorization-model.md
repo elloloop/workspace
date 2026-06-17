@@ -145,26 +145,36 @@ the nesting transitively.
 
 ### `resource`
 
-A generic product object that **inherits** access from a parent workspace and
-also supports **direct** per-object sharing.
+A generic product object that **inherits** access from its parent — which may
+be a workspace **or another resource** (nested folders/collections) — and also
+supports **direct** per-object sharing.
 
 ```
 parent := this()
 owner  := this()
-editor := union(this(), computed("owner"), tupleToUserset("parent", "admin"))
-viewer := union(this(), computed("editor"), tupleToUserset("parent", "member"))
+editor := union(this(), computed("owner"),
+                tupleToUserset("parent", "admin"), tupleToUserset("parent", "editor"))
+viewer := union(this(), computed("editor"),
+                tupleToUserset("parent", "member"), tupleToUserset("parent", "viewer"))
 ```
 
 Reading the rules:
 
-- **`parent`** holds tuples like `resource:doc1#parent@workspace:acme#…` — the
-  workspace the resource lives in. (For a directly-shared resource with no
-  workspace, `parent` is simply empty.)
+- **`parent`** holds tuples like `resource:doc1#parent@workspace:acme#…` (the
+  workspace the resource lives in) **or** `resource:doc1#parent@resource:folderB#…`
+  (a containing folder). (For a directly-shared resource with no parent,
+  `parent` is simply empty.)
 - **`editor`** = directly granted editors ∪ the resource's `owner` ∪ **every
-  admin of the parent workspace** (`tupleToUserset("parent", "admin")`).
+  admin of a parent workspace** ∪ **every editor of a parent resource**.
 - **`viewer`** = directly granted viewers ∪ everyone who is an `editor` ∪
-  **every member of the parent workspace** (`tupleToUserset("parent",
-  "member")`).
+  **every member of a parent workspace** ∪ **every viewer of a parent resource**.
+
+Each parent kind matches only its own leg: a workspace parent has no
+`editor`/`viewer` relation (so those legs grant nothing) and a resource parent
+has no `admin`/`member` relation (so those legs grant nothing). A
+`resource→resource` chain therefore inherits level by level — `editor` on
+`folderA` flows to a `doc` nested two folders deep — bounded by the engine's
+`maxDepth` cycle/runaway guard.
 
 So workspace admins can edit anything in the workspace and members can view it,
 with **zero** per-resource tuples — while individual users or groups can still be

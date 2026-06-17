@@ -122,9 +122,10 @@ type Model map[string]Namespace
 //   - workspace: the membership grades, ordered owner ⊃ admin ⊃ member ⊃ guest.
 //   - group:     a nestable membership set (subjects may be group usersets).
 //   - resource:  a generic product object that inherits access from a parent
-//     workspace (tuple_to_userset) and supports direct per-object sharing
-//     (this) — covering Linear-style issues, learning-platform courses, and
-//     a personal-assistant task shared with another person.
+//     (a workspace OR another resource, for nested folders/collections) and
+//     supports direct per-object sharing (this) — covering Linear-style issues,
+//     learning-platform courses, and a personal-assistant task shared with
+//     another person.
 func DefaultModel() Model {
 	return Model{
 		"workspace": {
@@ -136,11 +137,23 @@ func DefaultModel() Model {
 		"group": {
 			"member": this(),
 		},
+		// resource: a generic product object that inherits access from its
+		// `parent`, which may be a workspace OR another resource (nested
+		// folders/collections), with editor/viewer flowing transitively up the
+		// chain. Each parent kind matches only its own union leg: a WORKSPACE
+		// parent resolves the admin/member legs (workspace has no editor/viewer
+		// relation, so those legs grant nothing), while a RESOURCE parent
+		// resolves the editor/viewer legs (resource has no admin/member relation,
+		// so those legs grant nothing). A workspace-rooted resource therefore
+		// behaves exactly as before, and a resource→resource chain inherits level
+		// by level (bounded by the engine's maxDepth cycle/runaway guard).
 		"resource": {
 			"parent": this(),
 			"owner":  this(),
-			"editor": union(this(), computed("owner"), tupleToUserset("parent", "admin")),
-			"viewer": union(this(), computed("editor"), tupleToUserset("parent", "member")),
+			"editor": union(this(), computed("owner"),
+				tupleToUserset("parent", "admin"), tupleToUserset("parent", "editor")),
+			"viewer": union(this(), computed("editor"),
+				tupleToUserset("parent", "member"), tupleToUserset("parent", "viewer")),
 		},
 	}
 }
