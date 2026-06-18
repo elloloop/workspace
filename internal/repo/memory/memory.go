@@ -6,6 +6,7 @@ package memory
 import (
 	"context"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -62,19 +63,28 @@ func scope(projectID, tenantID string) string { return projectID + "\x00" + tena
 
 // ── tuple keys ────────────────────────────────────────────────────────────
 
+// part length-prefixes a single component as "<len>:<value>" so concatenating
+// parts is collision-free regardless of the value's contents: no choice of
+// separators or values (including '/' and '|', which are legitimate in
+// object_ids such as "folder/doc") can make two distinct field sequences encode
+// to the same key. The length prefix makes the encoding self-delimiting.
+func part(s string) string {
+	return strconv.Itoa(len(s)) + ":" + s
+}
+
 func subjectKey(s authz.Subject) string {
 	switch {
 	case s.Wildcard:
-		return "w:*"
+		return "w"
 	case s.Set != nil:
-		return "s:" + s.Set.Namespace + "/" + s.Set.ObjectID + "/" + s.Set.Relation
+		return "s" + part(s.Set.Namespace) + part(s.Set.ObjectID) + part(s.Set.Relation)
 	default:
-		return "u:" + s.UserID
+		return "u" + part(s.UserID)
 	}
 }
 
 func tupleKey(t authz.Tuple) string {
-	return t.Namespace + "|" + t.ObjectID + "|" + t.Relation + "|" + subjectKey(t.Subject)
+	return part(t.Namespace) + part(t.ObjectID) + part(t.Relation) + part(subjectKey(t.Subject))
 }
 
 // ── projects ──────────────────────────────────────────────────────────────

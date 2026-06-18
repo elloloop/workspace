@@ -79,11 +79,9 @@ func NewHandler(svc *service.Service, defaultProjectID, defaultTenantID, adminSe
 // key derivation — the memory driver's scope key included — can rely on it.
 func validateScopeIDs(ids ...string) error {
 	for _, id := range ids {
-		for i := 0; i < len(id); i++ {
-			if id[i] < 0x20 {
-				return connect.NewError(connect.CodeInvalidArgument,
-					errors.New("project_id/tenant_id must not contain control characters"))
-			}
+		if service.HasControlChar(id) {
+			return connect.NewError(connect.CodeInvalidArgument,
+				errors.New("project_id/tenant_id must not contain control characters"))
 		}
 	}
 	return nil

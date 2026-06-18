@@ -192,6 +192,9 @@ func (s *Service) CreateProject(ctx context.Context, id, name string, model auth
 	if id == "" {
 		return nil, fmt.Errorf("%w: project id is required", ErrInvalidArgument)
 	}
+	if HasControlChar(id) {
+		return nil, fmt.Errorf("%w: project id must not contain control characters", ErrInvalidArgument)
+	}
 	if err := validateModel(model); err != nil {
 		return nil, err
 	}
@@ -243,6 +246,9 @@ func (s *Service) ListProjects(ctx context.Context) ([]*Project, error) {
 func (s *Service) UpdateProject(ctx context.Context, id, name string, status ProjectStatus, model authz.Model, dataRegion string, clearRegion bool) (*Project, error) {
 	if id == "" {
 		return nil, fmt.Errorf("%w: project id is required", ErrInvalidArgument)
+	}
+	if HasControlChar(id) {
+		return nil, fmt.Errorf("%w: project id must not contain control characters", ErrInvalidArgument)
 	}
 	if status != "" && status != ProjectActive && status != ProjectSuspended {
 		return nil, fmt.Errorf("%w: status must be active or suspended", ErrInvalidArgument)
