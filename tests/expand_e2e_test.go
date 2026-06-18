@@ -62,12 +62,19 @@ func TestExpandSerializesNewNodeTypes(t *testing.T) {
 	if published.Type != workspacev1.UsersetTree_NODE_TYPE_EXCLUSION {
 		t.Fatalf("published type = %v, want EXCLUSION", published.Type)
 	}
-	if len(published.Children) != 2 {
-		t.Fatalf("EXCLUSION children = %d, want 2 (include, exclude)", len(published.Children))
+	// EXCLUSION encodes operands explicitly in include/exclude, never children.
+	if len(published.Children) != 0 {
+		t.Fatalf("EXCLUSION children = %d, want 0 (operands live in include/exclude)", len(published.Children))
 	}
-	// children[0] is the include leg (public) and must carry the wildcard.
-	if !published.Children[0].Wildcard {
-		t.Fatal("EXCLUSION children[0] (include) should carry the public wildcard")
+	if published.Include == nil || published.Exclude == nil {
+		t.Fatalf("EXCLUSION include/exclude must be set, got include=%v exclude=%v", published.Include, published.Exclude)
+	}
+	// The include leg (public) must carry the wildcard; the exclude leg must not.
+	if !published.Include.Wildcard {
+		t.Fatal("EXCLUSION include leg should carry the public wildcard")
+	}
+	if published.Exclude.Wildcard {
+		t.Fatal("EXCLUSION exclude leg should not carry the public wildcard")
 	}
 
 	premium := expand("premium")

@@ -4352,7 +4352,8 @@ explicit &#34;unpin&#34; path, since an empty data_region means &#34;leave uncha
                   <td>children</td>
                   <td><a href="#workspace.v1.UsersetTree">UsersetTree</a></td>
                   <td>repeated</td>
-                  <td><p>For UNION / INTERSECTION / EXCLUSION nodes: the child subtrees. </p></td>
+                  <td><p>For UNION / INTERSECTION nodes: the child subtrees. Empty for EXCLUSION
+(which uses `include` / `exclude` instead). </p></td>
                 </tr>
               
                 <tr>
@@ -4367,6 +4368,22 @@ explicit &#34;unpin&#34; path, since an empty data_region means &#34;leave uncha
                   <td><a href="#bool">bool</a></td>
                   <td></td>
                   <td><p>For LEAF nodes: true if the public wildcard subject is present. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>include</td>
+                  <td><a href="#workspace.v1.UsersetTree">UsersetTree</a></td>
+                  <td></td>
+                  <td><p>For EXCLUSION nodes only: the include leg (the base set) and the exclude
+leg (subjects removed from it). The effective set is `include` minus
+`exclude`. Unset for every other node type. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>exclude</td>
+                  <td><a href="#workspace.v1.UsersetTree">UsersetTree</a></td>
+                  <td></td>
+                  <td><p> </p></td>
                 </tr>
               
             </tbody>
@@ -4780,7 +4797,9 @@ read-after-write (observe at least this write). Optional to use. </p></td>
               <tr>
                 <td>NODE_TYPE_EXCLUSION</td>
                 <td>4</td>
-                <td><p>EXCLUSION nodes carry exactly two children: [include, exclude].</p></td>
+                <td><p>EXCLUSION encodes its operands EXPLICITLY in `include` / `exclude`, NOT
+in `children`: the effective set is `include` minus `exclude`. `children`
+is empty for EXCLUSION nodes.</p></td>
               </tr>
             
           </tbody>

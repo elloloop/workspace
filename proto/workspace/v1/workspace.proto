@@ -651,19 +651,27 @@ message UsersetTree {
     NODE_TYPE_UNION = 1;
     NODE_TYPE_LEAF = 2;
     NODE_TYPE_INTERSECTION = 3;
-    // EXCLUSION nodes carry exactly two children: [include, exclude].
+    // EXCLUSION encodes its operands EXPLICITLY in `include` / `exclude`, NOT
+    // in `children`: the effective set is `include` minus `exclude`. `children`
+    // is empty for EXCLUSION nodes.
     NODE_TYPE_EXCLUSION = 4;
   }
   NodeType type = 1;
   // For LEAF nodes: the concrete subjects and usersets at this node.
   repeated string user_ids = 2;
   repeated SubjectSet sets = 3;
-  // For UNION / INTERSECTION / EXCLUSION nodes: the child subtrees.
+  // For UNION / INTERSECTION nodes: the child subtrees. Empty for EXCLUSION
+  // (which uses `include` / `exclude` instead).
   repeated UsersetTree children = 4;
   // The userset this node expands.
   SubjectSet expanded = 5;
   // For LEAF nodes: true if the public wildcard subject is present.
   bool wildcard = 6;
+  // For EXCLUSION nodes only: the include leg (the base set) and the exclude
+  // leg (subjects removed from it). The effective set is `include` minus
+  // `exclude`. Unset for every other node type.
+  UsersetTree include = 7;
+  UsersetTree exclude = 8;
 }
 
 message ExpandResponse { UsersetTree tree = 1; }

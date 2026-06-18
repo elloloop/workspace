@@ -248,9 +248,11 @@ func treeToProto(t authz.Tree) *workspacev1.UsersetTree {
 			node.Children = append(node.Children, treeToProto(c))
 		}
 	case t.Exclude != nil:
-		// EXCLUSION carries exactly two children: [include, exclude].
+		// EXCLUSION encodes its operands explicitly: include minus exclude.
+		// children stays empty.
 		node.Type = workspacev1.UsersetTree_NODE_TYPE_EXCLUSION
-		node.Children = append(node.Children, treeToProto(t.Exclude.Include), treeToProto(t.Exclude.Exclude))
+		node.Include = treeToProto(t.Exclude.Include)
+		node.Exclude = treeToProto(t.Exclude.Exclude)
 	default:
 		node.Type = workspacev1.UsersetTree_NODE_TYPE_LEAF
 		node.UserIds = append(node.UserIds, t.Users...)

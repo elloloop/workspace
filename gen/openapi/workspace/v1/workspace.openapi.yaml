@@ -1848,7 +1848,9 @@ components:
           items:
             $ref: '#/components/schemas/workspace.v1.UsersetTree'
           title: children
-          description: 'For UNION / INTERSECTION / EXCLUSION nodes: the child subtrees.'
+          description: |-
+            For UNION / INTERSECTION nodes: the child subtrees. Empty for EXCLUSION
+             (which uses `include` / `exclude` instead).
         expanded:
           title: expanded
           description: The userset this node expands.
@@ -1857,6 +1859,16 @@ components:
           type: boolean
           title: wildcard
           description: 'For LEAF nodes: true if the public wildcard subject is present.'
+        include:
+          title: include
+          description: |-
+            For EXCLUSION nodes only: the include leg (the base set) and the exclude
+             leg (subjects removed from it). The effective set is `include` minus
+             `exclude`. Unset for every other node type.
+          $ref: '#/components/schemas/workspace.v1.UsersetTree'
+        exclude:
+          title: exclude
+          $ref: '#/components/schemas/workspace.v1.UsersetTree'
       title: UsersetTree
       additionalProperties: false
     workspace.v1.Workspace:
