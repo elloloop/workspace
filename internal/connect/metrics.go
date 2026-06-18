@@ -7,6 +7,8 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+
+	"github.com/elloloop/workspace/pkg/authz"
 )
 
 // metrics holds the authorization decision instrumentation exposed at /metrics.
@@ -19,6 +21,7 @@ type metrics struct {
 	errors        *prometheus.CounterVec   // authz_decision_errors_total{rpc}
 	batchItems    prometheus.Histogram     // authz_batchcheck_items
 	regionRefused prometheus.Counter       // authz_region_refused_total
+	backstops     *prometheus.CounterVec   // authz_eval_backstop_total{reason}
 }
 
 // newMetrics constructs and registers the decision metrics on reg.
@@ -47,6 +50,10 @@ func newMetrics(reg prometheus.Registerer) *metrics {
 			Name: "authz_region_refused_total",
 			Help: "Requests refused because the project's pinned data region differs from this instance's region (data-residency fail-closed).",
 		}),
+		backstops: f.NewCounterVec(prometheus.CounterOpts{
+			Name: "authz_eval_backstop_total",
+			Help: "Engine per-request safety backstops that fired, by reason: depth/cycle (graceful fail-closed deny) or budget (read-budget exhausted, ResourceExhausted error). A rising rate signals an abusive tenant or a misconfigured deep/cyclic model.",
+		}, []string{"reason"}),
 	}
 }
 
@@ -91,6 +98,26 @@ func (m *metrics) observeBatchItems(n int) {
 		return
 	}
 	m.batchItems.Observe(float64(n))
+}
+
+// recordBackstops counts each engine backstop that fired during one operation,
+// keyed by low-cardinality reason. Depth/cycle are graceful denies; budget is a
+// ResourceExhausted error. Counting once per reason per request (not per hit)
+// keeps the signal a clean "this request tripped a backstop" indicator for
+// alerting. Nil-safe.
+func (m *metrics) recordBackstops(b *authz.Backstops) {
+	if m == nil || b == nil {
+		return
+	}
+	if b.Depth > 0 {
+		m.backstops.WithLabelValues(string(authz.BackstopDepth)).Inc()
+	}
+	if b.Cycle > 0 {
+		m.backstops.WithLabelValues(string(authz.BackstopCycle)).Inc()
+	}
+	if b.Budget > 0 {
+		m.backstops.WithLabelValues(string(authz.BackstopBudget)).Inc()
+	}
 }
 
 // recordRegionRefused counts a data-residency fail-closed refusal (the project's

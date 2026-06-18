@@ -150,7 +150,19 @@ func (s *Service) Check(ctx context.Context, p Principal, namespace, objectID, r
 		return false, nil // a suspended project denies every check
 	}
 	allowed, err = s.engine.CheckWithModel(ctx, res.modelOrDefault(), p.ProjectID, p.TenantID, namespace, objectID, relation, subjectUserID, reqContext)
-	return allowed, err
+	return allowed, mapBudgetErr(err)
+}
+
+// mapBudgetErr translates the engine's per-request read-budget error into the
+// service's ErrResourceExhausted sentinel (→ connect.CodeResourceExhausted). An
+// exhausted budget means a pathological/abusive query; surfacing it as an error
+// (not a silent deny) keeps it visible and avoids under-granting. Other errors
+// and nil pass through unchanged.
+func mapBudgetErr(err error) error {
+	if errors.Is(err, authz.ErrEvalBudgetExceeded) {
+		return fmt.Errorf("%w: evaluation exceeded the per-request read budget; the model graph for this query is too deep/branching/cyclic", ErrResourceExhausted)
+	}
+	return err
 }
 
 // CheckSet evaluates whether a USERSET (e.g. group:cohort-7#member) has the
@@ -187,7 +199,7 @@ func (s *Service) CheckSet(ctx context.Context, p Principal, namespace, objectID
 		return false, nil // a suspended project denies every check
 	}
 	allowed, err = s.engine.CheckSetWithModel(ctx, res.modelOrDefault(), p.ProjectID, p.TenantID, namespace, objectID, relation, set, reqContext)
-	return allowed, err
+	return allowed, mapBudgetErr(err)
 }
 
 // Expand returns the userset tree for the caller's project and tenant.
@@ -209,7 +221,7 @@ func (s *Service) Expand(ctx context.Context, p Principal, namespace, objectID, 
 	if errors.Is(err, authz.ErrExpandTooLarge) {
 		return authz.Tree{}, fmt.Errorf("%w: expand result exceeds %d nodes; narrow the query", ErrResourceExhausted, s.maxExpandNodes)
 	}
-	return tree, err
+	return tree, mapBudgetErr(err)
 }
 
 // ListObjects returns the object_ids in a namespace where subjectUserID has
@@ -232,7 +244,7 @@ func (s *Service) ListObjects(ctx context.Context, p Principal, namespace, relat
 	if errors.Is(err, authz.ErrTooManyObjects) {
 		return nil, fmt.Errorf("%w: namespace has more than %d objects; narrow the query (pagination is a tracked follow-up)", ErrResourceExhausted, s.maxListObjects)
 	}
-	return ids, err
+	return ids, mapBudgetErr(err)
 }
 
 // DeprovisionUser revokes ALL of a subject's ACCESS GRANTS: it deletes every

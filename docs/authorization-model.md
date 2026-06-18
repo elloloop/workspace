@@ -315,8 +315,61 @@ hierarchies are bounded two ways: the engine caps recursion at `maxDepth`
 closed gracefully** (a clean deny / truncated tree, never an error/`CodeInternal`),
 and a **request-scoped memo** collapses the DAG so each node is evaluated once
 per call (acyclic results are cached; cyclic models recompute and stay
-fail-closed). A tighter per-request read budget and deeper nesting are tracked
-follow-ups.
+fail-closed).
+
+**Per-request cost is bounded** by a third backstop: a **read budget**
+(`GATEWAY_MAX_CHECK_READS`, default `5000`) caps the number of store reads
+(tuple lookups — the unit of work) a single `Check`/`CheckSet`/`Expand`/
+`ListObjects` evaluation may perform. Because a planted cycle defeats the memo
+(an O(depth²) re-walk) and `ListObjects` runs a `Check` per candidate, the depth
+cap alone does not bound total store work; the budget does. `ListObjects` and
+`CheckSet` thread **one shared budget** across the whole operation (all
+candidate/member `Check`s charge it), so a wide namespace × deep graph cannot
+multiply into _N_×budget reads. Unlike the depth/cycle backstop (a graceful
+deny), an **exhausted budget is an error** (`ResourceExhausted`): it means a
+pathological/abusive query, and a silent wrong-deny would both hide the abuse and
+under-grant. The default is generous on purpose — legitimate deep folder/group
+hierarchies read far fewer tuples — so the budget only trips on a degenerate
+graph.
+
+`GATEWAY_MAX_CHECK_READS` is the budget for a **single** `Check`. A **fan-out**
+operation does NOT use that flat value, because its legitimate worst case far
+exceeds `5000`; each fan-out gets a **scaled budget** that is never tighter than
+the response bound that already caps it:
+
+- `ListObjects` and the `CheckSet` member fan-out: worst case _candidates ×
+  maxDepth_ reads (every candidate may walk the full hierarchy), so the budget is
+  `max(GATEWAY_MAX_CHECK_READS, GATEWAY_MAX_LIST_OBJECTS × maxDepth × 2)` (maxDepth
+  = `32`). An all-cyclic graph (cost ≈ _candidates × maxDepth²_) still trips.
+- `Expand`: bounded by the **node cap** `GATEWAY_MAX_EXPAND_NODES`, and its read
+  cost tracks the reachable usersets it visits (≈ nodes), so its budget is
+  `max(GATEWAY_MAX_CHECK_READS, GATEWAY_MAX_EXPAND_NODES × 2)`. The node cap
+  (`ErrExpandTooLarge`) stays the primary bound; the read budget only trips on a
+  genuinely pathological cyclic/branching model. Sizing it off the flat
+  `GATEWAY_MAX_CHECK_READS` would wrongly deny a legitimate Expand whose read
+  count sits between `5000` and the node cap.
+
+**`GATEWAY_MAX_CHECK_READS` must therefore be sized to the deepest/widest real
+tenant model, and tuned together with `GATEWAY_MAX_LIST_OBJECTS` and
+`GATEWAY_MAX_EXPAND_NODES`**: the fan-out and expand budgets scale off those caps
+× headroom, so raising a cap raises the read ceiling a single fan-out may spend.
+A pathologically wide union / `tupleToUserset` model could still need a higher
+`GATEWAY_MAX_CHECK_READS` knob than the scaled budgets provide. **Alert on
+`authz_eval_backstop_total{reason="budget"}` from day one** so a legitimate tenant
+tripping the budget (an unusually deep/wide but valid hierarchy) is caught and the
+caps re-sized before users notice denied lists.
+
+In a `BatchCheck`, a budget exhaustion is **item-specific**: only the offending
+item's result carries the `ResourceExhausted` error; sibling items still return.
+It is not treated as a systemic outage (which would abort the whole call).
+
+**Backstops are observable.** Every backstop that fires increments
+`authz_eval_backstop_total{reason}` (`reason` ∈ `depth`/`cycle`/`budget`) at the
+connect layer, so on-call can alert on "this instance is hitting eval
+backstops" — an abusive tenant or a misconfigured deep/cyclic model — rather than
+the backstop being silent. The engine itself stays dependency-free: it surfaces
+which backstop fired through a request-scoped collector that the metrics layer
+reads.
 
 So workspace admins can edit anything in the workspace and members can view it,
 with **zero** per-resource tuples — while individual users or groups can still be

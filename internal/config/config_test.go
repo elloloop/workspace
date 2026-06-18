@@ -78,6 +78,8 @@ func TestValidate(t *testing.T) {
 		"weak admin secret":    func(c *Config) { c.AdminAPISecret = "short" },
 		"low tenant rate":      func(c *Config) { c.TenantRateLimitPerMinute = 1 },
 		"low tenant rate (59)": func(c *Config) { c.TenantRateLimitPerMinute = minTenantRateLimitPerMinute - 1 },
+		"low max check reads":  func(c *Config) { c.MaxCheckReads = 5 },
+		"max check reads (99)": func(c *Config) { c.MaxCheckReads = minMaxCheckReads - 1 },
 	} {
 		c := base()
 		mut(c)
@@ -106,5 +108,21 @@ func TestValidate(t *testing.T) {
 	c.TenantRateLimitPerMinute = minTenantRateLimitPerMinute
 	if err := c.Validate(); err != nil {
 		t.Errorf("tenant rate at the floor rejected: %v", err)
+	}
+
+	// 0/negative (use the default) and a healthy value pass; a small positive is
+	// rejected above.
+	c = base()
+	c.MaxCheckReads = 0
+	if err := c.Validate(); err != nil {
+		t.Errorf("default max check reads (0) rejected: %v", err)
+	}
+	c.MaxCheckReads = -1
+	if err := c.Validate(); err != nil {
+		t.Errorf("default max check reads (-1) rejected: %v", err)
+	}
+	c.MaxCheckReads = DefaultMaxCheckReads
+	if err := c.Validate(); err != nil {
+		t.Errorf("healthy max check reads rejected: %v", err)
 	}
 }

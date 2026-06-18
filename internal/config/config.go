@@ -65,6 +65,11 @@ type Config struct {
 	// MaxBatchCheckItems caps the number of items in a single BatchCheck
 	// request, bounding per-request cost.
 	MaxBatchCheckItems int
+	// MaxCheckReads caps the number of store reads (tuple lookups) a single
+	// Check/CheckSet/Expand/ListObjects evaluation may perform, bounding the
+	// per-request cost a pathological cyclic/branching graph can inflict.
+	// Non-positive uses the service default.
+	MaxCheckReads int
 	// AdminRateLimitPerMinute throttles the admin API per caller (online
 	// brute-force protection); non-positive disables the limiter.
 	AdminRateLimitPerMinute int
@@ -92,6 +97,12 @@ const DefaultMaxExpandNodes = 10000
 // DefaultMaxBatchCheckItems bounds a BatchCheck request when not overridden.
 const DefaultMaxBatchCheckItems = 1000
 
+// DefaultMaxCheckReads bounds the store reads one Check/CheckSet/Expand/
+// ListObjects evaluation may perform when not overridden. Generous on purpose:
+// legitimate deep folder/group hierarchies read far fewer tuples than this, so
+// the budget only trips on a pathological cyclic/branching graph.
+const DefaultMaxCheckReads = 5000
+
 // Load reads configuration from the environment, applying defaults.
 func Load() (*Config, error) {
 	c := &Config{
@@ -109,6 +120,7 @@ func Load() (*Config, error) {
 		MaxListObjects:           envInt("GATEWAY_MAX_LIST_OBJECTS", DefaultMaxListObjects),
 		MaxExpandNodes:           envInt("GATEWAY_MAX_EXPAND_NODES", DefaultMaxExpandNodes),
 		MaxBatchCheckItems:       envInt("GATEWAY_MAX_BATCH_CHECK_ITEMS", DefaultMaxBatchCheckItems),
+		MaxCheckReads:            envInt("GATEWAY_MAX_CHECK_READS", DefaultMaxCheckReads),
 		AdminRateLimitPerMinute:  envInt("GATEWAY_ADMIN_RATE_LIMIT_PER_MINUTE", DefaultAdminRateLimitPerMinute),
 		TenantRateLimitPerMinute: envInt("GATEWAY_TENANT_RATE_LIMIT_PER_MINUTE", 0),
 		DecisionLog:              envBool("GATEWAY_DECISION_LOG", false),
@@ -184,6 +196,12 @@ func (c *Config) Validate() error {
 	if c.TenantRateLimitPerMinute > 0 && c.TenantRateLimitPerMinute < minTenantRateLimitPerMinute {
 		return fmt.Errorf("GATEWAY_TENANT_RATE_LIMIT_PER_MINUTE, when enabled, must be >= %d (use 0 to disable)", minTenantRateLimitPerMinute)
 	}
+	// A small-positive MaxCheckReads would silently fail authz CLOSED fleet-wide
+	// (every non-trivial Check trips the budget → ResourceExhausted). Require a
+	// sane floor when set; 0/negative keeps the generous service default.
+	if c.MaxCheckReads > 0 && c.MaxCheckReads < minMaxCheckReads {
+		return fmt.Errorf("GATEWAY_MAX_CHECK_READS, when set, must be >= %d (use 0/negative for the default)", minMaxCheckReads)
+	}
 	// The instance region is compared char-for-char against a project's pinned
 	// data_region (same lowercase [a-z0-9_-], <=64 charset). Reject a malformed
 	// value at startup, otherwise a case/charset typo would silently fail closed
@@ -223,6 +241,12 @@ const minAdminSecretLen = 32
 // above any plausible single-tenant burst, so a misconfigured small value cannot
 // throttle the authz data plane to a near-zero cap.
 const minTenantRateLimitPerMinute = 60
+
+// minMaxCheckReads floors a configured per-request read budget. Well below
+// DefaultMaxCheckReads but above any real single-evaluation read count, so a
+// small-positive typo (e.g. 5) is rejected at startup rather than silently
+// failing authz closed fleet-wide; 0/negative still selects the default.
+const minMaxCheckReads = 100
 
 func envStr(key, def string) string {
 	if v, ok := os.LookupEnv(key); ok {

@@ -38,6 +38,12 @@ const DefaultMaxListObjects = 1000
 // DefaultMaxExpandNodes bounds an Expand result tree when not overridden.
 const DefaultMaxExpandNodes = 10000
 
+// DefaultMaxCheckReads bounds the store reads one engine evaluation
+// (Check/CheckSet/Expand/ListObjects) may perform when not overridden. Generous
+// so legitimate deep hierarchies never trip it; only a pathological
+// cyclic/branching graph hits it.
+const DefaultMaxCheckReads = 5000
+
 type Service struct {
 	repo           Repository
 	engine         *authz.Engine
@@ -46,6 +52,7 @@ type Service struct {
 	newID          func() string
 	maxListObjects int
 	maxExpandNodes int
+	maxCheckReads  int
 	// decisionLog, when non-nil, receives an audit record for every
 	// Check/CheckSet decision. Nil disables it with zero hot-path overhead.
 	decisionLog DecisionLogger
@@ -91,6 +98,16 @@ func WithMaxExpandNodes(n int) Option {
 	}
 }
 
+// WithMaxCheckReads caps the store reads one engine evaluation may perform; a
+// non-positive value keeps the default.
+func WithMaxCheckReads(n int) Option {
+	return func(s *Service) {
+		if n > 0 {
+			s.maxCheckReads = n
+		}
+	}
+}
+
 // New builds a Service. clock and idgen are injectable for deterministic
 // tests; nil falls back to time.Now and a random hex id. The engine resolves
 // each project's authorization model from the repository, falling back to the
@@ -111,11 +128,20 @@ func New(repo Repository, clock func() time.Time, idgen func() string, opts ...O
 		newID:          idgen,
 		maxListObjects: DefaultMaxListObjects,
 		maxExpandNodes: DefaultMaxExpandNodes,
+		maxCheckReads:  DefaultMaxCheckReads,
 		log:            zap.NewNop(),
 	}
 	for _, opt := range opts {
 		opt(s)
 	}
+	// Apply the read budget AFTER options so an override is honored. The engine
+	// is shared across all RPCs; the budget is per-operation (each Check builds
+	// its own evalState seeded from this ceiling).
+	s.engine.WithMaxReads(s.maxCheckReads)
+	// CheckSet has no explicit member cap, so it sizes its fan-out budget off the
+	// configured ListObjects candidate cap; thread it to the engine so raising
+	// GATEWAY_MAX_LIST_OBJECTS lifts CheckSet's budget as the contract states.
+	s.engine.WithMaxListObjects(s.maxListObjects)
 	return s
 }
 
@@ -137,7 +163,11 @@ func (s *Service) Repo() Repository { return s.repo }
 
 // allowed is a thin wrapper over the engine for the common workspace check.
 func (s *Service) allowed(ctx context.Context, p Principal, workspaceID string, rel Role) (bool, error) {
-	return s.engine.Check(ctx, p.ProjectID, p.TenantID, "workspace", workspaceID, string(rel), p.UserID, nil)
+	ok, err := s.engine.Check(ctx, p.ProjectID, p.TenantID, "workspace", workspaceID, string(rel), p.UserID, nil)
+	// Route through mapBudgetErr so a budget trip on a product-surface check
+	// (CreateWorkspace/AddMember/…) surfaces as ResourceExhausted consistently with
+	// the data-plane Check/CheckSet/Expand/ListObjects surfaces, not CodeInternal.
+	return ok, mapBudgetErr(err)
 }
 
 // requireWorkspace loads a workspace and confirms the caller holds at least

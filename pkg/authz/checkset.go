@@ -31,8 +31,22 @@ func (e *Engine) CheckSet(ctx context.Context, projectID, tenantID, namespace, o
 // to the target Check exactly as the concrete-user Check path does, so a
 // conditional grant behaves identically whether queried by a user or a userset.
 func (e *Engine) CheckSetWithModel(ctx context.Context, m Model, projectID, tenantID, namespace, objectID, relation string, set SubjectSet, cc map[string]any) (bool, error) {
+	// ONE evalState — hence ONE read budget — is shared across the whole CheckSet
+	// operation: the structural walk, member resolution (which expands usersets),
+	// and the per-member Checks all charge the same budget, so a query set with
+	// many members over a deep/cyclic graph cannot blow up unbounded. visited/memo
+	// are reset between independent top-level Checks because the memo key omits the
+	// query's object id (reusing it across different objects would be unsound).
+	//
+	// CheckSet is a FAN-OUT operation (one Check per resolved member), so it uses
+	// the scaled fan-out budget rather than the flat single-Check budget: a
+	// legitimate group (members × deep hierarchy) must not be wrongly denied. It
+	// has no explicit member cap, so it borrows the same candidate ceiling a
+	// full-cap ListObjects gets; an extreme group fan-out still trips the budget.
+	st := newEvalState(e.fanOutBudget(e.maxListObjectsOrDefault()))
+
 	// (1) structural inclusion through the monotone fragment, or target-public.
-	ok, err := e.check(ctx, m, projectID, tenantID, namespace, objectID, relation, subjectQuery{set: &set}, cc, false, newEvalState(), 0)
+	ok, err := e.check(ctx, m, projectID, tenantID, namespace, objectID, relation, subjectQuery{set: &set}, cc, false, st, 0)
 	if err != nil || ok {
 		return ok, err
 	}
@@ -40,12 +54,14 @@ func (e *Engine) CheckSetWithModel(ctx context.Context, m Model, projectID, tena
 	// (2) member intersection: any concrete member of the query set has access.
 	// Membership resolution is condition-independent; the conditional grant on
 	// the TARGET is evaluated by the per-member Check below (with cc).
-	members, everyone, err := e.resolveMembers(ctx, m, projectID, tenantID, set, map[string]bool{}, 0)
+	members, everyone, err := e.resolveMembers(ctx, m, projectID, tenantID, set, st, map[string]bool{}, 0)
 	if err != nil {
 		return false, err
 	}
 	for u := range members {
-		ok, err := e.check(ctx, m, projectID, tenantID, namespace, objectID, relation, subjectQuery{user: u}, cc, false, newEvalState(), 0)
+		st.visited = map[string]bool{}
+		st.memo = map[string]bool{}
+		ok, err := e.check(ctx, m, projectID, tenantID, namespace, objectID, relation, subjectQuery{user: u}, cc, false, st, 0)
 		if err != nil {
 			return false, err
 		}
@@ -59,7 +75,7 @@ func (e *Engine) CheckSetWithModel(ctx context.Context, m Model, projectID, tena
 	// caught by the structural walk in step 1.)
 	if everyone {
 		tgt, tgtEveryone, err := e.resolveMembers(ctx, m, projectID, tenantID,
-			SubjectSet{Namespace: namespace, ObjectID: objectID, Relation: relation}, map[string]bool{}, 0)
+			SubjectSet{Namespace: namespace, ObjectID: objectID, Relation: relation}, st, map[string]bool{}, 0)
 		if err != nil {
 			return false, err
 		}
@@ -74,38 +90,40 @@ func (e *Engine) CheckSetWithModel(ctx context.Context, m Model, projectID, tena
 // it, by expanding the userset tree and evaluating its set algebra. everyone is
 // true when the membership includes the public wildcard (an unbounded set that
 // cannot be enumerated). visited + maxDepth bound cycles and runaway recursion.
-func (e *Engine) resolveMembers(ctx context.Context, m Model, projectID, tenantID string, set SubjectSet, visited map[string]bool, depth int) (map[string]struct{}, bool, error) {
+func (e *Engine) resolveMembers(ctx context.Context, m Model, projectID, tenantID string, set SubjectSet, st *evalState, visited map[string]bool, depth int) (map[string]struct{}, bool, error) {
 	if depth > e.maxDepth {
 		// Fail closed GRACEFULLY (consistent with Check/Expand): a too-deep or
 		// cyclic userset resolves to no members rather than erroring, so a deep
 		// chain can never turn CheckSet into a CodeInternal (500) / deep-nest DoS.
+		recordBackstop(ctx, BackstopDepth)
 		return map[string]struct{}{}, false, nil
 	}
 	key := visitKey(set.Namespace, set.ObjectID, set.Relation)
 	if visited[key] {
+		recordBackstop(ctx, BackstopCycle)
 		return map[string]struct{}{}, false, nil // cycle: contributes no members
 	}
 	visited[key] = true
 	defer delete(visited, key)
 
 	count := 0
-	tree, err := e.expand(ctx, m, projectID, tenantID, set.Namespace, set.ObjectID, set.Relation, &count, 0, map[string]bool{}, depth)
+	tree, err := e.expand(ctx, m, projectID, tenantID, set.Namespace, set.ObjectID, set.Relation, &count, 0, st, map[string]bool{}, depth)
 	if err != nil {
 		return nil, false, err
 	}
-	return e.membersOfTree(ctx, m, projectID, tenantID, tree, visited, depth)
+	return e.membersOfTree(ctx, m, projectID, tenantID, tree, st, visited, depth)
 }
 
 // membersOfTree evaluates an expanded userset tree to the concrete users it
 // grants, applying the set algebra of union/intersection/exclusion. The bool is
 // true when the result is the unbounded "everyone" set (a public wildcard).
-func (e *Engine) membersOfTree(ctx context.Context, m Model, projectID, tenantID string, t Tree, visited map[string]bool, depth int) (map[string]struct{}, bool, error) {
+func (e *Engine) membersOfTree(ctx context.Context, m Model, projectID, tenantID string, t Tree, st *evalState, visited map[string]bool, depth int) (map[string]struct{}, bool, error) {
 	switch {
 	case len(t.Union) > 0:
 		out := map[string]struct{}{}
 		everyone := false
 		for _, c := range t.Union {
-			cu, ce, err := e.membersOfTree(ctx, m, projectID, tenantID, c, visited, depth)
+			cu, ce, err := e.membersOfTree(ctx, m, projectID, tenantID, c, st, visited, depth)
 			if err != nil {
 				return nil, false, err
 			}
@@ -121,7 +139,7 @@ func (e *Engine) membersOfTree(ctx context.Context, m Model, projectID, tenantID
 		var acc map[string]struct{}
 		bounded := false
 		for _, c := range t.Intersection {
-			cu, ce, err := e.membersOfTree(ctx, m, projectID, tenantID, c, visited, depth)
+			cu, ce, err := e.membersOfTree(ctx, m, projectID, tenantID, c, st, visited, depth)
 			if err != nil {
 				return nil, false, err
 			}
@@ -140,11 +158,11 @@ func (e *Engine) membersOfTree(ctx context.Context, m Model, projectID, tenantID
 		return acc, false, nil
 
 	case t.Exclude != nil:
-		inc, incEveryone, err := e.membersOfTree(ctx, m, projectID, tenantID, t.Exclude.Include, visited, depth)
+		inc, incEveryone, err := e.membersOfTree(ctx, m, projectID, tenantID, t.Exclude.Include, st, visited, depth)
 		if err != nil {
 			return nil, false, err
 		}
-		exc, _, err := e.membersOfTree(ctx, m, projectID, tenantID, t.Exclude.Exclude, visited, depth)
+		exc, _, err := e.membersOfTree(ctx, m, projectID, tenantID, t.Exclude.Exclude, st, visited, depth)
 		if err != nil {
 			return nil, false, err
 		}
@@ -165,7 +183,7 @@ func (e *Engine) membersOfTree(ctx context.Context, m Model, projectID, tenantID
 		}
 		everyone := t.Wildcard
 		for _, s := range t.Sets {
-			su, se, err := e.resolveMembers(ctx, m, projectID, tenantID, s, visited, depth+1)
+			su, se, err := e.resolveMembers(ctx, m, projectID, tenantID, s, st, visited, depth+1)
 			if err != nil {
 				return nil, false, err
 			}
