@@ -64,6 +64,13 @@ Every tuple is scoped to a **`project_id`** (the isolation shard, identity
 ADR-0002); it is the leading key of the store. Tuples in different projects
 never see each other.
 
+`project_id` and `tenant_id` are validated at ingress: any ASCII control
+character (NUL included) is rejected with `InvalidArgument` at the handler
+boundary, on every project-scoped RPC. This enforces the storage-key invariant
+the in-memory driver's `(project, tenant)` scope key relies on (it joins the two
+with a NUL), so a control char can never forge the separator and alias two
+distinct scopes.
+
 In the proto these are `RelationTuple`, `Subject` (a `oneof` of `user_id` /
 `SubjectSet`), and `SubjectSet` (`namespace` / `object_id` / `relation`). In Go
 (`pkg/authz`) the same shapes are `Subject` and `SubjectSet`.

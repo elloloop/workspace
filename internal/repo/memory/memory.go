@@ -49,8 +49,15 @@ func New() *Store {
 
 var _ service.Repository = (*Store)(nil)
 
-// scope is the data-isolation key: a project and a tenant within it. The null
-// byte cannot appear in an id, so it is an unambiguous separator.
+// scope is the data-isolation key: a project and a tenant within it, joined by a
+// NUL. This is unambiguous ONLY because project_id/tenant_id are guaranteed
+// control-char-free (NUL included) — the connect handler rejects any control
+// char at ingress (validateScopeIDs in acting/scope), and internal callers use
+// server-controlled ids. Without that invariant a NUL inside an id could forge
+// the separator and alias scopes (e.g. ("a","b\x00c") vs ("a\x00b","c")), and
+// the project-prefix scans below (DeleteAllSubjectTuplesInProject etc.) and
+// tenantOfScope rely on the single-separator structure. Do not feed unvalidated
+// ids here.
 func scope(projectID, tenantID string) string { return projectID + "\x00" + tenantID }
 
 // ── tuple keys ────────────────────────────────────────────────────────────

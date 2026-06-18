@@ -8,7 +8,6 @@ package connect
 import (
 	"context"
 	"errors"
-	"strings"
 
 	"connectrpc.com/connect"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -71,15 +70,20 @@ func NewHandler(svc *service.Service, defaultProjectID, defaultTenantID, adminSe
 	}
 }
 
-// rejectNUL guards the rate-limit (and storage) key invariant that ids never
-// contain a NUL byte: the bucket key joins project/tenant with NUL, so a caller
-// could otherwise forge the separator to mint extra buckets and evade its own
-// limit (or collide across tenants). It also enforces the "no NUL in an id"
-// assumption the memory driver's scope key already relies on.
-func rejectNUL(ids ...string) error {
+// validateScopeIDs enforces the storage-key invariant that project_id/tenant_id
+// contain no ASCII control character (< 0x20, which includes NUL). The keys that
+// shard data and rate-limit buckets join these ids with a NUL separator, so a
+// NUL inside an id could forge the separator and alias scopes/buckets; other
+// control chars are never legitimate in an id either. It is enforced at the
+// handler chokepoint (acting/scope) on the raw request ids, so every downstream
+// key derivation — the memory driver's scope key included — can rely on it.
+func validateScopeIDs(ids ...string) error {
 	for _, id := range ids {
-		if strings.IndexByte(id, 0) >= 0 {
-			return connect.NewError(connect.CodeInvalidArgument, errors.New("project_id/tenant_id must not contain a NUL byte"))
+		for i := 0; i < len(id); i++ {
+			if id[i] < 0x20 {
+				return connect.NewError(connect.CodeInvalidArgument,
+					errors.New("project_id/tenant_id must not contain control characters"))
+			}
 		}
 	}
 	return nil
@@ -90,7 +94,7 @@ func rejectNUL(ids ...string) error {
 // returns ResourceExhausted. The key uses the resolved scope so empty project_id/
 // tenant_id map to the deployment defaults, consistent with the handler.
 func (h *Handler) requireTenantRate(ctx context.Context, projectID, tenantID string) error {
-	if err := rejectNUL(projectID, tenantID); err != nil {
+	if err := validateScopeIDs(projectID, tenantID); err != nil {
 		return err
 	}
 	if h.tenantLimiter.allow(h.callerProject(ctx, projectID) + "\x00" + h.tenantOr(tenantID)) {
@@ -105,7 +109,7 @@ func (h *Handler) requireTenantRate(ctx context.Context, projectID, tenantID str
 // + rpc sentinel can never be produced by the per-tenant key (project + single
 // \x00 + a NUL-free tenant), keeping the buckets disjoint.
 func (h *Handler) requireRPCRate(ctx context.Context, projectID, rpc string) error {
-	if err := rejectNUL(projectID); err != nil {
+	if err := validateScopeIDs(projectID); err != nil {
 		return err
 	}
 	if h.tenantLimiter.allow(h.callerProject(ctx, projectID) + "\x00\x00" + rpc) {
@@ -121,6 +125,9 @@ func (h *Handler) requireRPCRate(ctx context.Context, projectID, rpc string) err
 func (h *Handler) acting(ctx context.Context, actingUserID, projectID, tenantID string) (service.Principal, error) {
 	if actingUserID == "" {
 		return service.Principal{}, connect.NewError(connect.CodeInvalidArgument, errors.New("acting_user_id is required"))
+	}
+	if err := validateScopeIDs(projectID, tenantID); err != nil {
+		return service.Principal{}, err
 	}
 	p := service.Principal{
 		UserID: actingUserID, ProjectID: h.callerProject(ctx, projectID),
@@ -151,6 +158,9 @@ func (h *Handler) ensureServable(ctx context.Context, p service.Principal) error
 // data-residency guard at the boundary, so EVERY project-scoped RPC fails closed
 // on a mis-routed instance by construction.
 func (h *Handler) scope(ctx context.Context, projectID, tenantID string) (service.Principal, error) {
+	if err := validateScopeIDs(projectID, tenantID); err != nil {
+		return service.Principal{}, err
+	}
 	p := service.Principal{
 		ProjectID: h.callerProject(ctx, projectID), TenantID: h.tenantOr(tenantID),
 		Caller: middleware.CallerFrom(ctx).Name,
