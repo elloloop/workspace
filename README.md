@@ -251,9 +251,9 @@ All config is via environment variables (the `GATEWAY_` prefix matches identity)
 | `GATEWAY_ALLOWED_ORIGINS` | CORS origins for browser callers, comma-separated | — |
 | `GATEWAY_HTTP_MAX_BODY_BYTES` | Maximum request body size | `1048576` |
 | `GATEWAY_MAX_LIST_OBJECTS` | Maximum candidate objects a single `ListObjects` call scans (over-cap returns `ResourceExhausted`). Also sizes the fan-out read budget (see `GATEWAY_MAX_CHECK_READS`), so tune the two together. | `1000` |
-| `GATEWAY_MAX_EXPAND_NODES` | Maximum nodes/subjects in a single `Expand` result tree (over-cap returns `ResourceExhausted`) | `10000` |
+| `GATEWAY_MAX_EXPAND_NODES` | Maximum nodes/subjects in a single `Expand` result tree (over-cap returns `ResourceExhausted`). Also sizes the `Expand` fan-out read budget (see `GATEWAY_MAX_CHECK_READS`), so tune the two together. | `10000` |
 | `GATEWAY_MAX_BATCH_CHECK_ITEMS` | Maximum items in a single `BatchCheck` request | `1000` |
-| `GATEWAY_MAX_CHECK_READS` | Per-request store-read budget: the max tuple lookups one `Check`/`CheckSet`/`Expand`/`ListObjects` evaluation may perform. Bounds worst-case per-request cost when a tenant plants a deep/branching/cyclic model graph; exhausting it returns `ResourceExhausted` (an error, not a silent deny, so an abusive query stays visible) and increments `authz_eval_backstop_total{reason="budget"}`. This flat value is the budget for a SINGLE `Check`/`Expand`. A FAN-OUT operation (`ListObjects`/`CheckSet`) shares ONE budget across the whole operation but SCALES it to its candidate cap — `max(GATEWAY_MAX_CHECK_READS, GATEWAY_MAX_LIST_OBJECTS × maxDepth(32) × 2)` — so a legitimate full-cap deep scan returns the correct list while an all-cyclic graph still trips. Size this together with `GATEWAY_MAX_LIST_OBJECTS` and alert on `authz_eval_backstop_total{reason="budget"}`. Generous default — legitimate deep folder/group hierarchies read far fewer tuples. `0` or negative = unbounded. | `5000` |
+| `GATEWAY_MAX_CHECK_READS` | Per-request store-read budget: the max tuple lookups one `Check`/`CheckSet`/`Expand`/`ListObjects` evaluation may perform. Bounds worst-case per-request cost when a tenant plants a deep/branching/cyclic model graph; exhausting it returns `ResourceExhausted` (an error, not a silent deny, so an abusive query stays visible) and increments `authz_eval_backstop_total{reason="budget"}`. This flat value is the budget for a SINGLE `Check`. A FAN-OUT operation SCALES the budget off the cap that already bounds it (never tighter than that cap × headroom): `ListObjects`/`CheckSet` use `max(GATEWAY_MAX_CHECK_READS, GATEWAY_MAX_LIST_OBJECTS × maxDepth(32) × 2)`; `Expand` uses `max(GATEWAY_MAX_CHECK_READS, GATEWAY_MAX_EXPAND_NODES × 2)` (its read cost tracks reachable usersets ≈ nodes, and the node cap stays the primary bound) — so a legitimate full-cap scan/expand returns the correct result while an all-cyclic graph still trips. Size `GATEWAY_MAX_CHECK_READS` to the deepest/widest real tenant model and tune it together with `GATEWAY_MAX_LIST_OBJECTS`/`GATEWAY_MAX_EXPAND_NODES`; a pathologically wide union/`tupleToUserset` model could still need a higher knob than the scaled budgets provide. Alert on `authz_eval_backstop_total{reason="budget"}` from day one. Generous default — legitimate deep folder/group hierarchies read far fewer tuples. `0` or negative = unbounded. | `5000` |
 | `GATEWAY_ADMIN_RATE_LIMIT_PER_MINUTE` | Per-caller request cap on the admin API (online brute-force protection); over-limit returns `ResourceExhausted`. `0` or negative disables it. | `30` |
 | `GATEWAY_TENANT_RATE_LIMIT_PER_MINUTE` | Per-`(project, tenant)` request cap on the authz data-plane RPCs (Check/BatchCheck/Expand/ListObjects/WriteRelationTuples/…); over-limit returns `ResourceExhausted`. `0` or negative (the default) disables it. | `0` |
 | `GATEWAY_DECISION_LOG` | Enable the append-only authorization decision audit log: every `Check`/`CheckSet` decision is emitted to the structured logger by an async, non-blocking drain (full buffer drops + counts; never slows or fails a check). | `false` |
@@ -303,14 +303,18 @@ rate is an alertable signal that an instance is hitting backstops — an abusive
 tenant or a misconfigured deep/cyclic model. Labels are deliberately
 low-cardinality — no object or subject.
 
-**Runbook — sizing the read budget.** `GATEWAY_MAX_CHECK_READS` and
-`GATEWAY_MAX_LIST_OBJECTS` must be tuned **together**: the budget for a fan-out
-operation (`ListObjects`/`CheckSet`) scales as `GATEWAY_MAX_LIST_OBJECTS ×
-maxDepth (32) × 2`, NOT the flat `GATEWAY_MAX_CHECK_READS`, so a legitimate
-full-cap deep scan is not wrongly denied. **Alert on
-`authz_eval_backstop_total{reason="budget"}`**: a sustained nonzero rate means a
-tenant is tripping the budget — if the tenant is legitimate (a valid but
-unusually deep/wide hierarchy), raise both caps in step; if abusive, the
+**Runbook — sizing the read budget.** `GATEWAY_MAX_CHECK_READS` must be sized to
+the deepest/widest real tenant model and tuned **together** with
+`GATEWAY_MAX_LIST_OBJECTS` and `GATEWAY_MAX_EXPAND_NODES`: a fan-out's budget
+scales off the cap that already bounds it, NOT the flat
+`GATEWAY_MAX_CHECK_READS` — `ListObjects`/`CheckSet` as `GATEWAY_MAX_LIST_OBJECTS
+× maxDepth (32) × 2`, `Expand` as `GATEWAY_MAX_EXPAND_NODES × 2` — so a
+legitimate full-cap scan/expand is not wrongly denied. A pathologically wide
+union/`tupleToUserset` model could still exceed the scaled budgets and need a
+higher `GATEWAY_MAX_CHECK_READS` knob. **Alert on
+`authz_eval_backstop_total{reason="budget"}` from day one**: a sustained nonzero
+rate means a tenant is tripping the budget — if the tenant is legitimate (a valid
+but unusually deep/wide hierarchy), raise the caps in step; if abusive, the
 `ResourceExhausted` errors are the intended signal. In `BatchCheck`, a budget
 trip is isolated to the offending item and does not fail the batch.
 

@@ -332,20 +332,32 @@ under-grant. The default is generous on purpose — legitimate deep folder/group
 hierarchies read far fewer tuples — so the budget only trips on a degenerate
 graph.
 
-`GATEWAY_MAX_CHECK_READS` is the budget for a **single** `Check`/`Expand`. A
-**fan-out** operation (`ListObjects`, and the `CheckSet` member fan-out) does NOT
-use that flat value: its legitimate worst case is _candidates × maxDepth_ reads
-(every candidate may walk the full hierarchy), which for a full-cap deep scan far
-exceeds `5000`. So a fan-out gets a **scaled budget** —
-`max(GATEWAY_MAX_CHECK_READS, GATEWAY_MAX_LIST_OBJECTS × maxDepth × 2)` (maxDepth
-= `32`) — large enough that a real full-cap deep scan returns the correct list,
-while an all-cyclic graph (cost ≈ _candidates × maxDepth²_) still trips.
-**`GATEWAY_MAX_CHECK_READS` and `GATEWAY_MAX_LIST_OBJECTS` must therefore be sized
-together**: the fan-out budget scales with `GATEWAY_MAX_LIST_OBJECTS`, so raising
-the candidate cap raises the read ceiling a single `ListObjects`/`CheckSet` may
-spend. **Alert on `authz_eval_backstop_total{reason="budget"}`** so a legitimate
-tenant tripping the budget (e.g. an unusually deep/wide but valid hierarchy) is
-caught and the caps re-sized before users notice denied lists.
+`GATEWAY_MAX_CHECK_READS` is the budget for a **single** `Check`. A **fan-out**
+operation does NOT use that flat value, because its legitimate worst case far
+exceeds `5000`; each fan-out gets a **scaled budget** that is never tighter than
+the response bound that already caps it:
+
+- `ListObjects` and the `CheckSet` member fan-out: worst case _candidates ×
+  maxDepth_ reads (every candidate may walk the full hierarchy), so the budget is
+  `max(GATEWAY_MAX_CHECK_READS, GATEWAY_MAX_LIST_OBJECTS × maxDepth × 2)` (maxDepth
+  = `32`). An all-cyclic graph (cost ≈ _candidates × maxDepth²_) still trips.
+- `Expand`: bounded by the **node cap** `GATEWAY_MAX_EXPAND_NODES`, and its read
+  cost tracks the reachable usersets it visits (≈ nodes), so its budget is
+  `max(GATEWAY_MAX_CHECK_READS, GATEWAY_MAX_EXPAND_NODES × 2)`. The node cap
+  (`ErrExpandTooLarge`) stays the primary bound; the read budget only trips on a
+  genuinely pathological cyclic/branching model. Sizing it off the flat
+  `GATEWAY_MAX_CHECK_READS` would wrongly deny a legitimate Expand whose read
+  count sits between `5000` and the node cap.
+
+**`GATEWAY_MAX_CHECK_READS` must therefore be sized to the deepest/widest real
+tenant model, and tuned together with `GATEWAY_MAX_LIST_OBJECTS` and
+`GATEWAY_MAX_EXPAND_NODES`**: the fan-out and expand budgets scale off those caps
+× headroom, so raising a cap raises the read ceiling a single fan-out may spend.
+A pathologically wide union / `tupleToUserset` model could still need a higher
+`GATEWAY_MAX_CHECK_READS` knob than the scaled budgets provide. **Alert on
+`authz_eval_backstop_total{reason="budget"}` from day one** so a legitimate tenant
+tripping the budget (an unusually deep/wide but valid hierarchy) is caught and the
+caps re-sized before users notice denied lists.
 
 In a `BatchCheck`, a budget exhaustion is **item-specific**: only the offending
 item's result carries the `ResourceExhausted` error; sibling items still return.
