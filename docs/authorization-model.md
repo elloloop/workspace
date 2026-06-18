@@ -315,8 +315,30 @@ hierarchies are bounded two ways: the engine caps recursion at `maxDepth`
 closed gracefully** (a clean deny / truncated tree, never an error/`CodeInternal`),
 and a **request-scoped memo** collapses the DAG so each node is evaluated once
 per call (acyclic results are cached; cyclic models recompute and stay
-fail-closed). A tighter per-request read budget and deeper nesting are tracked
-follow-ups.
+fail-closed).
+
+**Per-request cost is bounded** by a third backstop: a **read budget**
+(`GATEWAY_MAX_CHECK_READS`, default `5000`) caps the number of store reads
+(tuple lookups — the unit of work) a single `Check`/`CheckSet`/`Expand`/
+`ListObjects` evaluation may perform. Because a planted cycle defeats the memo
+(an O(depth²) re-walk) and `ListObjects` runs a `Check` per candidate, the depth
+cap alone does not bound total store work; the budget does. `ListObjects` and
+`CheckSet` thread **one shared budget** across the whole operation (all
+candidate/member `Check`s charge it), so a wide namespace × deep graph cannot
+multiply into _N_×budget reads. Unlike the depth/cycle backstop (a graceful
+deny), an **exhausted budget is an error** (`ResourceExhausted`): it means a
+pathological/abusive query, and a silent wrong-deny would both hide the abuse and
+under-grant. The default is generous on purpose — legitimate deep folder/group
+hierarchies read far fewer tuples — so the budget only trips on a degenerate
+graph.
+
+**Backstops are observable.** Every backstop that fires increments
+`authz_eval_backstop_total{reason}` (`reason` ∈ `depth`/`cycle`/`budget`) at the
+connect layer, so on-call can alert on "this instance is hitting eval
+backstops" — an abusive tenant or a misconfigured deep/cyclic model — rather than
+the backstop being silent. The engine itself stays dependency-free: it surfaces
+which backstop fired through a request-scoped collector that the metrics layer
+reads.
 
 So workspace admins can edit anything in the workspace and members can view it,
 with **zero** per-resource tuples — while individual users or groups can still be

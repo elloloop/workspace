@@ -253,6 +253,7 @@ All config is via environment variables (the `GATEWAY_` prefix matches identity)
 | `GATEWAY_MAX_LIST_OBJECTS` | Maximum candidate objects a single `ListObjects` call scans (over-cap returns `ResourceExhausted`) | `1000` |
 | `GATEWAY_MAX_EXPAND_NODES` | Maximum nodes/subjects in a single `Expand` result tree (over-cap returns `ResourceExhausted`) | `10000` |
 | `GATEWAY_MAX_BATCH_CHECK_ITEMS` | Maximum items in a single `BatchCheck` request | `1000` |
+| `GATEWAY_MAX_CHECK_READS` | Per-request store-read budget: the max tuple lookups one `Check`/`CheckSet`/`Expand`/`ListObjects` evaluation may perform. Bounds worst-case per-request cost when a tenant plants a deep/branching/cyclic model graph; exhausting it returns `ResourceExhausted` (an error, not a silent deny, so an abusive query stays visible) and increments `authz_eval_backstop_total{reason="budget"}`. `ListObjects`/`CheckSet` share ONE budget across the whole operation. Generous default — legitimate deep folder/group hierarchies read far fewer tuples. `0` or negative = unbounded. | `5000` |
 | `GATEWAY_ADMIN_RATE_LIMIT_PER_MINUTE` | Per-caller request cap on the admin API (online brute-force protection); over-limit returns `ResourceExhausted`. `0` or negative disables it. | `30` |
 | `GATEWAY_TENANT_RATE_LIMIT_PER_MINUTE` | Per-`(project, tenant)` request cap on the authz data-plane RPCs (Check/BatchCheck/Expand/ListObjects/WriteRelationTuples/…); over-limit returns `ResourceExhausted`. `0` or negative (the default) disables it. | `0` |
 | `GATEWAY_DECISION_LOG` | Enable the append-only authorization decision audit log: every `Check`/`CheckSet` decision is emitted to the structured logger by an async, non-blocking drain (full buffer drops + counts; never slows or fails a check). | `false` |
@@ -294,7 +295,13 @@ are on `:9090/metrics`, including authorization-decision metrics:
 `authz_check_decisions_total{namespace,relation,allowed}` (Check/CheckSet and
 per-item BatchCheck outcomes), `authz_check_duration_seconds{rpc}` latency,
 `authz_decision_errors_total{rpc}`, and `authz_batchcheck_items` (items per
-BatchCheck). Labels are deliberately low-cardinality — no object or subject.
+BatchCheck), plus `authz_eval_backstop_total{reason}` — counts engine
+per-request safety backstops that fired, `reason` ∈ `depth`/`cycle` (a graceful
+fail-closed deny when recursion is too deep or cyclic) or `budget` (the
+per-request read budget was exhausted, a `ResourceExhausted` error). A rising
+rate is an alertable signal that an instance is hitting backstops — an abusive
+tenant or a misconfigured deep/cyclic model. Labels are deliberately
+low-cardinality — no object or subject.
 
 ## Storage
 
