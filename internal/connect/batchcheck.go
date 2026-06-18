@@ -13,10 +13,14 @@ import (
 )
 
 // BatchCheck evaluates many Check questions in one round-trip. The request is
-// capped at maxBatchCheckItems; results are index-aligned to items. A per-item
-// VALIDATION error is reported in that item's result, but an internal failure
-// aborts the whole call with a non-OK status (so an outage is not hidden in a
-// 200 body of per-item error strings).
+// capped at maxBatchCheckItems; results are index-aligned to items.
+//
+// Error policy mirrors the service layer: an ITEM-SPECIFIC error is reported in
+// that item's result so its siblings still return — a per-item VALIDATION error
+// (bad arguments) or per-item budget EXHAUSTION (ResourceExhausted: that one
+// item's model graph is too deep/branching/cyclic). A SYSTEMIC internal failure
+// (storage/engine outage) aborts the whole call with a non-OK status, so an
+// outage is not hidden in a 200 body of per-item error strings.
 func (h *Handler) BatchCheck(ctx context.Context, req *connect.Request[workspacev1.BatchCheckRequest]) (*connect.Response[workspacev1.BatchCheckResponse], error) {
 	start := time.Now()
 	defer func() { h.metrics.observe("BatchCheck", start) }()

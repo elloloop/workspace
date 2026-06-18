@@ -35,6 +35,14 @@ type ObjectLister interface {
 // tracked as a follow-up.
 const maxRecursionDepth = 32
 
+// fanOutHeadroom scales a fan-out operation's read budget above its legitimate
+// worst case (candidates × maxDepth reads) so a genuine full-cap, fully-deep
+// scan never trips the budget, while a pathological cyclic/branching graph —
+// whose cost grows as candidates × maxDepth² — still does. A factor of 2 leaves
+// a legit full-cap deep scan (~candidates × maxDepth) at half the budget yet
+// keeps the all-cyclic abuse case (~candidates × maxDepth²) well above it.
+const fanOutHeadroom = 2
+
 // ErrEvalBudgetExceeded is returned by Check/CheckSet/Expand/ListObjects when a
 // single operation's store-read budget is exhausted. Unlike the depth/cycle
 // backstop (a graceful fail-closed deny), an exhausted budget is an ERROR: it
@@ -65,6 +73,31 @@ type evalState struct {
 func newEvalState(maxReads int) *evalState {
 	return &evalState{visited: map[string]bool{}, memo: map[string]bool{}, maxReads: maxReads}
 }
+
+// fanOutBudget is the read budget for a FAN-OUT operation (ListObjects, and the
+// CheckSet member fan-out): it must not deny a legitimate full-cap, fully-deep
+// scan, whose cost is bounded by candidates × maxDepth reads. We scale that by
+// fanOutHeadroom and take the max with the single-Check budget, so the fan-out
+// budget is never tighter than a single Check's. A non-positive base maxReads
+// stays unbounded. candidates is the operation's candidate cap.
+func (e *Engine) fanOutBudget(candidates int) int {
+	if e.maxReads <= 0 {
+		return 0 // unbounded
+	}
+	scaled := candidates * e.maxDepth * fanOutHeadroom
+	if scaled > e.maxReads {
+		return scaled
+	}
+	return e.maxReads
+}
+
+// checkSetFanOutCandidates is the candidate count CheckSet uses to size its
+// fan-out budget. CheckSet has no explicit member cap, so it borrows the same
+// ceiling a full-cap ListObjects would get (DefaultMaxListObjects-equivalent):
+// a query set with a reasonable number of members over a deep hierarchy passes,
+// while an extreme group fan-out (far beyond a real cohort) trips the budget and
+// surfaces as ResourceExhausted — the abuse signal we want.
+const checkSetFanOutCandidates = 1000
 
 // charge accounts one store read against the budget, returning
 // ErrEvalBudgetExceeded once the count exceeds maxReads. A non-positive maxReads
@@ -350,7 +383,17 @@ func (e *Engine) ListObjectsWithModel(ctx context.Context, m Model, projectID, t
 	// budget yet do N×budget total store work. The memo is intentionally NOT
 	// shared, because it is keyed on (object,relation,negated) without the object
 	// id of the top-level query; reusing it across candidates would be unsound.
-	st := newEvalState(e.maxReads)
+	//
+	// The budget is the FAN-OUT budget (candidates × maxDepth × headroom), NOT
+	// the flat single-Check budget: a legitimate full-cap scan over a deep
+	// hierarchy reads up to candidates × maxDepth tuples, so the flat budget would
+	// wrongly deny it. We size candidates by the request's cap when set, else the
+	// realized candidate count (already bounded by the cap check above).
+	candidates := maxObjects
+	if candidates <= 0 {
+		candidates = len(ids)
+	}
+	st := newEvalState(e.fanOutBudget(candidates))
 	out := make([]string, 0, len(ids))
 	for _, id := range ids {
 		st.visited = map[string]bool{}

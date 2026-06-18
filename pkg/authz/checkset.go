@@ -37,7 +37,13 @@ func (e *Engine) CheckSetWithModel(ctx context.Context, m Model, projectID, tena
 	// many members over a deep/cyclic graph cannot blow up unbounded. visited/memo
 	// are reset between independent top-level Checks because the memo key omits the
 	// query's object id (reusing it across different objects would be unsound).
-	st := newEvalState(e.maxReads)
+	//
+	// CheckSet is a FAN-OUT operation (one Check per resolved member), so it uses
+	// the scaled fan-out budget rather than the flat single-Check budget: a
+	// legitimate group (members × deep hierarchy) must not be wrongly denied. It
+	// has no explicit member cap, so it borrows the same candidate ceiling a
+	// full-cap ListObjects gets; an extreme group fan-out still trips the budget.
+	st := newEvalState(e.fanOutBudget(checkSetFanOutCandidates))
 
 	// (1) structural inclusion through the monotone fragment, or target-public.
 	ok, err := e.check(ctx, m, projectID, tenantID, namespace, objectID, relation, subjectQuery{set: &set}, cc, false, st, 0)
