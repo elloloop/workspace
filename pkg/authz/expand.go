@@ -61,7 +61,7 @@ func (e *Engine) Expand(ctx context.Context, projectID, tenantID, namespace, obj
 // ExpandWithModel is Expand against an already-resolved model.
 func (e *Engine) ExpandWithModel(ctx context.Context, m Model, projectID, tenantID, namespace, objectID, relation string, maxNodes int) (Tree, error) {
 	count := 0
-	return e.expand(ctx, m, projectID, tenantID, namespace, objectID, relation, &count, maxNodes, newEvalState(e.maxReads), map[string]bool{}, 0)
+	return e.expand(ctx, m, projectID, tenantID, namespace, objectID, relation, &count, maxNodes, newEvalState(e.expandBudget(maxNodes)), map[string]bool{}, 0)
 }
 
 func (e *Engine) expand(ctx context.Context, m Model, projectID, tenantID, ns, obj, rel string, count *int, max int, st *evalState, visited map[string]bool, depth int) (Tree, error) {

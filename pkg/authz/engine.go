@@ -91,6 +91,27 @@ func (e *Engine) fanOutBudget(candidates int) int {
 	return e.maxReads
 }
 
+// expandBudget is the read budget for an Expand operation. Expand is itself a
+// fan-out, but bounded by the NODE CAP (maxExpandNodes) rather than a
+// candidate × depth scan: its read cost tracks the number of reachable usersets
+// it visits, which is ≈ the node count. Sizing the read budget off the flat
+// single-Check maxReads would wrongly deny a legitimate acyclic Expand whose
+// read count sits between maxReads and the node cap — the node cap
+// (ErrExpandTooLarge) is the response's real bound, so the read budget must
+// never be tighter than it. We scale the node cap by fanOutHeadroom and take the
+// max with the single-Check budget. A non-positive base maxReads stays
+// unbounded.
+func (e *Engine) expandBudget(maxNodes int) int {
+	if e.maxReads <= 0 {
+		return 0 // unbounded
+	}
+	scaled := maxNodes * fanOutHeadroom
+	if scaled > e.maxReads {
+		return scaled
+	}
+	return e.maxReads
+}
+
 // checkSetFanOutCandidates is the candidate count CheckSet uses to size its
 // fan-out budget. CheckSet has no explicit member cap, so it borrows the same
 // ceiling a full-cap ListObjects would get (DefaultMaxListObjects-equivalent):
