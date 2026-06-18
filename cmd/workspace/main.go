@@ -66,6 +66,7 @@ func main() {
 			MaxListObjects:           cfg.MaxListObjects,
 			MaxExpandNodes:           cfg.MaxExpandNodes,
 			MaxBatchCheckItems:       cfg.MaxBatchCheckItems,
+			MaxCheckReads:            cfg.MaxCheckReads,
 			AdminRateLimitPerMinute:  cfg.AdminRateLimitPerMinute,
 			TenantRateLimitPerMinute: cfg.TenantRateLimitPerMinute,
 			DecisionLog:              cfg.DecisionLog,

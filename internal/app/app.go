@@ -42,6 +42,9 @@ type Deps struct {
 	// MaxBatchCheckItems caps a single BatchCheck request; non-positive uses
 	// the configured default.
 	MaxBatchCheckItems int
+	// MaxCheckReads caps the store reads one engine evaluation may perform;
+	// non-positive uses the service default.
+	MaxCheckReads int
 	// AdminRateLimitPerMinute throttles the admin API per caller; non-positive
 	// disables the limiter.
 	AdminRateLimitPerMinute int
@@ -70,6 +73,7 @@ func New(ctx context.Context, d Deps) (http.Handler, error) {
 	opts := []service.Option{
 		service.WithMaxListObjects(d.MaxListObjects),
 		service.WithMaxExpandNodes(d.MaxExpandNodes),
+		service.WithMaxCheckReads(d.MaxCheckReads),
 		service.WithDataRegion(d.DataRegion),
 		service.WithLogger(logger),
 	}

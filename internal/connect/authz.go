@@ -191,6 +191,9 @@ func (h *Handler) Check(ctx context.Context, req *connect.Request[workspacev1.Ch
 			errors.New("exactly one of subject_user_id or subject_set is required"))
 	}
 
+	ctx, backstops := authz.WithBackstops(ctx)
+	defer func() { h.metrics.recordBackstops(backstops) }()
+
 	var allowed bool
 	if set != nil {
 		allowed, err = h.svc.CheckSet(ctx, p, req.Msg.Namespace, req.Msg.ObjectId, req.Msg.Relation,
@@ -222,6 +225,8 @@ func (h *Handler) Expand(ctx context.Context, req *connect.Request[workspacev1.E
 		h.metrics.recordError("Expand")
 		return nil, errToConnect(err)
 	}
+	ctx, backstops := authz.WithBackstops(ctx)
+	defer func() { h.metrics.recordBackstops(backstops) }()
 	tree, err := h.svc.Expand(ctx, p, req.Msg.Namespace, req.Msg.ObjectId, req.Msg.Relation)
 	if err != nil {
 		h.metrics.recordError("Expand")
@@ -281,6 +286,8 @@ func (h *Handler) ListObjects(ctx context.Context, req *connect.Request[workspac
 		h.metrics.recordError("ListObjects")
 		return nil, errToConnect(err)
 	}
+	ctx, backstops := authz.WithBackstops(ctx)
+	defer func() { h.metrics.recordBackstops(backstops) }()
 	ids, err := h.svc.ListObjects(ctx, p, req.Msg.Namespace, req.Msg.Relation, req.Msg.SubjectUserId)
 	if err != nil {
 		h.metrics.recordError("ListObjects")

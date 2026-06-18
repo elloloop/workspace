@@ -35,18 +35,46 @@ type ObjectLister interface {
 // tracked as a follow-up.
 const maxRecursionDepth = 32
 
-// evalState is the per-top-level-Check scratch state: the path-local cycle guard,
-// a request-scoped result memo, and a counter of cycle/depth hits used to decide
-// which results are safe to memoize. q and cc are fixed for the lifetime of one
-// evalState, so the memo key need not include them.
+// ErrEvalBudgetExceeded is returned by Check/CheckSet/Expand/ListObjects when a
+// single operation's store-read budget is exhausted. Unlike the depth/cycle
+// backstop (a graceful fail-closed deny), an exhausted budget is an ERROR: it
+// means a pathological/abusive query (a planted cycle that poisons the memo, or
+// a wide×deep branching graph), and a silent wrong-deny would both hide the
+// abuse and under-grant. The service maps it to ErrResourceExhausted →
+// connect.CodeResourceExhausted.
+var ErrEvalBudgetExceeded = errors.New("authz: per-request read budget exceeded")
+
+// evalState is the per-operation scratch state: the path-local cycle guard, a
+// request-scoped result memo, a counter of cycle/depth hits used to decide which
+// results are safe to memoize, and the store-read budget. q and cc are fixed for
+// the lifetime of one evalState, so the memo key need not include them.
+//
+// The read budget is the unit of store WORK: every reader.ListSubjects call
+// charges one read. maxReads caps the total across the whole operation; a
+// non-positive maxReads is unbounded. ListObjects shares ONE evalState (hence
+// one budget) across all its candidate Checks, so a wide namespace × deep graph
+// cannot multiply into N×budget reads.
 type evalState struct {
 	visited    map[string]bool
 	memo       map[string]bool
 	cyclesSeen int
+	reads      int
+	maxReads   int
 }
 
-func newEvalState() *evalState {
-	return &evalState{visited: map[string]bool{}, memo: map[string]bool{}}
+func newEvalState(maxReads int) *evalState {
+	return &evalState{visited: map[string]bool{}, memo: map[string]bool{}, maxReads: maxReads}
+}
+
+// charge accounts one store read against the budget, returning
+// ErrEvalBudgetExceeded once the count exceeds maxReads. A non-positive maxReads
+// is unbounded. The fast path is a single increment + compare.
+func (st *evalState) charge() error {
+	st.reads++
+	if st.maxReads > 0 && st.reads > st.maxReads {
+		return ErrEvalBudgetExceeded
+	}
+	return nil
 }
 
 // Engine evaluates Check/Expand against a per-project model and a tuple store.
@@ -55,15 +83,30 @@ type Engine struct {
 	reader   TupleReader
 	// maxDepth bounds rewrite recursion as a cycle/runaway backstop.
 	maxDepth int
+	// maxReads bounds the number of store reads (reader.ListSubjects calls) a
+	// single Check/CheckSet/Expand/ListObjects operation may perform, so a
+	// pathological cyclic/branching graph cannot make one request do unbounded
+	// store work. Non-positive = unbounded.
+	maxReads int
 }
 
 // NewEngine builds an engine. A nil resolver falls back to the built-in
-// DefaultModel for every project.
+// DefaultModel for every project. The read budget is unbounded until set with
+// WithMaxReads.
 func NewEngine(resolver ModelResolver, reader TupleReader) *Engine {
 	if resolver == nil {
 		resolver = StaticResolver(DefaultModel())
 	}
 	return &Engine{resolver: resolver, reader: reader, maxDepth: maxRecursionDepth}
+}
+
+// WithMaxReads sets the per-request store-read budget. A non-positive value
+// leaves the budget unbounded.
+func (e *Engine) WithMaxReads(n int) *Engine {
+	if n > 0 {
+		e.maxReads = n
+	}
+	return e
 }
 
 // subjectQuery is what a Check is testing for: exactly one of a concrete user
@@ -88,7 +131,7 @@ func (e *Engine) Check(ctx context.Context, projectID, tenantID, namespace, obje
 // has resolved the project once (e.g. for a suspension check) does not trigger a
 // second resolve.
 func (e *Engine) CheckWithModel(ctx context.Context, m Model, projectID, tenantID, namespace, objectID, relation, userID string, cc map[string]any) (bool, error) {
-	return e.check(ctx, m, projectID, tenantID, namespace, objectID, relation, subjectQuery{user: userID}, cc, false, newEvalState(), 0)
+	return e.check(ctx, m, projectID, tenantID, namespace, objectID, relation, subjectQuery{user: userID}, cc, false, newEvalState(e.maxReads), 0)
 }
 
 func visitKey(ns, obj, rel string) string { return ns + ":" + obj + "#" + rel }
@@ -106,6 +149,7 @@ func (e *Engine) check(ctx context.Context, m Model, projectID, tenantID, ns, ob
 		// the request as having touched a cycle so no ancestor caches a
 		// path-dependent result below.
 		st.cyclesSeen++
+		recordBackstop(ctx, BackstopCycle)
 		return negated, nil
 	}
 	if depth > e.maxDepth {
@@ -113,6 +157,7 @@ func (e *Engine) check(ctx context.Context, m Model, projectID, tenantID, ns, ob
 		// cycle) rather than erroring — a deeply nested hierarchy yields a clean
 		// deny, never a CodeInternal, and cannot be weaponized into 500s.
 		st.cyclesSeen++
+		recordBackstop(ctx, BackstopDepth)
 		return negated, nil
 	}
 	mk := key + "\x1f" + strconv.FormatBool(negated)
@@ -198,6 +243,10 @@ func (e *Engine) evalRewrite(ctx context.Context, m Model, projectID, tenantID, 
 // can be matched transitively/nested); concrete members of the query are handled by
 // CheckSet's member resolution.
 func (e *Engine) evalThis(ctx context.Context, m Model, projectID, tenantID, ns, obj, rel string, q subjectQuery, cc map[string]any, negated bool, st *evalState, depth int) (bool, error) {
+	if err := st.charge(); err != nil {
+		recordBackstop(ctx, BackstopBudget)
+		return false, err
+	}
 	subjects, err := e.reader.ListSubjects(ctx, projectID, tenantID, ns, obj, rel)
 	if err != nil {
 		return false, err
@@ -235,6 +284,10 @@ func (e *Engine) evalThis(ctx context.Context, m Model, projectID, tenantID, ns,
 // evalTupleToUserset walks every userset stored under the tupleset relation
 // and checks the computed relation on each referenced object.
 func (e *Engine) evalTupleToUserset(ctx context.Context, m Model, projectID, tenantID, ns, obj string, rw Rewrite, q subjectQuery, cc map[string]any, negated bool, st *evalState, depth int) (bool, error) {
+	if err := st.charge(); err != nil {
+		recordBackstop(ctx, BackstopBudget)
+		return false, err
+	}
 	subjects, err := e.reader.ListSubjects(ctx, projectID, tenantID, ns, obj, rw.TuplesetRelation)
 	if err != nil {
 		return false, err
@@ -291,9 +344,18 @@ func (e *Engine) ListObjectsWithModel(ctx context.Context, m Model, projectID, t
 	if maxObjects > 0 && len(ids) > maxObjects {
 		return nil, ErrTooManyObjects
 	}
+	// ONE evalState — hence ONE read budget — is shared across every candidate
+	// Check. A fresh evalState per candidate would give the budget no teeth: a
+	// wide namespace × deep/cyclic graph could each stay just under the per-Check
+	// budget yet do N×budget total store work. The memo is intentionally NOT
+	// shared, because it is keyed on (object,relation,negated) without the object
+	// id of the top-level query; reusing it across candidates would be unsound.
+	st := newEvalState(e.maxReads)
 	out := make([]string, 0, len(ids))
 	for _, id := range ids {
-		ok, err := e.CheckWithModel(ctx, m, projectID, tenantID, namespace, id, relation, userID, nil)
+		st.visited = map[string]bool{}
+		st.memo = map[string]bool{}
+		ok, err := e.check(ctx, m, projectID, tenantID, namespace, id, relation, subjectQuery{user: userID}, nil, false, st, 0)
 		if err != nil {
 			return nil, err
 		}

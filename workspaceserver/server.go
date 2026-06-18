@@ -44,6 +44,9 @@ type Config struct {
 	// MaxBatchCheckItems caps a single BatchCheck request; non-positive uses
 	// the configured default.
 	MaxBatchCheckItems int
+	// MaxCheckReads caps the store reads one engine evaluation may perform;
+	// non-positive uses the service default.
+	MaxCheckReads int
 	// AdminRateLimitPerMinute throttles the admin API per caller; non-positive
 	// disables the limiter.
 	AdminRateLimitPerMinute int
@@ -107,6 +110,7 @@ func New(ctx context.Context, opts Options) (*Server, error) {
 		MaxListObjects:           opts.Config.MaxListObjects,
 		MaxExpandNodes:           opts.Config.MaxExpandNodes,
 		MaxBatchCheckItems:       opts.Config.MaxBatchCheckItems,
+		MaxCheckReads:            opts.Config.MaxCheckReads,
 		AdminRateLimitPerMinute:  opts.Config.AdminRateLimitPerMinute,
 		TenantRateLimitPerMinute: opts.Config.TenantRateLimitPerMinute,
 	}

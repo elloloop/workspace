@@ -65,6 +65,11 @@ type Config struct {
 	// MaxBatchCheckItems caps the number of items in a single BatchCheck
 	// request, bounding per-request cost.
 	MaxBatchCheckItems int
+	// MaxCheckReads caps the number of store reads (tuple lookups) a single
+	// Check/CheckSet/Expand/ListObjects evaluation may perform, bounding the
+	// per-request cost a pathological cyclic/branching graph can inflict.
+	// Non-positive uses the service default.
+	MaxCheckReads int
 	// AdminRateLimitPerMinute throttles the admin API per caller (online
 	// brute-force protection); non-positive disables the limiter.
 	AdminRateLimitPerMinute int
@@ -92,6 +97,12 @@ const DefaultMaxExpandNodes = 10000
 // DefaultMaxBatchCheckItems bounds a BatchCheck request when not overridden.
 const DefaultMaxBatchCheckItems = 1000
 
+// DefaultMaxCheckReads bounds the store reads one Check/CheckSet/Expand/
+// ListObjects evaluation may perform when not overridden. Generous on purpose:
+// legitimate deep folder/group hierarchies read far fewer tuples than this, so
+// the budget only trips on a pathological cyclic/branching graph.
+const DefaultMaxCheckReads = 5000
+
 // Load reads configuration from the environment, applying defaults.
 func Load() (*Config, error) {
 	c := &Config{
@@ -109,6 +120,7 @@ func Load() (*Config, error) {
 		MaxListObjects:           envInt("GATEWAY_MAX_LIST_OBJECTS", DefaultMaxListObjects),
 		MaxExpandNodes:           envInt("GATEWAY_MAX_EXPAND_NODES", DefaultMaxExpandNodes),
 		MaxBatchCheckItems:       envInt("GATEWAY_MAX_BATCH_CHECK_ITEMS", DefaultMaxBatchCheckItems),
+		MaxCheckReads:            envInt("GATEWAY_MAX_CHECK_READS", DefaultMaxCheckReads),
 		AdminRateLimitPerMinute:  envInt("GATEWAY_ADMIN_RATE_LIMIT_PER_MINUTE", DefaultAdminRateLimitPerMinute),
 		TenantRateLimitPerMinute: envInt("GATEWAY_TENANT_RATE_LIMIT_PER_MINUTE", 0),
 		DecisionLog:              envBool("GATEWAY_DECISION_LOG", false),
