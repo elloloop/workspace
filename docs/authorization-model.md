@@ -345,9 +345,13 @@ Traversal must carry a visited-set / depth bound so cyclic group nesting cannot
 loop (see ADR-0003).
 
 `Expand(namespace, object_id, relation)` is the set-valued sibling: instead of
-testing one user, it returns the effective **`UsersetTree`** — `UNION` nodes
-with child subtrees, and `LEAF` nodes carrying concrete `user_ids` and nested
-`sets`. Use it to answer "who has access?" and for audit.
+testing one user, it returns the effective **`UsersetTree`** — `UNION` /
+`INTERSECTION` nodes with child subtrees (in `children`), and `LEAF` nodes
+carrying concrete `user_ids` and nested `sets`. An `EXCLUSION` node encodes its
+operands **explicitly** in the dedicated `include` and `exclude` fields (the
+effective set is `include` minus `exclude`); it does **not** use `children` and
+relies on no positional convention. Use it to answer "who has access?" and for
+audit.
 
 `ReadRelationTuples` is **not** a permission check — it returns raw stored
 tuples matching an exact filter, with no rewrite evaluation. Use `Check` for
