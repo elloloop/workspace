@@ -326,6 +326,18 @@ func validateTuple(t authz.Tuple) error {
 	if t.Namespace == seatNamespace {
 		return fmt.Errorf("%w: the %q namespace is reserved; use AssignSeat/RevokeSeat", ErrInvalidArgument, seatNamespace)
 	}
+	// Reject control characters in every tuple string field. The memory driver's
+	// keys length-prefix each component (collision-free regardless of contents),
+	// but a control char in an id is never legitimate, so we fail closed here at
+	// the durable seam — uniformly across all drivers — using the shared rule.
+	for _, f := range []string{t.Namespace, t.ObjectID, t.Relation, t.Subject.UserID} {
+		if HasControlChar(f) {
+			return fmt.Errorf("%w: tuple fields must not contain control characters", ErrInvalidArgument)
+		}
+	}
+	if st := t.Subject.Set; st != nil && (HasControlChar(st.Namespace) || HasControlChar(st.ObjectID) || HasControlChar(st.Relation)) {
+		return fmt.Errorf("%w: tuple subject-set fields must not contain control characters", ErrInvalidArgument)
+	}
 	var set int
 	if t.Subject.UserID != "" {
 		set++
