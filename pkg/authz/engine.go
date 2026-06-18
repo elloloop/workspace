@@ -112,13 +112,14 @@ func (e *Engine) expandBudget(maxNodes int) int {
 	return e.maxReads
 }
 
-// checkSetFanOutCandidates is the candidate count CheckSet uses to size its
-// fan-out budget. CheckSet has no explicit member cap, so it borrows the same
-// ceiling a full-cap ListObjects would get (DefaultMaxListObjects-equivalent):
-// a query set with a reasonable number of members over a deep hierarchy passes,
-// while an extreme group fan-out (far beyond a real cohort) trips the budget and
-// surfaces as ResourceExhausted — the abuse signal we want.
-const checkSetFanOutCandidates = 1000
+// defaultCheckSetFanOutCandidates is the fallback candidate count CheckSet uses
+// to size its fan-out budget when no list-objects cap is configured on the
+// engine. CheckSet has no explicit member cap, so it borrows the same ceiling a
+// full-cap ListObjects would get: a query set with a reasonable number of
+// members over a deep hierarchy passes, while an extreme group fan-out (far
+// beyond a real cohort) trips the budget and surfaces as ResourceExhausted — the
+// abuse signal we want. Mirrors config.DefaultMaxListObjects.
+const defaultCheckSetFanOutCandidates = 1000
 
 // charge accounts one store read against the budget, returning
 // ErrEvalBudgetExceeded once the count exceeds maxReads. A non-positive maxReads
@@ -142,6 +143,21 @@ type Engine struct {
 	// pathological cyclic/branching graph cannot make one request do unbounded
 	// store work. Non-positive = unbounded.
 	maxReads int
+	// maxListObjects is the configured ListObjects candidate cap. CheckSet has no
+	// explicit member cap, so it sizes its fan-out budget off this same ceiling —
+	// raising GATEWAY_MAX_LIST_OBJECTS lifts CheckSet's budget in lockstep, as the
+	// scaling contract documents. Non-positive falls back to
+	// defaultCheckSetFanOutCandidates.
+	maxListObjects int
+}
+
+// maxListObjectsOrDefault is the candidate ceiling CheckSet sizes its fan-out
+// budget against: the configured ListObjects cap when set, else the default.
+func (e *Engine) maxListObjectsOrDefault() int {
+	if e.maxListObjects > 0 {
+		return e.maxListObjects
+	}
+	return defaultCheckSetFanOutCandidates
 }
 
 // NewEngine builds an engine. A nil resolver falls back to the built-in
@@ -159,6 +175,16 @@ func NewEngine(resolver ModelResolver, reader TupleReader) *Engine {
 func (e *Engine) WithMaxReads(n int) *Engine {
 	if n > 0 {
 		e.maxReads = n
+	}
+	return e
+}
+
+// WithMaxListObjects sets the ListObjects candidate cap CheckSet sizes its
+// fan-out budget against. A non-positive value leaves the engine on its default
+// fan-out ceiling (defaultCheckSetFanOutCandidates).
+func (e *Engine) WithMaxListObjects(n int) *Engine {
+	if n > 0 {
+		e.maxListObjects = n
 	}
 	return e
 }

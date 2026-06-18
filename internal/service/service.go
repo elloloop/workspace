@@ -138,6 +138,10 @@ func New(repo Repository, clock func() time.Time, idgen func() string, opts ...O
 	// is shared across all RPCs; the budget is per-operation (each Check builds
 	// its own evalState seeded from this ceiling).
 	s.engine.WithMaxReads(s.maxCheckReads)
+	// CheckSet has no explicit member cap, so it sizes its fan-out budget off the
+	// configured ListObjects candidate cap; thread it to the engine so raising
+	// GATEWAY_MAX_LIST_OBJECTS lifts CheckSet's budget as the contract states.
+	s.engine.WithMaxListObjects(s.maxListObjects)
 	return s
 }
 
@@ -159,7 +163,11 @@ func (s *Service) Repo() Repository { return s.repo }
 
 // allowed is a thin wrapper over the engine for the common workspace check.
 func (s *Service) allowed(ctx context.Context, p Principal, workspaceID string, rel Role) (bool, error) {
-	return s.engine.Check(ctx, p.ProjectID, p.TenantID, "workspace", workspaceID, string(rel), p.UserID, nil)
+	ok, err := s.engine.Check(ctx, p.ProjectID, p.TenantID, "workspace", workspaceID, string(rel), p.UserID, nil)
+	// Route through mapBudgetErr so a budget trip on a product-surface check
+	// (CreateWorkspace/AddMember/…) surfaces as ResourceExhausted consistently with
+	// the data-plane Check/CheckSet/Expand/ListObjects surfaces, not CodeInternal.
+	return ok, mapBudgetErr(err)
 }
 
 // requireWorkspace loads a workspace and confirms the caller holds at least

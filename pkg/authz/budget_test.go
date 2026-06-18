@@ -154,6 +154,54 @@ func TestBudget_ListObjectsFullCapDeepScanSucceeds(t *testing.T) {
 	}
 }
 
+// TestBudget_CheckSetUsesConfiguredListObjectsCap pins the scaling contract:
+// CheckSet sizes its fan-out budget off the engine's configured ListObjects cap
+// (WithMaxListObjects), NOT a hardcoded constant. A long member chain whose read
+// cost exceeds the budget at the DEFAULT cap must trip the budget; raising the
+// cap lifts the budget and lets the same query through.
+func TestBudget_CheckSetUsesConfiguredListObjectsCap(t *testing.T) {
+	build := func() *countingReader {
+		r := &fakeReader{}
+		// doc1#viewer is granted to the CONCRETE user alice, so the query set does
+		// NOT match structurally — it goes through member resolution. The query set
+		// group:wide#member nests n sibling subgroups (a WIDE, shallow fan-out);
+		// resolving its members reads every subgroup, charging ~n reads at shallow
+		// depth (so the read budget, not maxDepth, is the binding constraint).
+		const n = 80
+		r.add("doc", "doc1", "viewer", user("alice"))
+		for i := 0; i < n; i++ {
+			r.add("group", "wide", "member", set("group", fmt.Sprintf("g%d", i), "member"))
+			r.add("group", fmt.Sprintf("g%d", i), "member", user(fmt.Sprintf("u%d", i)))
+		}
+		// alice is in the last subgroup, so a fully-resolved member set DOES grant.
+		r.add("group", "g79", "member", user("alice"))
+		return &countingReader{fakeReader: r}
+	}
+	query := ss("group", "wide", "member")
+	ctx := context.Background()
+
+	// maxDepth × headroom × candidates sizes the fan-out budget. Use a tiny base
+	// maxReads and a tiny cap so the configured cap is the binding factor —
+	// proving the cap (not a constant) sizes the budget.
+	const base = 10
+
+	// Tiny configured cap → tiny fan-out budget → the chain trips it.
+	low := NewEngine(StaticResolver(Model{"doc": {"viewer": this()}, "group": {"member": this()}}), build()).WithMaxReads(base).WithMaxListObjects(1)
+	if _, err := low.CheckSet(ctx, "p", "", "doc", "doc1", "viewer", query, nil); !errors.Is(err, ErrEvalBudgetExceeded) {
+		t.Fatalf("low cap: want ErrEvalBudgetExceeded, got %v", err)
+	}
+
+	// Raised cap → larger fan-out budget → the same query completes.
+	high := NewEngine(StaticResolver(Model{"doc": {"viewer": this()}, "group": {"member": this()}}), build()).WithMaxReads(base).WithMaxListObjects(1000)
+	ok, err := high.CheckSet(ctx, "p", "", "doc", "doc1", "viewer", query, nil)
+	if err != nil {
+		t.Fatalf("high cap: query should complete, got %v", err)
+	}
+	if !ok {
+		t.Fatal("high cap: alice's chain grants viewer; want match")
+	}
+}
+
 // TestBackstop_DepthAndCycleSurfaced: an over-deep cyclic graph (ample budget)
 // fails closed gracefully (no error) AND records the cycle backstop on the
 // context collector — the signal the connect layer turns into a metric.

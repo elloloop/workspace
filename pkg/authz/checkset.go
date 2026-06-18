@@ -43,7 +43,7 @@ func (e *Engine) CheckSetWithModel(ctx context.Context, m Model, projectID, tena
 	// legitimate group (members × deep hierarchy) must not be wrongly denied. It
 	// has no explicit member cap, so it borrows the same candidate ceiling a
 	// full-cap ListObjects gets; an extreme group fan-out still trips the budget.
-	st := newEvalState(e.fanOutBudget(checkSetFanOutCandidates))
+	st := newEvalState(e.fanOutBudget(e.maxListObjectsOrDefault()))
 
 	// (1) structural inclusion through the monotone fragment, or target-public.
 	ok, err := e.check(ctx, m, projectID, tenantID, namespace, objectID, relation, subjectQuery{set: &set}, cc, false, st, 0)
