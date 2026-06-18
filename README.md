@@ -250,10 +250,10 @@ All config is via environment variables (the `GATEWAY_` prefix matches identity)
 | `GATEWAY_SERVICE_CREDENTIALS` | Optional JSON list mapping a credential to a named calling-service identity with an optional project pin: `[{"token":"…","name":"slack","project":"slack-proj"}]`. A mapped credential authenticates **and** carries its identity (recorded as `caller` in audit/decision logs); a pinned credential is **forced into its project** — its requests' `project_id` field is **ignored**, so don't build multi-project logic against one pinned credential. Each token must be ≥32 chars. Additive — flat `GATEWAY_SERVICE_AUTH_TOKENS` still work as anonymous credentials. **Rollback note:** during a rollout, also list each mapped token in `GATEWAY_SERVICE_AUTH_TOKENS` so a revert degrades to an anonymous-but-authenticated caller (HTTP `200`) rather than `401`. | — |
 | `GATEWAY_ALLOWED_ORIGINS` | CORS origins for browser callers, comma-separated | — |
 | `GATEWAY_HTTP_MAX_BODY_BYTES` | Maximum request body size | `1048576` |
-| `GATEWAY_MAX_LIST_OBJECTS` | Maximum candidate objects a single `ListObjects` call scans (over-cap returns `ResourceExhausted`) | `1000` |
+| `GATEWAY_MAX_LIST_OBJECTS` | Maximum candidate objects a single `ListObjects` call scans (over-cap returns `ResourceExhausted`). Also sizes the fan-out read budget (see `GATEWAY_MAX_CHECK_READS`), so tune the two together. | `1000` |
 | `GATEWAY_MAX_EXPAND_NODES` | Maximum nodes/subjects in a single `Expand` result tree (over-cap returns `ResourceExhausted`) | `10000` |
 | `GATEWAY_MAX_BATCH_CHECK_ITEMS` | Maximum items in a single `BatchCheck` request | `1000` |
-| `GATEWAY_MAX_CHECK_READS` | Per-request store-read budget: the max tuple lookups one `Check`/`CheckSet`/`Expand`/`ListObjects` evaluation may perform. Bounds worst-case per-request cost when a tenant plants a deep/branching/cyclic model graph; exhausting it returns `ResourceExhausted` (an error, not a silent deny, so an abusive query stays visible) and increments `authz_eval_backstop_total{reason="budget"}`. `ListObjects`/`CheckSet` share ONE budget across the whole operation. Generous default — legitimate deep folder/group hierarchies read far fewer tuples. `0` or negative = unbounded. | `5000` |
+| `GATEWAY_MAX_CHECK_READS` | Per-request store-read budget: the max tuple lookups one `Check`/`CheckSet`/`Expand`/`ListObjects` evaluation may perform. Bounds worst-case per-request cost when a tenant plants a deep/branching/cyclic model graph; exhausting it returns `ResourceExhausted` (an error, not a silent deny, so an abusive query stays visible) and increments `authz_eval_backstop_total{reason="budget"}`. This flat value is the budget for a SINGLE `Check`/`Expand`. A FAN-OUT operation (`ListObjects`/`CheckSet`) shares ONE budget across the whole operation but SCALES it to its candidate cap — `max(GATEWAY_MAX_CHECK_READS, GATEWAY_MAX_LIST_OBJECTS × maxDepth(32) × 2)` — so a legitimate full-cap deep scan returns the correct list while an all-cyclic graph still trips. Size this together with `GATEWAY_MAX_LIST_OBJECTS` and alert on `authz_eval_backstop_total{reason="budget"}`. Generous default — legitimate deep folder/group hierarchies read far fewer tuples. `0` or negative = unbounded. | `5000` |
 | `GATEWAY_ADMIN_RATE_LIMIT_PER_MINUTE` | Per-caller request cap on the admin API (online brute-force protection); over-limit returns `ResourceExhausted`. `0` or negative disables it. | `30` |
 | `GATEWAY_TENANT_RATE_LIMIT_PER_MINUTE` | Per-`(project, tenant)` request cap on the authz data-plane RPCs (Check/BatchCheck/Expand/ListObjects/WriteRelationTuples/…); over-limit returns `ResourceExhausted`. `0` or negative (the default) disables it. | `0` |
 | `GATEWAY_DECISION_LOG` | Enable the append-only authorization decision audit log: every `Check`/`CheckSet` decision is emitted to the structured logger by an async, non-blocking drain (full buffer drops + counts; never slows or fails a check). | `false` |
@@ -302,6 +302,17 @@ per-request read budget was exhausted, a `ResourceExhausted` error). A rising
 rate is an alertable signal that an instance is hitting backstops — an abusive
 tenant or a misconfigured deep/cyclic model. Labels are deliberately
 low-cardinality — no object or subject.
+
+**Runbook — sizing the read budget.** `GATEWAY_MAX_CHECK_READS` and
+`GATEWAY_MAX_LIST_OBJECTS` must be tuned **together**: the budget for a fan-out
+operation (`ListObjects`/`CheckSet`) scales as `GATEWAY_MAX_LIST_OBJECTS ×
+maxDepth (32) × 2`, NOT the flat `GATEWAY_MAX_CHECK_READS`, so a legitimate
+full-cap deep scan is not wrongly denied. **Alert on
+`authz_eval_backstop_total{reason="budget"}`**: a sustained nonzero rate means a
+tenant is tripping the budget — if the tenant is legitimate (a valid but
+unusually deep/wide hierarchy), raise both caps in step; if abusive, the
+`ResourceExhausted` errors are the intended signal. In `BatchCheck`, a budget
+trip is isolated to the offending item and does not fail the batch.
 
 ## Storage
 

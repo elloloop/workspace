@@ -332,6 +332,25 @@ under-grant. The default is generous on purpose — legitimate deep folder/group
 hierarchies read far fewer tuples — so the budget only trips on a degenerate
 graph.
 
+`GATEWAY_MAX_CHECK_READS` is the budget for a **single** `Check`/`Expand`. A
+**fan-out** operation (`ListObjects`, and the `CheckSet` member fan-out) does NOT
+use that flat value: its legitimate worst case is _candidates × maxDepth_ reads
+(every candidate may walk the full hierarchy), which for a full-cap deep scan far
+exceeds `5000`. So a fan-out gets a **scaled budget** —
+`max(GATEWAY_MAX_CHECK_READS, GATEWAY_MAX_LIST_OBJECTS × maxDepth × 2)` (maxDepth
+= `32`) — large enough that a real full-cap deep scan returns the correct list,
+while an all-cyclic graph (cost ≈ _candidates × maxDepth²_) still trips.
+**`GATEWAY_MAX_CHECK_READS` and `GATEWAY_MAX_LIST_OBJECTS` must therefore be sized
+together**: the fan-out budget scales with `GATEWAY_MAX_LIST_OBJECTS`, so raising
+the candidate cap raises the read ceiling a single `ListObjects`/`CheckSet` may
+spend. **Alert on `authz_eval_backstop_total{reason="budget"}`** so a legitimate
+tenant tripping the budget (e.g. an unusually deep/wide but valid hierarchy) is
+caught and the caps re-sized before users notice denied lists.
+
+In a `BatchCheck`, a budget exhaustion is **item-specific**: only the offending
+item's result carries the `ResourceExhausted` error; sibling items still return.
+It is not treated as a systemic outage (which would abort the whole call).
+
 **Backstops are observable.** Every backstop that fires increments
 `authz_eval_backstop_total{reason}` (`reason` ∈ `depth`/`cycle`/`budget`) at the
 connect layer, so on-call can alert on "this instance is hitting eval
