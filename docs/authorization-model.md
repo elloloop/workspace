@@ -64,12 +64,28 @@ Every tuple is scoped to a **`project_id`** (the isolation shard, identity
 ADR-0002); it is the leading key of the store. Tuples in different projects
 never see each other.
 
-`project_id` and `tenant_id` are validated at ingress: any ASCII control
-character (NUL included) is rejected with `InvalidArgument` at the handler
-boundary, on every project-scoped RPC. This enforces the storage-key invariant
-the in-memory driver's `(project, tenant)` scope key relies on (it joins the two
-with a NUL), so a control char can never forge the separator and alias two
-distinct scopes.
+The **control-char storage-key invariant** (single rule, `service.HasControlChar`:
+any byte `< 0x20`, NUL included) is enforced at three seams so a control char can
+never reach a driver's key derivation:
+
+- `project_id` / `tenant_id` are rejected with `InvalidArgument` at the handler
+  boundary on every project-scoped RPC (`validateScopeIDs`), and the
+  **project id** is independently rejected at the service seam in
+  `CreateProject` / `UpdateProject` (and thus `EnsureDefaultProject`), covering
+  the AdminService path and every driver.
+- **Tuple fields** (`namespace`, `object_id`, `relation`, subject `user_id`, and
+  the subject-set `namespace` / `object_id` / `relation`) are rejected at the
+  service seam in `validateTuple`.
+
+This protects the in-memory driver, whose `(project, tenant)` scope key joins the
+two ids with a NUL — a control char could otherwise forge the separator and alias
+two distinct scopes. The in-memory **tuple keys are collision-free by
+construction**: each component is length-prefixed (`<len>:<value>`), so no choice
+of values can alias two distinct tuples regardless of separator-like characters.
+This means path-like `object_id`s containing `/` or `|` (e.g. `folder/doc`) are
+fully legitimate and never collide; only control chars are rejected. The Postgres
+driver uses real composite-key columns and is structurally immune, but the
+control-char contract holds uniformly across drivers.
 
 In the proto these are `RelationTuple`, `Subject` (a `oneof` of `user_id` /
 `SubjectSet`), and `SubjectSet` (`namespace` / `object_id` / `relation`). In Go

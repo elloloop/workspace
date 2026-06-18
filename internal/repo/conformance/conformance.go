@@ -23,6 +23,7 @@ func Run(t *testing.T, newRepo func() service.Repository) {
 		fn   func(*testing.T, service.Repository)
 	}{
 		{"Tuples", testTuples},
+		{"KeyCollisionSafety", testKeyCollisionSafety},
 		{"ConsistencyToken", testConsistencyToken},
 		{"WildcardTuples", testWildcardTuples},
 		{"TupleExpiry", testTupleExpiry},
