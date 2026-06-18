@@ -8,6 +8,7 @@ import (
 	"context"
 	"net/http"
 
+	"connectrpc.com/connect"
 	"go.uber.org/zap"
 
 	"github.com/elloloop/workspace/gen/go/workspace/v1/workspacev1connect"
@@ -90,15 +91,20 @@ func New(ctx context.Context, d Deps) (http.Handler, error) {
 	h := connecthandler.NewHandler(svc, d.DefaultProjectID, d.DefaultTenantID, d.AdminAPISecret, d.MaxBatchCheckItems, d.AdminRateLimitPerMinute, d.TenantRateLimitPerMinute)
 
 	mux := http.NewServeMux()
-	wsPath, wsHandler := workspacev1connect.NewWorkspaceServiceHandler(h)
+	// Install the engine-backstop collector centrally on every service handler, so
+	// EVERY engine evaluation — data-plane and product-surface alike — feeds
+	// authz_eval_backstop_total, counted once per reason per request, and any
+	// future engine-check entrypoint is covered without a per-handler install.
+	hOpts := connect.WithInterceptors(h.Interceptors()...)
+	wsPath, wsHandler := workspacev1connect.NewWorkspaceServiceHandler(h, hOpts)
 	mux.Handle(wsPath, wsHandler)
-	grpPath, grpHandler := workspacev1connect.NewGroupServiceHandler(h)
+	grpPath, grpHandler := workspacev1connect.NewGroupServiceHandler(h, hOpts)
 	mux.Handle(grpPath, grpHandler)
-	azPath, azHandler := workspacev1connect.NewAuthzServiceHandler(h)
+	azPath, azHandler := workspacev1connect.NewAuthzServiceHandler(h, hOpts)
 	mux.Handle(azPath, azHandler)
-	adminPath, adminHandler := workspacev1connect.NewAdminServiceHandler(h)
+	adminPath, adminHandler := workspacev1connect.NewAdminServiceHandler(h, hOpts)
 	mux.Handle(adminPath, adminHandler)
-	seatPath, seatHandler := workspacev1connect.NewSeatServiceHandler(h)
+	seatPath, seatHandler := workspacev1connect.NewSeatServiceHandler(h, hOpts)
 	mux.Handle(seatPath, seatHandler)
 
 	health := middleware.Health()

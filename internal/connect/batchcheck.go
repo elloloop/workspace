@@ -9,7 +9,6 @@ import (
 
 	workspacev1 "github.com/elloloop/workspace/gen/go/workspace/v1"
 	"github.com/elloloop/workspace/internal/service"
-	"github.com/elloloop/workspace/pkg/authz"
 )
 
 // BatchCheck evaluates many Check questions in one round-trip. The request is
@@ -52,8 +51,6 @@ func (h *Handler) BatchCheck(ctx context.Context, req *connect.Request[workspace
 		}
 	}
 
-	ctx, backstops := authz.WithBackstops(ctx)
-	defer func() { h.metrics.recordBackstops(backstops) }()
 	results, err := h.svc.BatchCheck(ctx, p, svcItems)
 	if err != nil {
 		h.metrics.recordError("BatchCheck")

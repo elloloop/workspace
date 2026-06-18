@@ -13,6 +13,20 @@ import (
 	"github.com/elloloop/workspace/internal/service"
 )
 
+// runWithBackstops drives fn through the real backstopInterceptor so a test that
+// calls a handler method directly still gets the central backstop install +
+// once-per-request recording that production wiring provides via
+// connect.WithInterceptors. The inner UnaryFunc ignores its request/response and
+// just runs fn on the (backstop-carrying) context.
+func runWithBackstops(ctx context.Context, h *Handler, fn func(context.Context) error) error {
+	interceptor := backstopInterceptor(h.metrics)
+	wrapped := interceptor(func(ctx context.Context, _ connect.AnyRequest) (connect.AnyResponse, error) {
+		return nil, fn(ctx)
+	})
+	_, err := wrapped(ctx, connect.NewRequest(&workspacev1.CheckRequest{}))
+	return err
+}
+
 func TestDecisionMetrics(t *testing.T) {
 	h := NewHandler(service.New(memory.New(), nil, nil), "default", "", "", 100, 0, 0)
 	reg := prometheus.NewRegistry()
@@ -134,9 +148,12 @@ func TestBackstopMetric(t *testing.T) {
 		t.Fatalf("write: %v", err)
 	}
 
-	_, err := h.Check(ctx, connect.NewRequest(&workspacev1.CheckRequest{
-		Namespace: "resource", ObjectId: "o1", Relation: "viewer", SubjectUserId: "nobody",
-	}))
+	err := runWithBackstops(ctx, h, func(ctx context.Context) error {
+		_, e := h.Check(ctx, connect.NewRequest(&workspacev1.CheckRequest{
+			Namespace: "resource", ObjectId: "o1", Relation: "viewer", SubjectUserId: "nobody",
+		}))
+		return e
+	})
 	if connect.CodeOf(err) != connect.CodeResourceExhausted {
 		t.Fatalf("budget-exhausting Check = %v, want ResourceExhausted", err)
 	}
@@ -153,9 +170,12 @@ func TestBackstopMetric(t *testing.T) {
 	if _, err := h2.WriteRelationTuples(ctx, connect.NewRequest(&workspacev1.WriteRelationTuplesRequest{Updates: updates})); err != nil {
 		t.Fatalf("write2: %v", err)
 	}
-	if _, err := h2.Check(ctx, connect.NewRequest(&workspacev1.CheckRequest{
-		Namespace: "resource", ObjectId: "o1", Relation: "viewer", SubjectUserId: "nobody",
-	})); err != nil {
+	if err := runWithBackstops(ctx, h2, func(ctx context.Context) error {
+		_, e := h2.Check(ctx, connect.NewRequest(&workspacev1.CheckRequest{
+			Namespace: "resource", ObjectId: "o1", Relation: "viewer", SubjectUserId: "nobody",
+		}))
+		return e
+	}); err != nil {
 		t.Fatalf("generous-budget Check should not error, got %v", err)
 	}
 	depth := counterValue(t, reg2, "authz_eval_backstop_total", map[string]string{"reason": "depth"})

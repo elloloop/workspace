@@ -57,12 +57,17 @@ func TestBatchCheckBudgetExhaustionConnect(t *testing.T) {
 		t.Fatalf("write: %v", err)
 	}
 
-	resp, err := h.BatchCheck(ctx, connect.NewRequest(&workspacev1.BatchCheckRequest{
-		Items: []*workspacev1.BatchCheckItem{
-			{Namespace: "resource", ObjectId: "o1", Relation: "viewer", SubjectUserId: "nobody"},
-			{Namespace: "resource", ObjectId: "ok", Relation: "viewer", SubjectUserId: "alice"},
-		},
-	}))
+	var resp *connect.Response[workspacev1.BatchCheckResponse]
+	err := runWithBackstops(ctx, h, func(ctx context.Context) error {
+		var e error
+		resp, e = h.BatchCheck(ctx, connect.NewRequest(&workspacev1.BatchCheckRequest{
+			Items: []*workspacev1.BatchCheckItem{
+				{Namespace: "resource", ObjectId: "o1", Relation: "viewer", SubjectUserId: "nobody"},
+				{Namespace: "resource", ObjectId: "ok", Relation: "viewer", SubjectUserId: "alice"},
+			},
+		}))
+		return e
+	})
 	// (1) The call returns HTTP 200 — a per-item budget hit must not abort it.
 	if err != nil {
 		t.Fatalf("per-item budget exhaustion must not abort the batch: %v", err)
