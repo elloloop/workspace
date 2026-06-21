@@ -33,7 +33,11 @@ type Config struct {
 
 	// PostgresDSN selects the postgres driver when set; empty uses memory.
 	PostgresDSN string
-	// PostgresAutoMigrate runs pending migrations on boot when true.
+	// PostgresAutoMigrate runs the expand migration on boot when true. It
+	// defaults to FALSE: migrations are a deliberate operator step (out-of-band
+	// `workspace migrate`, an init container, or a migrate Job), so a large
+	// existing DB's first deploy can never livelock on a bounded CONCURRENTLY
+	// build inside the boot window. Opt in (true) only for small/dev DBs.
 	PostgresAutoMigrate bool
 
 	// ServiceAuthTokens are the accepted service credentials presented by
@@ -112,7 +116,7 @@ func Load() (*Config, error) {
 		DefaultTenantID:          envStr("GATEWAY_DEFAULT_TENANT_ID", ""),
 		DataRegion:               envStr("GATEWAY_DATA_REGION", ""),
 		PostgresDSN:              envStr("GATEWAY_POSTGRES_DSN", ""),
-		PostgresAutoMigrate:      envBool("GATEWAY_POSTGRES_AUTO_MIGRATE", true),
+		PostgresAutoMigrate:      envBool("GATEWAY_POSTGRES_AUTO_MIGRATE", false),
 		ServiceAuthTokens:        envCSV("GATEWAY_SERVICE_AUTH_TOKENS"),
 		AdminAPISecret:           envStr("GATEWAY_ADMIN_API_SECRET", ""),
 		AllowedOrigins:           envCSV("GATEWAY_ALLOWED_ORIGINS"),
