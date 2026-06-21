@@ -245,7 +245,7 @@ All config is via environment variables (the `GATEWAY_` prefix matches identity)
 | `GATEWAY_DATA_REGION` | Data region this instance serves. When set, the service **refuses** (fail-closed, `FailedPrecondition`) to operate on a project whose `data_region` differs — so a mis-routed request never reads/writes data in the wrong region (emits `authz_region_refused_total` + a `data_region_refused` log). Empty = region-agnostic (serves all projects). A project repin converges fleet-wide only after the resolver TTL (~30s); unpin a project via `UpdateProject`'s `clear_data_region`. Multi-region storage **routing** is forward-compat; today this is the recording + validation + serving guard. | — (region-agnostic) |
 | `GATEWAY_ADMIN_API_SECRET` | Platform-operator secret for `AdminService` (project config), presented as `X-Admin-Secret`. **Empty disables the admin API** (`Unimplemented`). When set it must be a high-entropy value of **at least 32 characters** (startup fails otherwise). | — |
 | `GATEWAY_POSTGRES_DSN` | Postgres connection string; selects the postgres storage driver | — (memory driver if unset) |
-| `GATEWAY_POSTGRES_AUTO_MIGRATE` | Apply pending migrations on boot | `true` |
+| `GATEWAY_POSTGRES_AUTO_MIGRATE` | Run the expand migration on boot. **Opt-in (default `false`):** migrations are a deliberate operator step so a large existing DB's first deploy can never livelock on a bounded `CONCURRENTLY` build inside the boot window. Set `true` only for small/dev DBs. When opted in, a contended migration lock is treated as transient (logs `migrate_lock_contended` WARN and starts without migrating — another actor is migrating); a boot-migrate that exceeds the boot window logs `migrate_boot_timeout` and exits. The recommended prod path is out-of-band `workspace migrate` (expand) then `workspace migrate --contract`. | `false` |
 | `GATEWAY_SERVICE_AUTH_TOKENS` | Accepted service credentials, comma-separated, presented as `Authorization: Bearer <token>`. **Empty disables the requirement** (trust the network/mesh) and logs a warning. | — |
 | `GATEWAY_SERVICE_CREDENTIALS` | Optional JSON list mapping a credential to a named calling-service identity with an optional project pin: `[{"token":"…","name":"slack","project":"slack-proj"}]`. A mapped credential authenticates **and** carries its identity (recorded as `caller` in audit/decision logs); a pinned credential is **forced into its project** — its requests' `project_id` field is **ignored**, so don't build multi-project logic against one pinned credential. Each token must be ≥32 chars. Additive — flat `GATEWAY_SERVICE_AUTH_TOKENS` still work as anonymous credentials. **Rollback note:** during a rollout, also list each mapped token in `GATEWAY_SERVICE_AUTH_TOKENS` so a revert degrades to an anonymous-but-authenticated caller (HTTP `200`) rather than `401`. | — |
 | `GATEWAY_ALLOWED_ORIGINS` | CORS origins for browser callers, comma-separated | — |
@@ -286,8 +286,8 @@ The binary lives at `cmd/workspace`; schema changes follow a two-phase
 long `ACCESS EXCLUSIVE` lock on a populated hot-path table:
 
 - **Expand — `workspace migrate`** (also applied on boot when
-  `GATEWAY_POSTGRES_AUTO_MIGRATE=true`, the default). Idempotent and safe to run
-  on every boot. It creates/upgrades the schema and, for a database still on the
+  `GATEWAY_POSTGRES_AUTO_MIGRATE=true`, which is **opt-in** — the default is
+  `false`). Idempotent and safe to run on every boot. It creates/upgrades the schema and, for a database still on the
   old single-column primary key, builds each composite `(project_id, tenant_id,
   …)` key as a `UNIQUE INDEX CONCURRENTLY` (no `ACCESS EXCLUSIVE` lock) while
   **leaving the old primary key intact** — so old and new binaries interoperate
@@ -301,9 +301,16 @@ long `ACCESS EXCLUSIVE` lock on a populated hot-path table:
   lock** so concurrent replicas serialize. The advisory-lock wait is **bounded**
   (~30s, via `pg_try_advisory_lock` polling): a replica blocked behind a stuck or
   long out-of-band migrator fails fast with `another migration holds the lock;
-  retry` rather than hanging forever and never going ready. The boot-path
-  (auto-migrate) expand additionally runs under a bounded context so a stalled
-  replica fails readiness and is rescheduled. The stale pre-tenant
+  retry` rather than hanging forever. On the boot-path (auto-migrate) expand
+  this lock-held case is **transient and benign**: it logs `migrate_lock_contended`
+  (WARN) and the service **starts without migrating** — the other actor is
+  migrating the schema, and an expanded-but-not-contracted schema serves fine, so
+  this replica picks up the finished schema once that actor completes. The
+  boot-path expand additionally runs under a bounded context; if that deadline is
+  exceeded (a too-slow `CONCURRENTLY` build on a large DB) it logs
+  `migrate_boot_timeout` (advising `GATEWAY_POSTGRES_AUTO_MIGRATE=false` plus an
+  out-of-band migrate) and the process exits. A genuine schema/DDL error is
+  always fatal. The stale pre-tenant
   `workspaces_personal_uniq` index is replaced **without a uniqueness gap**: the
   tenant-scoped index is built `CONCURRENTLY` under a temp name first, then the
   old index is dropped and the temp renamed in one short transaction.
@@ -326,11 +333,14 @@ long `ACCESS EXCLUSIVE` lock on a populated hot-path table:
   in a second tenant collides on it; promoting the composite key to the PK is
   what enables the reuse.
 
-**On a large, already-populated database**, set
-`GATEWAY_POSTGRES_AUTO_MIGRATE=false` so boot does not run migrations on the
+Auto-migrate is **off by default**. **On a large, already-populated database**
+this is the required posture: boot does not run migrations on the
 request-serving path; run `workspace migrate` (expand) out of band, complete the
 rolling deploy, then run `workspace migrate --contract` during a maintenance
-window. Health probes are `GET /healthz` and `GET /readyz`; Prometheus metrics
+window. **For a fresh/small or local/dev database**, either run `workspace
+migrate` (expand) explicitly or set `GATEWAY_POSTGRES_AUTO_MIGRATE=true` for
+convenience (this is what `docker compose up` does, so the dev schema is created
+on boot). Health probes are `GET /healthz` and `GET /readyz`; Prometheus metrics
 are on `:9090/metrics`, including authorization-decision metrics:
 `authz_check_decisions_total{namespace,relation,allowed}` (Check/CheckSet and
 per-item BatchCheck outcomes), `authz_check_duration_seconds{rpc}` latency,

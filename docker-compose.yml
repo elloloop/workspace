@@ -16,8 +16,10 @@
 # Notes:
 #   - GATEWAY_JWT_JWKS_URL points at identity's JWKS endpoint for token
 #     verification. Override it to match your local identity deployment.
-#   - Pending migrations are applied automatically on first connect when
-#     GATEWAY_POSTGRES_AUTO_MIGRATE=true (the default).
+#   - The service defaults to GATEWAY_POSTGRES_AUTO_MIGRATE=false (migrations
+#     are a deliberate operator step in production). This compose file sets it
+#     to true explicitly so `docker compose up` self-migrates the (small) dev
+#     schema on boot.
 
 services:
   postgres:
@@ -47,6 +49,7 @@ services:
       GATEWAY_CONNECT_PORT: "8080"
       GATEWAY_METRICS_PORT: "9090"
       GATEWAY_POSTGRES_DSN: postgres://workspaces:workspaces@postgres:5432/workspaces?sslmode=disable
+      GATEWAY_POSTGRES_AUTO_MIGRATE: "true"
       GATEWAY_DEFAULT_PROJECT_ID: local
       GATEWAY_JWT_JWKS_URL: http://localhost:8081/.well-known/jwks.json
       GATEWAY_JWT_ISSUER: http://localhost:8081
