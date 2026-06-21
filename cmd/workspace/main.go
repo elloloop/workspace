@@ -172,22 +172,61 @@ func buildRepo(ctx context.Context, cfg *config.Config, logger *zap.Logger) (ser
 	}
 	if cfg.PostgresAutoMigrate {
 		// Bound the boot-path migration so a replica blocked on the migration
-		// advisory lock (e.g. behind a long out-of-band migrator) fails readiness
-		// and reschedules rather than hanging on context.Background() forever.
+		// advisory lock (e.g. behind a long out-of-band migrator) does not hang on
+		// context.Background() forever.
 		migrateCtx, cancel := context.WithTimeout(ctx, bootMigrateTimeout)
 		defer cancel()
 		logger.Info("migrate_start", zap.String("phase", "expand"), zap.Bool("boot", true))
-		if err := store.Migrate(migrateCtx); err != nil {
+		err := store.Migrate(migrateCtx)
+		if abort := logBootMigrate(logger, err); abort {
 			store.Close()
 			return nil, nil, fmt.Errorf("migrate: %w", err)
 		}
-		logger.Info("migrate_complete", zap.String("phase", "expand"), zap.Bool("boot", true))
 	}
 	return store, store.Close, nil
 }
 
+// logBootMigrate classifies the result of a boot-path (auto-migrate) expand and
+// emits the matching structured event. It returns whether startup MUST abort:
+//
+//   - nil error: migrated; do not abort.
+//   - ErrMigrationLockHeld: TRANSIENT and benign — another actor (an out-of-band
+//     migrator or a sibling replica) holds the lock and is migrating the schema.
+//     Do NOT abort: an expanded-but-not-contracted schema serves fine (ON
+//     CONFLICT/composite-index interop), and this replica picks up the finished
+//     schema once that actor completes. Emits an alertable migrate_lock_contended.
+//   - context.DeadlineExceeded: the bounded boot Migrate ran out of time, almost
+//     always a too-slow CONCURRENTLY build on a large existing DB. Abort, but emit
+//     a distinct, actionable migrate_boot_timeout so the first occurrence is
+//     diagnosable rather than a generic wrapped error.
+//   - any other error: a genuine schema/DDL failure. Abort (stays fatal).
+func logBootMigrate(logger *zap.Logger, err error) (abort bool) {
+	switch {
+	case err == nil:
+		logger.Info("migrate_complete", zap.String("phase", "expand"), zap.Bool("boot", true))
+		return false
+	case errors.Is(err, postgres.ErrMigrationLockHeld):
+		logger.Warn("migrate_lock_contended",
+			zap.String("phase", "expand"),
+			zap.Bool("boot", true),
+			zap.String("detail", "another migration holds the lock; not migrating on this boot"),
+			zap.Error(err))
+		return false
+	case errors.Is(err, context.DeadlineExceeded):
+		logger.Error("migrate_boot_timeout",
+			zap.Duration("timeout", bootMigrateTimeout),
+			zap.String("hint", "set GATEWAY_POSTGRES_AUTO_MIGRATE=false and run `workspace migrate` (expand) out of band"),
+			zap.Error(err))
+		return true
+	default:
+		return true
+	}
+}
+
 // bootMigrateTimeout bounds the auto-migrate-on-boot expand so a replica waiting
-// on the migration lock fails readiness rather than hanging forever. Out-of-band
+// on the migration lock does not hang forever: a lock-held wait resolves to a
+// benign start-without-migrating, and an exceeded deadline (a too-slow
+// CONCURRENTLY build) hard-exits with an actionable log. Out-of-band
 // `workspace migrate` uses an unbounded context.
 const bootMigrateTimeout = 3 * time.Minute
 

@@ -262,9 +262,12 @@ const (
 	migrateLockRetryInterval = 250 * time.Millisecond
 )
 
-// errMigrationLockHeld is returned when the migration advisory lock cannot be
+// ErrMigrationLockHeld is returned when the migration advisory lock cannot be
 // acquired within migrateLockAcquireTimeout — another migration is in progress.
-var errMigrationLockHeld = errors.New(
+// It is a TRANSIENT, benign condition: the actor holding the lock is migrating
+// the schema, so callers can match it (errors.Is) to handle contention without
+// treating it as a genuine schema failure.
+var ErrMigrationLockHeld = errors.New(
 	"another migration holds the lock; retry once it completes")
 
 // pkWidening describes one table whose primary key is being widened to lead with
@@ -506,7 +509,7 @@ func lockAndPrepare(ctx context.Context, conn *pgx.Conn) error {
 }
 
 // acquireMigrationLock loops pg_try_advisory_lock against a bounded deadline,
-// returning errMigrationLockHeld if another migration still holds the lock when
+// returning ErrMigrationLockHeld if another migration still holds the lock when
 // the deadline elapses — so boot fails fast and loudly rather than blocking.
 func acquireMigrationLock(ctx context.Context, conn *pgx.Conn) error {
 	deadline := time.Now().Add(migrateLockAcquireTimeout)
@@ -519,7 +522,7 @@ func acquireMigrationLock(ctx context.Context, conn *pgx.Conn) error {
 			return nil
 		}
 		if time.Now().After(deadline) {
-			return errMigrationLockHeld
+			return ErrMigrationLockHeld
 		}
 		select {
 		case <-ctx.Done():
