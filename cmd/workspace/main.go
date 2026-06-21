@@ -5,7 +5,11 @@
 // github.com/elloloop/workspace/workspaceserver so an embedder runs the
 // same code path this binary does.
 //
-// `workspace migrate` runs pending Postgres migrations and exits.
+// `workspace migrate` runs the expand phase (idempotent; build composite keys
+// as concurrent unique indexes, old PK kept) and exits; `workspace migrate
+// --contract` runs the contract phase (promote those indexes to PRIMARY KEY,
+// drop the old PK) — a deliberate step run only after the whole fleet is on the
+// new binary. See the README two-phase migration runbook.
 package main
 
 import (

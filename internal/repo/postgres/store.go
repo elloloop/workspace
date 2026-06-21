@@ -384,10 +384,12 @@ func lockAndPrepare(ctx context.Context, conn *pgx.Conn) (func(), error) {
 	if _, err := conn.Exec(ctx, "SELECT pg_advisory_lock($1)", migrateAdvisoryLockKey); err != nil {
 		return nil, fmt.Errorf("acquire migration lock: %w", err)
 	}
+	// Release context is derived from ctx but stripped of cancellation/deadline so
+	// the unlock still runs even if the migration's ctx is cancelled; a dropped
+	// connection also releases a session lock, so this cannot leak the lock.
+	releaseCtx := context.WithoutCancel(ctx)
 	unlock := func() {
-		// Best-effort release on the same connection; a dropped connection also
-		// releases a session lock, so a failure here cannot leak the lock.
-		_, _ = conn.Exec(context.Background(), "SELECT pg_advisory_unlock($1)", migrateAdvisoryLockKey)
+		_, _ = conn.Exec(releaseCtx, "SELECT pg_advisory_unlock($1)", migrateAdvisoryLockKey)
 	}
 	if _, err := conn.Exec(ctx, "SET lock_timeout = '"+migrateLockTimeout+"'"); err != nil {
 		unlock()

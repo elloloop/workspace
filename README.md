@@ -281,16 +281,37 @@ docker run -p 8080:8080 -p 9090:9090 \
   ghcr.io/elloloop/workspace:latest
 ```
 
-The binary lives at `cmd/workspace`; `workspace migrate` runs Postgres
-migrations explicitly (they also apply on boot when
-`GATEWAY_POSTGRES_AUTO_MIGRATE=true`, the default). Migrations take a session
-advisory lock (so concurrent replicas serialize) and a short `lock_timeout` (so
-a contended DDL fails fast instead of stalling the data plane), and they are
-idempotent. **On a large, already-populated database** the tenant primary-key
-rebuild still takes heavy `ACCESS EXCLUSIVE` locks while it runs: for that
-deploy, set `GATEWAY_POSTGRES_AUTO_MIGRATE=false` and run `workspace migrate`
-out of band during a maintenance window rather than on the request-serving boot
-path. Health probes are `GET /healthz` and `GET /readyz`; Prometheus metrics
+The binary lives at `cmd/workspace`; schema changes follow a two-phase
+**expand / contract** pattern so a tenant primary-key widening never takes a
+long `ACCESS EXCLUSIVE` lock on a populated hot-path table:
+
+- **Expand — `workspace migrate`** (also applied on boot when
+  `GATEWAY_POSTGRES_AUTO_MIGRATE=true`, the default). Idempotent and safe to run
+  on every boot. It creates/upgrades the schema and, for a database still on the
+  old single-column primary key, builds each composite `(project_id, tenant_id,
+  …)` key as a `UNIQUE INDEX CONCURRENTLY` (no `ACCESS EXCLUSIVE` lock) while
+  **leaving the old primary key intact** — so old and new binaries interoperate
+  during a rolling deploy (no `42P10`; writes' `ON CONFLICT` targets the
+  composite columns, satisfied by the new index). On a fresh database the
+  `CREATE TABLE` installs the composite key directly (instant on an empty table)
+  and expand is a no-op. DDL runs outside a wrapping transaction (required for
+  `CONCURRENTLY`) under a **session-level advisory lock** so concurrent replicas
+  serialize, with a per-session `lock_timeout` so a contended statement fails
+  fast instead of stalling the data plane.
+- **Contract — `workspace migrate --contract`.** A separate, **deliberately
+  invoked** step, run **only after the whole fleet is on the new binary**. It
+  promotes each composite unique index to the table's `PRIMARY KEY` (via `ADD
+  CONSTRAINT … PRIMARY KEY USING INDEX`, which adopts the already-built index
+  rather than rebuilding it, so its `ACCESS EXCLUSIVE` lock is brief and
+  independent of table size) and drops the old narrow primary key. Idempotent: a
+  table already on the composite key is skipped. **Never** run automatically on
+  boot.
+
+**On a large, already-populated database**, set
+`GATEWAY_POSTGRES_AUTO_MIGRATE=false` so boot does not run migrations on the
+request-serving path; run `workspace migrate` (expand) out of band, complete the
+rolling deploy, then run `workspace migrate --contract` during a maintenance
+window. Health probes are `GET /healthz` and `GET /readyz`; Prometheus metrics
 are on `:9090/metrics`, including authorization-decision metrics:
 `authz_check_decisions_total{namespace,relation,allowed}` (Check/CheckSet and
 per-item BatchCheck outcomes), `authz_check_duration_seconds{rpc}` latency,
