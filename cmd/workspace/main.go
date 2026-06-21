@@ -39,7 +39,8 @@ func main() {
 	}
 
 	if len(os.Args) > 1 && os.Args[1] == "migrate" {
-		code := runMigrate(cfg, logger)
+		contract := len(os.Args) > 2 && os.Args[2] == "--contract"
+		code := runMigrate(cfg, logger, contract)
 		_ = logger.Sync()
 		os.Exit(code)
 	}
@@ -167,7 +168,11 @@ func buildRepo(ctx context.Context, cfg *config.Config, logger *zap.Logger) (ser
 	return store, store.Close, nil
 }
 
-func runMigrate(cfg *config.Config, logger *zap.Logger) int {
+// runMigrate runs the expand phase (`workspace migrate`) or, when contract is
+// true (`workspace migrate --contract`), the contract phase that promotes the
+// composite indexes to primary keys. Contract is a deliberate, out-of-band step
+// run only after the whole fleet is on the new binary.
+func runMigrate(cfg *config.Config, logger *zap.Logger, contract bool) int {
 	if cfg.PostgresDSN == "" {
 		logger.Error("migrate_requires_postgres", zap.String("hint", "set GATEWAY_POSTGRES_DSN"))
 		return 2
@@ -179,6 +184,14 @@ func runMigrate(cfg *config.Config, logger *zap.Logger) int {
 		return 1
 	}
 	defer store.Close()
+	if contract {
+		if err := store.Contract(ctx); err != nil {
+			logger.Error("migrate_contract_failed", zap.Error(err))
+			return 1
+		}
+		logger.Info("migrate_contract_complete")
+		return 0
+	}
 	if err := store.Migrate(ctx); err != nil {
 		logger.Error("migrate_failed", zap.Error(err))
 		return 1

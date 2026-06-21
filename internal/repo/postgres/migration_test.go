@@ -11,6 +11,21 @@ import (
 	"github.com/elloloop/workspace/pkg/authz"
 )
 
+// testPostgresDSN returns the test Postgres DSN, skipping the test when neither
+// env var is set. WORKSPACES_TEST_POSTGRES_DSN is the local name;
+// GATEWAY_TEST_POSTGRES_DSN is the name CI's coverage job provides.
+func testPostgresDSN(t *testing.T) string {
+	t.Helper()
+	dsn := os.Getenv("WORKSPACES_TEST_POSTGRES_DSN")
+	if dsn == "" {
+		dsn = os.Getenv("GATEWAY_TEST_POSTGRES_DSN")
+	}
+	if dsn == "" {
+		t.Skip("set WORKSPACES_TEST_POSTGRES_DSN or GATEWAY_TEST_POSTGRES_DSN to run the Postgres tests")
+	}
+	return dsn
+}
+
 // oldSchemaSQL is the pre-tenant schema as it shipped on main: single-tenant
 // primary keys and a (project_id, owner_user_id) personal-workspace index, with
 // no tenant_id column and no projects table.
@@ -47,13 +62,7 @@ CREATE TABLE relation_tuples (
 // (project_id, tenant_id, …) keys are actually applied — so PutMembership's
 // ON CONFLICT resolves and two tenants can hold the same logical id/tuple.
 func TestMigrateUpgradesPreTenantSchema(t *testing.T) {
-	dsn := os.Getenv("WORKSPACES_TEST_POSTGRES_DSN")
-	if dsn == "" {
-		dsn = os.Getenv("GATEWAY_TEST_POSTGRES_DSN")
-	}
-	if dsn == "" {
-		t.Skip("set WORKSPACES_TEST_POSTGRES_DSN or GATEWAY_TEST_POSTGRES_DSN to run the migration upgrade test")
-	}
+	dsn := testPostgresDSN(t)
 	ctx := context.Background()
 	store, err := postgres.Open(ctx, dsn)
 	if err != nil {
@@ -72,10 +81,20 @@ func TestMigrateUpgradesPreTenantSchema(t *testing.T) {
 		t.Fatalf("seed workspace: %v", err)
 	}
 
-	// Migrate twice to prove idempotency (the second run must be a clean no-op).
+	// Expand twice to prove idempotency (the second run must be a clean no-op):
+	// it builds the composite unique indexes CONCURRENTLY while leaving the old
+	// narrow PKs intact, so old/new binaries interoperate during a rolling deploy.
 	for i := 0; i < 2; i++ {
 		if err := store.Migrate(ctx); err != nil {
-			t.Fatalf("Migrate run %d: %v", i, err)
+			t.Fatalf("Migrate (expand) run %d: %v", i, err)
+		}
+	}
+	// Contract twice to prove idempotency: it promotes those composite indexes to
+	// PRIMARY KEY and drops the old narrow PK, so cross-tenant id/tuple reuse
+	// (asserted below) becomes possible. A second run is a clean no-op.
+	for i := 0; i < 2; i++ {
+		if err := store.Contract(ctx); err != nil {
+			t.Fatalf("Contract run %d: %v", i, err)
 		}
 	}
 
@@ -143,13 +162,7 @@ func TestMigrateUpgradesPreTenantSchema(t *testing.T) {
 // fix: a workspaces_personal_uniq index in a DIFFERENT schema of the same
 // database must not trigger or abort the migration's drop-stale-index block.
 func TestMigrateIgnoresSameNamedIndexInOtherSchema(t *testing.T) {
-	dsn := os.Getenv("WORKSPACES_TEST_POSTGRES_DSN")
-	if dsn == "" {
-		dsn = os.Getenv("GATEWAY_TEST_POSTGRES_DSN")
-	}
-	if dsn == "" {
-		t.Skip("set WORKSPACES_TEST_POSTGRES_DSN or GATEWAY_TEST_POSTGRES_DSN to run the migration schema-isolation test")
-	}
+	dsn := testPostgresDSN(t)
 	ctx := context.Background()
 	store, err := postgres.Open(ctx, dsn)
 	if err != nil {
