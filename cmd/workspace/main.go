@@ -15,7 +15,9 @@ package main
 import (
 	"context"
 	"errors"
+	"flag"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"os/signal"
@@ -43,7 +45,12 @@ func main() {
 	}
 
 	if len(os.Args) > 1 && os.Args[1] == "migrate" {
-		contract := len(os.Args) > 2 && os.Args[2] == "--contract"
+		contract, err := parseMigrateArgs(os.Args[2:])
+		if err != nil {
+			logger.Error("migrate_usage", zap.Error(err))
+			_ = logger.Sync()
+			os.Exit(2)
+		}
 		code := runMigrate(cfg, logger, contract)
 		_ = logger.Sync()
 		os.Exit(code)
@@ -159,17 +166,48 @@ func buildRepo(ctx context.Context, cfg *config.Config, logger *zap.Logger) (ser
 		logger.Warn("using_in_memory_store", zap.String("reason", "GATEWAY_POSTGRES_DSN unset"))
 		return memory.New(), func() {}, nil
 	}
-	store, err := postgres.Open(ctx, cfg.PostgresDSN)
+	store, err := postgres.Open(ctx, cfg.PostgresDSN, postgres.WithLogger(logger))
 	if err != nil {
 		return nil, nil, err
 	}
 	if cfg.PostgresAutoMigrate {
-		if err := store.Migrate(ctx); err != nil {
+		// Bound the boot-path migration so a replica blocked on the migration
+		// advisory lock (e.g. behind a long out-of-band migrator) fails readiness
+		// and reschedules rather than hanging on context.Background() forever.
+		migrateCtx, cancel := context.WithTimeout(ctx, bootMigrateTimeout)
+		defer cancel()
+		logger.Info("migrate_start", zap.String("phase", "expand"), zap.Bool("boot", true))
+		if err := store.Migrate(migrateCtx); err != nil {
 			store.Close()
 			return nil, nil, fmt.Errorf("migrate: %w", err)
 		}
+		logger.Info("migrate_complete", zap.String("phase", "expand"), zap.Bool("boot", true))
 	}
 	return store, store.Close, nil
+}
+
+// bootMigrateTimeout bounds the auto-migrate-on-boot expand so a replica waiting
+// on the migration lock fails readiness rather than hanging forever. Out-of-band
+// `workspace migrate` uses an unbounded context.
+const bootMigrateTimeout = 3 * time.Minute
+
+// parseMigrateArgs parses the `migrate` subcommand arguments with the flag
+// package so an unknown/typo'd flag errors with a usage message (and a non-zero
+// exit) instead of silently running expand. It accepts -contract / --contract.
+func parseMigrateArgs(args []string) (contract bool, err error) {
+	fs := flag.NewFlagSet("migrate", flag.ContinueOnError)
+	// We surface the failure via the returned error + a structured log line, so
+	// suppress flag's own bare stderr usage dump.
+	fs.SetOutput(io.Discard)
+	c := fs.Bool("contract", false,
+		"run the contract phase (promote composite indexes to PRIMARY KEY); default is expand")
+	if err := fs.Parse(args); err != nil {
+		return false, err
+	}
+	if fs.NArg() > 0 {
+		return false, fmt.Errorf("unexpected argument %q (usage: workspace migrate [--contract])", fs.Arg(0))
+	}
+	return *c, nil
 }
 
 // runMigrate runs the expand phase (`workspace migrate`) or, when contract is
@@ -181,25 +219,32 @@ func runMigrate(cfg *config.Config, logger *zap.Logger, contract bool) int {
 		logger.Error("migrate_requires_postgres", zap.String("hint", "set GATEWAY_POSTGRES_DSN"))
 		return 2
 	}
+	// Out-of-band migration: unbounded context (an operator deliberately ran this
+	// and can wait out a contended boot, unlike a replica that must fail readiness).
 	ctx := context.Background()
-	store, err := postgres.Open(ctx, cfg.PostgresDSN)
+	store, err := postgres.Open(ctx, cfg.PostgresDSN, postgres.WithLogger(logger))
 	if err != nil {
 		logger.Error("migrate_open_failed", zap.Error(err))
 		return 1
 	}
 	defer store.Close()
+	phase := "expand"
+	if contract {
+		phase = "contract"
+	}
+	logger.Info("migrate_start", zap.String("phase", phase), zap.Bool("boot", false))
 	if contract {
 		if err := store.Contract(ctx); err != nil {
-			logger.Error("migrate_contract_failed", zap.Error(err))
+			logger.Error("migrate_failed", zap.String("phase", phase), zap.Error(err))
 			return 1
 		}
-		logger.Info("migrate_contract_complete")
+		logger.Info("migrate_complete", zap.String("phase", phase), zap.Bool("boot", false))
 		return 0
 	}
 	if err := store.Migrate(ctx); err != nil {
-		logger.Error("migrate_failed", zap.Error(err))
+		logger.Error("migrate_failed", zap.String("phase", phase), zap.Error(err))
 		return 1
 	}
-	logger.Info("migrate_complete")
+	logger.Info("migrate_complete", zap.String("phase", phase), zap.Bool("boot", false))
 	return 0
 }
