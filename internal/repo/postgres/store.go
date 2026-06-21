@@ -20,17 +20,33 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"go.uber.org/zap"
 )
 
 // Store is a Postgres-backed Repository.
 type Store struct {
-	pool *pgxpool.Pool
+	pool   *pgxpool.Pool
+	dsn    string
+	logger *zap.Logger
 }
 
 var _ service.Repository = (*Store)(nil)
 
+// Option configures a Store at Open time.
+type Option func(*Store)
+
+// WithLogger attaches a structured logger used by the migration phases (e.g. the
+// migrate_contract_pending WARN). Defaults to a no-op logger when unset.
+func WithLogger(l *zap.Logger) Option {
+	return func(s *Store) {
+		if l != nil {
+			s.logger = l
+		}
+	}
+}
+
 // Open opens a pgxpool against dsn and pings it.
-func Open(ctx context.Context, dsn string) (*Store, error) {
+func Open(ctx context.Context, dsn string, opts ...Option) (*Store, error) {
 	pool, err := pgxpool.New(ctx, dsn)
 	if err != nil {
 		return nil, err
@@ -39,7 +55,11 @@ func Open(ctx context.Context, dsn string) (*Store, error) {
 		pool.Close()
 		return nil, err
 	}
-	return &Store{pool: pool}, nil
+	s := &Store{pool: pool, dsn: dsn, logger: zap.NewNop()}
+	for _, o := range opts {
+		o(s)
+	}
+	return s, nil
 }
 
 // Close releases the connection pool.
@@ -183,114 +203,427 @@ ALTER TABLE relation_tuples ADD COLUMN IF NOT EXISTS tenant_id text NOT NULL DEF
 ALTER TABLE relation_tuples ADD COLUMN IF NOT EXISTS expires_at timestamptz;
 ALTER TABLE relation_tuples ADD COLUMN IF NOT EXISTS condition_name text NOT NULL DEFAULT '';
 ALTER TABLE relation_tuples ADD COLUMN IF NOT EXISTS condition_params jsonb NOT NULL DEFAULT '{}'::jsonb;
-
--- ── Upgrade-path key migrations ──────────────────────────────────────────
--- The composite (project_id, tenant_id, …) primary keys above only take effect
--- inside CREATE TABLE IF NOT EXISTS, which is a no-op on a pre-existing table.
--- These guarded blocks widen the keys on already-populated databases so tenant
--- isolation actually holds and ON CONFLICT targets resolve. Each rebuilds ONLY
--- when tenant_id is not yet part of the key, so Migrate stays idempotent and
--- never rebuilds a large index on a healthy boot. The old key is always a
--- strict prefix of the new one, so no existing row can violate the wider key.
-DO $$ BEGIN
-	IF NOT EXISTS (SELECT 1 FROM pg_index i JOIN pg_attribute a ON a.attrelid=i.indrelid AND a.attnum=ANY(i.indkey)
-		WHERE i.indrelid='workspaces'::regclass AND i.indisprimary AND a.attname='tenant_id') THEN
-		ALTER TABLE workspaces DROP CONSTRAINT IF EXISTS workspaces_pkey;
-		ALTER TABLE workspaces ADD PRIMARY KEY (project_id, tenant_id, id);
-	END IF;
-END $$;
-DO $$ BEGIN
-	IF NOT EXISTS (SELECT 1 FROM pg_index i JOIN pg_attribute a ON a.attrelid=i.indrelid AND a.attnum=ANY(i.indkey)
-		WHERE i.indrelid='memberships'::regclass AND i.indisprimary AND a.attname='tenant_id') THEN
-		ALTER TABLE memberships DROP CONSTRAINT IF EXISTS memberships_pkey;
-		ALTER TABLE memberships ADD PRIMARY KEY (project_id, tenant_id, workspace_id, user_id);
-	END IF;
-END $$;
-DO $$ BEGIN
-	IF NOT EXISTS (SELECT 1 FROM pg_index i JOIN pg_attribute a ON a.attrelid=i.indrelid AND a.attnum=ANY(i.indkey)
-		WHERE i.indrelid='invitations'::regclass AND i.indisprimary AND a.attname='tenant_id') THEN
-		ALTER TABLE invitations DROP CONSTRAINT IF EXISTS invitations_pkey;
-		ALTER TABLE invitations ADD PRIMARY KEY (project_id, tenant_id, id);
-	END IF;
-END $$;
-DO $$ BEGIN
-	IF NOT EXISTS (SELECT 1 FROM pg_index i JOIN pg_attribute a ON a.attrelid=i.indrelid AND a.attnum=ANY(i.indkey)
-		WHERE i.indrelid='groups'::regclass AND i.indisprimary AND a.attname='tenant_id') THEN
-		ALTER TABLE groups DROP CONSTRAINT IF EXISTS groups_pkey;
-		ALTER TABLE groups ADD PRIMARY KEY (project_id, tenant_id, id);
-	END IF;
-END $$;
-DO $$ BEGIN
-	IF NOT EXISTS (SELECT 1 FROM pg_index i JOIN pg_attribute a ON a.attrelid=i.indrelid AND a.attnum=ANY(i.indkey)
-		WHERE i.indrelid='relation_tuples'::regclass AND i.indisprimary AND a.attname='tenant_id') THEN
-		ALTER TABLE relation_tuples DROP CONSTRAINT IF EXISTS relation_tuples_pkey;
-		ALTER TABLE relation_tuples ADD PRIMARY KEY (project_id, tenant_id, namespace, object_id, relation,
-			subject_kind, subject_user_id, subject_namespace, subject_object_id, subject_relation);
-	END IF;
-END $$;
--- Drop a stale personal-workspace unique index (old (project_id, owner_user_id)
--- definition) so the tenant-scoped one below actually replaces it; CREATE … IF
--- NOT EXISTS alone would skip an index that already exists under this name.
--- Resolve the index in the CURRENT schema only (to_regclass on the qualified
--- name) so a same-named index in another schema of the same database neither
--- triggers nor aborts this block.
-DO $$
-DECLARE idx regclass := to_regclass(current_schema() || '.workspaces_personal_uniq');
-BEGIN
-	IF idx IS NOT NULL AND NOT EXISTS (
-		SELECT 1 FROM pg_index i JOIN pg_attribute a
-		  ON a.attrelid = i.indrelid AND a.attnum = ANY(i.indkey)
-		WHERE i.indexrelid = idx AND a.attname = 'tenant_id'
-	) THEN
-		EXECUTE 'DROP INDEX ' || idx::text;
-	END IF;
-END $$;
-CREATE UNIQUE INDEX IF NOT EXISTS workspaces_personal_uniq
-	ON workspaces (project_id, tenant_id, owner_user_id)
-	WHERE type = 'personal';
--- Supports DeleteAllSubjectTuples and subject-only ReadTuples without a
--- full (project, tenant) partition scan.
-CREATE INDEX IF NOT EXISTS relation_tuples_subject_user_idx
-	ON relation_tuples (project_id, tenant_id, subject_user_id)
-	WHERE subject_kind = 'user';
 `
+
+// secondaryIndex describes a tenant-scoped partial index built during the expand
+// phase. Unlike the PK widenings these never become primary keys (a PRIMARY KEY
+// cannot be partial), but they are still built CONCURRENTLY so the expand never
+// takes an ACCESS EXCLUSIVE lock on a populated hot-path table. dropStale, when
+// true, marks the personal-workspace UNIQUE index whose definition predates
+// tenant_id (the old (project_id, owner_user_id) one). For that index the new
+// tenant-scoped definition is built CONCURRENTLY under tempName FIRST, then the
+// stale index is dropped and the temp renamed to name in one short transaction —
+// so personal-workspace uniqueness is ALWAYS enforced by at least one index (no
+// gap), unlike a naive drop-then-rebuild.
+type secondaryIndex struct {
+	name      string
+	tempName  string
+	table     string
+	createSQL string
+	dropStale bool
+}
+
+var secondaryIndexes = []secondaryIndex{
+	{
+		name: "workspaces_personal_uniq", tempName: "workspaces_personal_uniq_new",
+		table: "workspaces", dropStale: true,
+		createSQL: "CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS workspaces_personal_uniq " +
+			"ON workspaces (project_id, tenant_id, owner_user_id) WHERE type = 'personal'",
+	},
+	{
+		// Supports DeleteAllSubjectTuples and subject-only ReadTuples without a
+		// full (project, tenant) partition scan.
+		name: "relation_tuples_subject_user_idx", table: "relation_tuples",
+		createSQL: "CREATE INDEX CONCURRENTLY IF NOT EXISTS relation_tuples_subject_user_idx " +
+			"ON relation_tuples (project_id, tenant_id, subject_user_id) WHERE subject_kind = 'user'",
+	},
+}
 
 const (
 	// migrateAdvisoryLockKey serializes Migrate across replicas: only one
 	// process runs the (idempotent) DDL at a time, so concurrent boots cannot
-	// race the primary-key rebuilds. Any fixed app-unique key works.
+	// race the expand/contract steps. Any fixed app-unique key works.
 	migrateAdvisoryLockKey int64 = 0x6D696772 // "migr"
 	// migrateLockTimeout bounds how long a single migration statement waits for
 	// its table lock before failing fast, so a contended hot-path table is not
-	// stalled indefinitely by an auto-migration on boot.
+	// stalled indefinitely by an auto-migration on boot. Applied per-session
+	// (SET, not SET LOCAL) because the migration runs outside a single tx so
+	// CREATE INDEX CONCURRENTLY is usable.
 	migrateLockTimeout = "5s"
+	// migrateLockAcquireTimeout bounds the wait for the cross-replica advisory
+	// lock itself. pg_advisory_lock is an UNBOUNDED blocking wait that
+	// lock_timeout does NOT cover, so a stuck/long out-of-band migrator would
+	// otherwise hang every booting replica forever (holding a connection, never
+	// ready). We poll pg_try_advisory_lock against this deadline and fail fast and
+	// loudly instead — long enough for a normal contended boot, short enough that
+	// a stuck migrator fails readiness and the replica is rescheduled.
+	migrateLockAcquireTimeout = 30 * time.Second
+	// migrateLockRetryInterval is the sleep between pg_try_advisory_lock attempts.
+	migrateLockRetryInterval = 250 * time.Millisecond
 )
 
-// Migrate creates/upgrades the schema. It is idempotent and safe to run on every
-// boot: a session advisory lock serializes concurrent replicas, and lock_timeout
-// makes a contended DDL fail fast instead of stalling the data plane. NOTE: on a
-// LARGE populated table the primary-key rebuild still takes heavy (ACCESS
-// EXCLUSIVE) locks while it runs — for that deploy prefer running `workspace
-// migrate` out of band with GATEWAY_POSTGRES_AUTO_MIGRATE=false.
+// ErrMigrationLockHeld is returned when the migration advisory lock cannot be
+// acquired within migrateLockAcquireTimeout — another migration is in progress.
+// It is a TRANSIENT, benign condition: the actor holding the lock is migrating
+// the schema, so callers can match it (errors.Is) to handle contention without
+// treating it as a genuine schema failure.
+var ErrMigrationLockHeld = errors.New(
+	"another migration holds the lock; retry once it completes")
+
+// pkWidening describes one table whose primary key is being widened to lead with
+// (project_id, tenant_id). The expand phase builds idxName as a composite UNIQUE
+// INDEX CONCURRENTLY (no ACCESS EXCLUSIVE lock, leaving the old PK intact); the
+// contract phase promotes that index to the table's PRIMARY KEY and drops the
+// old one. cols is the full composite key, in order.
+type pkWidening struct {
+	table   string
+	idxName string
+	cols    string
+}
+
+// pkWidenings are the five (project_id, tenant_id, …) keys widened from their
+// pre-tenant single-column-leading form. Order is irrelevant (each is
+// independent); idxName is the deterministic name both expand and contract use.
+var pkWidenings = []pkWidening{
+	{"workspaces", "workspaces_pk_tenant", "project_id, tenant_id, id"},
+	{"memberships", "memberships_pk_tenant", "project_id, tenant_id, workspace_id, user_id"},
+	{"invitations", "invitations_pk_tenant", "project_id, tenant_id, id"},
+	{"groups", "groups_pk_tenant", "project_id, tenant_id, id"},
+	{
+		"relation_tuples", "relation_tuples_pk_tenant",
+		"project_id, tenant_id, namespace, object_id, relation, subject_kind, " +
+			"subject_user_id, subject_namespace, subject_object_id, subject_relation",
+	},
+}
+
+// Migrate runs the EXPAND phase: it creates/upgrades the schema so the service
+// can run, without ever taking a long ACCESS EXCLUSIVE lock on a populated
+// hot-path table. It is idempotent and safe on every boot.
+//
+// A SESSION advisory lock (on a dedicated connection) serializes concurrent
+// replicas while statements run OUTSIDE a wrapping transaction — required so
+// CREATE UNIQUE INDEX CONCURRENTLY (which cannot run in a tx) is usable. A
+// per-session lock_timeout makes a contended DDL fail fast instead of stalling
+// the data plane.
+//
+// For a FRESH database, CREATE TABLE installs the composite (project_id,
+// tenant_id, …) primary key directly (instant on an empty table) and the expand
+// step is a no-op. For an EXISTING database still on the old single-column PK,
+// the expand step builds the composite key as a UNIQUE INDEX CONCURRENTLY and
+// LEAVES the old PK intact — so old and new binaries interoperate during a
+// rolling deploy (ON CONFLICT targets the composite columns, satisfied by the
+// new unique index). Promoting that index to the PRIMARY KEY and dropping the
+// old one is the CONTRACT phase (Contract), run deliberately out of band after
+// the whole fleet is on the new binary.
 func (s *Store) Migrate(ctx context.Context) error {
-	tx, err := s.pool.Begin(ctx)
+	return s.withMigrationConn(ctx, func(conn *pgx.Conn) error {
+		// Base schema: CREATE TABLE IF NOT EXISTS (+ column adds, regular indexes).
+		// Cheap and idempotent; on a fresh DB this installs the composite PKs.
+		if _, err := conn.Exec(ctx, schemaSQL); err != nil {
+			return err
+		}
+
+		// Expand: for any table still on the old narrow PK, build the composite key
+		// as a UNIQUE INDEX CONCURRENTLY (no ACCESS EXCLUSIVE lock), keeping the old
+		// PK valid. CONCURRENTLY cannot run inside a transaction, so this runs on the
+		// session connection directly.
+		for _, w := range pkWidenings {
+			if err := expandWidening(ctx, conn, w); err != nil {
+				return fmt.Errorf("expand %s: %w", w.table, err)
+			}
+		}
+		// Tenant-scoped secondary (partial) indexes, also built CONCURRENTLY.
+		for _, idx := range secondaryIndexes {
+			if err := expandSecondaryIndex(ctx, conn, idx); err != nil {
+				return fmt.Errorf("expand index %s: %w", idx.name, err)
+			}
+		}
+
+		// Observability: the expanded-but-not-contracted state is correct for a
+		// rolling deploy, but cross-tenant id/tuple reuse is not enabled until the
+		// PK is composite (contract). Surface any table still on its narrow PK so an
+		// operator/alert knows `workspace migrate --contract` is still required. A
+		// fresh DB is born composite, so this never fires there.
+		return s.warnContractPending(ctx, conn)
+	})
+}
+
+// warnContractPending logs a structured WARN listing every pkWidenings table
+// whose PRIMARY KEY does NOT yet include tenant_id (expand done, contract
+// pending). It is silent when every table is already composite.
+func (s *Store) warnContractPending(ctx context.Context, conn *pgx.Conn) error {
+	var pending []string
+	for _, w := range pkWidenings {
+		composite, err := pkIsComposite(ctx, conn, w.table)
+		if err != nil {
+			return err
+		}
+		if !composite {
+			pending = append(pending, w.table)
+		}
+	}
+	if len(pending) > 0 {
+		s.logger.Warn("migrate_contract_pending",
+			zap.Strings("tables", pending),
+			zap.String("action", "run `workspace migrate --contract` after the fleet is on the new binary"),
+			zap.String("effect", "cross-tenant id/tuple reuse is not yet enabled for these tables"))
+	}
+	return nil
+}
+
+// expandSecondaryIndex builds a tenant-scoped partial index CONCURRENTLY (never
+// an ACCESS EXCLUSIVE lock). When dropStale is set and a same-named index whose
+// definition predates tenant_id exists (resolved in the CURRENT schema only, so
+// a same-named index in a sibling schema is untouched), it is replaced via a
+// gapped-free swap: the tenant-scoped definition is built CONCURRENTLY under a
+// temp name first, then the stale index is dropped and the temp renamed to the
+// final name in one short transaction — uniqueness is never unenforced. A
+// leftover INVALID index from a failed CONCURRENTLY build is dropped before the
+// rebuild.
+func expandSecondaryIndex(ctx context.Context, conn *pgx.Conn, idx secondaryIndex) error {
+	if idx.dropStale {
+		stale, err := indexPredatesTenant(ctx, conn, idx.name)
+		if err != nil {
+			return err
+		}
+		if stale {
+			return swapStalePersonalIndex(ctx, conn, idx)
+		}
+	}
+	return buildIndexConcurrently(ctx, conn, idx.name, idx.createSQL)
+}
+
+// indexPredatesTenant reports whether the named index exists in the current
+// schema with a definition that does NOT include tenant_id (i.e. the old shape).
+func indexPredatesTenant(ctx context.Context, conn *pgx.Conn, name string) (bool, error) {
+	var hasTenant *bool
+	err := conn.QueryRow(ctx,
+		`SELECT bool_or(a.attname = 'tenant_id')
+		   FROM pg_index i
+		   JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = ANY(i.indkey)
+		  WHERE i.indexrelid = to_regclass(current_schema() || '.' || $1)`,
+		name).Scan(&hasTenant)
+	if err != nil {
+		return false, err
+	}
+	// hasTenant is non-nil only when the index exists; nil means absent.
+	return hasTenant != nil && !*hasTenant, nil
+}
+
+// swapStalePersonalIndex replaces a pre-tenant unique index with its tenant-
+// scoped form without ever leaving uniqueness unenforced: build the replacement
+// CONCURRENTLY under idx.tempName, then in one short transaction drop the stale
+// index and rename the temp to the final name. Until the rename commits the stale
+// index still enforces uniqueness; after it, the new one does.
+func swapStalePersonalIndex(ctx context.Context, conn *pgx.Conn, idx secondaryIndex) error {
+	tempCreateSQL := strings.Replace(idx.createSQL,
+		"IF NOT EXISTS "+idx.name, "IF NOT EXISTS "+idx.tempName, 1)
+	if err := buildIndexConcurrently(ctx, conn, idx.tempName, tempCreateSQL); err != nil {
+		return err
+	}
+	tx, err := conn.Begin(ctx)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-
-	// Transaction-scoped advisory lock: serializes migrators across replicas and
-	// auto-releases on commit/rollback (no leak onto a pooled connection). It
-	// blocks only against other migrators, never against live queries.
-	if _, err := tx.Exec(ctx, "SELECT pg_advisory_xact_lock($1)", migrateAdvisoryLockKey); err != nil {
-		return fmt.Errorf("acquire migration lock: %w", err)
+	if _, err := tx.Exec(ctx, "DROP INDEX "+idx.name); err != nil {
+		return err
 	}
-	// Fail fast rather than stall the authz data plane if a DDL can't get its
-	// table lock (e.g. a long-running query holds it). SET LOCAL is scoped to tx.
-	if _, err := tx.Exec(ctx, "SET LOCAL lock_timeout = '"+migrateLockTimeout+"'"); err != nil {
+	if _, err := tx.Exec(ctx, "ALTER INDEX "+idx.tempName+" RENAME TO "+idx.name); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
+// buildIndexConcurrently runs createSQL, first dropping a leftover INVALID index
+// of the same name from a previously-failed CONCURRENTLY build (which IF NOT
+// EXISTS would otherwise skip forever).
+func buildIndexConcurrently(ctx context.Context, conn *pgx.Conn, name, createSQL string) error {
+	exists, valid, err := indexState(ctx, conn, name)
+	if err != nil {
+		return err
+	}
+	if exists && !valid {
+		if _, err := conn.Exec(ctx, "DROP INDEX CONCURRENTLY IF EXISTS "+name); err != nil {
+			return err
+		}
+	}
+	_, err = conn.Exec(ctx, createSQL)
+	return err
+}
+
+// Contract runs the CONTRACT phase: it promotes each composite unique index
+// built by Migrate (expand) into the table's PRIMARY KEY and drops the old
+// narrow PK. This DOES take a brief ACCESS EXCLUSIVE lock per table (PRIMARY KEY
+// USING INDEX is metadata-only — it adopts the already-built index rather than
+// rebuilding it, so the lock is short, not proportional to table size), so it is
+// an explicit, deliberately-invoked step (`workspace migrate --contract`), run
+// only AFTER the whole fleet is on the new binary. It is idempotent: a table
+// already on the composite PK is skipped.
+func (s *Store) Contract(ctx context.Context) error {
+	return s.withMigrationConn(ctx, func(conn *pgx.Conn) error {
+		for _, w := range pkWidenings {
+			if err := contractWidening(ctx, conn, w); err != nil {
+				return fmt.Errorf("contract %s: %w", w.table, err)
+			}
+		}
+		return nil
+	})
+}
+
+// withMigrationConn opens a DEDICATED short-lived connection (NOT from the
+// request-serving pool, so a per-session GUC like lock_timeout can never leak
+// onto a connection that later serves traffic), acquires the cross-replica
+// migration advisory lock under a bounded deadline, runs fn, and closes the
+// connection when done — releasing the advisory lock and discarding the
+// session GUCs with it.
+func (s *Store) withMigrationConn(ctx context.Context, fn func(*pgx.Conn) error) error {
+	conn, err := pgx.Connect(ctx, s.dsn)
+	if err != nil {
+		return fmt.Errorf("open migration connection: %w", err)
+	}
+	// Closing the dedicated connection releases the session advisory lock and
+	// drops every session GUC; use a non-cancellable ctx so it still happens if
+	// the migration ctx is already cancelled.
+	defer func() { _ = conn.Close(context.WithoutCancel(ctx)) }()
+
+	if err := lockAndPrepare(ctx, conn); err != nil {
+		return err
+	}
+	return fn(conn)
+}
+
+// lockAndPrepare takes the session-level migration advisory lock on conn under a
+// BOUNDED deadline (pg_advisory_lock's wait is unbounded and lock_timeout does
+// not cover it, so a stuck migrator must not hang a booting replica forever) and
+// sets a session lock_timeout so a contended DDL fails fast. The lock is released
+// when conn closes, so no explicit unlock is needed.
+func lockAndPrepare(ctx context.Context, conn *pgx.Conn) error {
+	if err := acquireMigrationLock(ctx, conn); err != nil {
+		return err
+	}
+	if _, err := conn.Exec(ctx, "SET lock_timeout = '"+migrateLockTimeout+"'"); err != nil {
 		return fmt.Errorf("set lock_timeout: %w", err)
 	}
-	if _, err := tx.Exec(ctx, schemaSQL); err != nil {
+	return nil
+}
+
+// acquireMigrationLock loops pg_try_advisory_lock against a bounded deadline,
+// returning ErrMigrationLockHeld if another migration still holds the lock when
+// the deadline elapses — so boot fails fast and loudly rather than blocking.
+func acquireMigrationLock(ctx context.Context, conn *pgx.Conn) error {
+	deadline := time.Now().Add(migrateLockAcquireTimeout)
+	for {
+		var got bool
+		if err := conn.QueryRow(ctx, "SELECT pg_try_advisory_lock($1)", migrateAdvisoryLockKey).Scan(&got); err != nil {
+			return fmt.Errorf("acquire migration lock: %w", err)
+		}
+		if got {
+			return nil
+		}
+		if time.Now().After(deadline) {
+			return ErrMigrationLockHeld
+		}
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("acquire migration lock: %w", ctx.Err())
+		case <-time.After(migrateLockRetryInterval):
+		}
+	}
+}
+
+// pkIsComposite reports whether table's PRIMARY KEY already includes tenant_id —
+// i.e. the widening is already in effect (fresh DB, or a completed contract).
+func pkIsComposite(ctx context.Context, conn *pgx.Conn, table string) (bool, error) {
+	var composite bool
+	err := conn.QueryRow(ctx,
+		`SELECT EXISTS (
+			SELECT 1 FROM pg_index i
+			  JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = ANY(i.indkey)
+			 WHERE i.indrelid = to_regclass(current_schema() || '.' || $1)
+			   AND i.indisprimary AND a.attname = 'tenant_id')`,
+		table).Scan(&composite)
+	return composite, err
+}
+
+// indexState returns whether the named composite index exists in the current
+// schema and, if so, whether it is valid (CREATE INDEX CONCURRENTLY can leave an
+// INVALID index behind on failure).
+func indexState(ctx context.Context, conn *pgx.Conn, idxName string) (exists, valid bool, err error) {
+	err = conn.QueryRow(ctx,
+		`SELECT i.indisvalid
+		   FROM pg_index i
+		  WHERE i.indexrelid = to_regclass(current_schema() || '.' || $1)`,
+		idxName).Scan(&valid)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, false, nil
+	}
+	if err != nil {
+		return false, false, err
+	}
+	return true, valid, nil
+}
+
+// expandWidening builds w's composite key as a UNIQUE INDEX CONCURRENTLY when
+// the table is still on the old narrow PK, leaving the old PK valid. It is a
+// no-op when the PK is already composite (fresh DB / completed contract). A stale
+// INVALID index from a previously-failed CONCURRENTLY build is dropped first so
+// the rebuild can succeed (IF NOT EXISTS would otherwise skip it forever).
+func expandWidening(ctx context.Context, conn *pgx.Conn, w pkWidening) error {
+	composite, err := pkIsComposite(ctx, conn, w.table)
+	if err != nil {
+		return err
+	}
+	if composite {
+		return nil
+	}
+	exists, valid, err := indexState(ctx, conn, w.idxName)
+	if err != nil {
+		return err
+	}
+	if exists && !valid {
+		// DROP INDEX CONCURRENTLY also avoids an ACCESS EXCLUSIVE lock.
+		if _, err := conn.Exec(ctx, "DROP INDEX CONCURRENTLY IF EXISTS "+w.idxName); err != nil {
+			return err
+		}
+	}
+	_, err = conn.Exec(ctx,
+		"CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS "+w.idxName+" ON "+w.table+" ("+w.cols+")")
+	return err
+}
+
+// contractWidening promotes w's composite unique index to the table's PRIMARY
+// KEY and drops the old narrow PK, in one short transaction. It is a no-op when
+// the PK is already composite. ALTER TABLE … ADD PRIMARY KEY USING INDEX adopts
+// the existing (already-built) index instead of rebuilding it, so the ACCESS
+// EXCLUSIVE lock it takes is brief and independent of table size.
+func contractWidening(ctx context.Context, conn *pgx.Conn, w pkWidening) error {
+	composite, err := pkIsComposite(ctx, conn, w.table)
+	if err != nil {
+		return err
+	}
+	if composite {
+		return nil
+	}
+	exists, valid, err := indexState(ctx, conn, w.idxName)
+	if err != nil {
+		return err
+	}
+	if !exists || !valid {
+		return fmt.Errorf("composite index %s missing or invalid; run expand (Migrate) first", w.idxName)
+	}
+	tx, err := conn.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if _, err := tx.Exec(ctx, "ALTER TABLE "+w.table+" DROP CONSTRAINT IF EXISTS "+w.table+"_pkey"); err != nil {
+		return err
+	}
+	// USING INDEX consumes the unique index, turning it into the PK's backing
+	// index (it is renamed to <table>_pkey by Postgres).
+	if _, err := tx.Exec(ctx,
+		"ALTER TABLE "+w.table+" ADD CONSTRAINT "+w.table+"_pkey PRIMARY KEY USING INDEX "+w.idxName); err != nil {
 		return err
 	}
 	return tx.Commit(ctx)

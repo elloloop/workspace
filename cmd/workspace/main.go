@@ -5,13 +5,19 @@
 // github.com/elloloop/workspace/workspaceserver so an embedder runs the
 // same code path this binary does.
 //
-// `workspace migrate` runs pending Postgres migrations and exits.
+// `workspace migrate` runs the expand phase (idempotent; build composite keys
+// as concurrent unique indexes, old PK kept) and exits; `workspace migrate
+// --contract` runs the contract phase (promote those indexes to PRIMARY KEY,
+// drop the old PK) — a deliberate step run only after the whole fleet is on the
+// new binary. See the README two-phase migration runbook.
 package main
 
 import (
 	"context"
 	"errors"
+	"flag"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"os/signal"
@@ -39,7 +45,13 @@ func main() {
 	}
 
 	if len(os.Args) > 1 && os.Args[1] == "migrate" {
-		code := runMigrate(cfg, logger)
+		contract, err := parseMigrateArgs(os.Args[2:])
+		if err != nil {
+			logger.Error("migrate_usage", zap.Error(err))
+			_ = logger.Sync()
+			os.Exit(2)
+		}
+		code := runMigrate(cfg, logger, contract)
 		_ = logger.Sync()
 		os.Exit(code)
 	}
@@ -154,12 +166,19 @@ func buildRepo(ctx context.Context, cfg *config.Config, logger *zap.Logger) (ser
 		logger.Warn("using_in_memory_store", zap.String("reason", "GATEWAY_POSTGRES_DSN unset"))
 		return memory.New(), func() {}, nil
 	}
-	store, err := postgres.Open(ctx, cfg.PostgresDSN)
+	store, err := postgres.Open(ctx, cfg.PostgresDSN, postgres.WithLogger(logger))
 	if err != nil {
 		return nil, nil, err
 	}
 	if cfg.PostgresAutoMigrate {
-		if err := store.Migrate(ctx); err != nil {
+		// Bound the boot-path migration so a replica blocked on the migration
+		// advisory lock (e.g. behind a long out-of-band migrator) does not hang on
+		// context.Background() forever.
+		migrateCtx, cancel := context.WithTimeout(ctx, bootMigrateTimeout)
+		defer cancel()
+		logger.Info("migrate_start", zap.String("phase", "expand"), zap.Bool("boot", true))
+		err := store.Migrate(migrateCtx)
+		if abort := logBootMigrate(logger, err); abort {
 			store.Close()
 			return nil, nil, fmt.Errorf("migrate: %w", err)
 		}
@@ -167,22 +186,104 @@ func buildRepo(ctx context.Context, cfg *config.Config, logger *zap.Logger) (ser
 	return store, store.Close, nil
 }
 
-func runMigrate(cfg *config.Config, logger *zap.Logger) int {
+// logBootMigrate classifies the result of a boot-path (auto-migrate) expand and
+// emits the matching structured event. It returns whether startup MUST abort:
+//
+//   - nil error: migrated; do not abort.
+//   - ErrMigrationLockHeld: TRANSIENT and benign — another actor (an out-of-band
+//     migrator or a sibling replica) holds the lock and is migrating the schema.
+//     Do NOT abort: an expanded-but-not-contracted schema serves fine (ON
+//     CONFLICT/composite-index interop), and this replica picks up the finished
+//     schema once that actor completes. Emits an alertable migrate_lock_contended.
+//   - context.DeadlineExceeded: the bounded boot Migrate ran out of time, almost
+//     always a too-slow CONCURRENTLY build on a large existing DB. Abort, but emit
+//     a distinct, actionable migrate_boot_timeout so the first occurrence is
+//     diagnosable rather than a generic wrapped error.
+//   - any other error: a genuine schema/DDL failure. Abort (stays fatal).
+func logBootMigrate(logger *zap.Logger, err error) (abort bool) {
+	switch {
+	case err == nil:
+		logger.Info("migrate_complete", zap.String("phase", "expand"), zap.Bool("boot", true))
+		return false
+	case errors.Is(err, postgres.ErrMigrationLockHeld):
+		logger.Warn("migrate_lock_contended",
+			zap.String("phase", "expand"),
+			zap.Bool("boot", true),
+			zap.String("detail", "another migration holds the lock; not migrating on this boot"),
+			zap.Error(err))
+		return false
+	case errors.Is(err, context.DeadlineExceeded):
+		logger.Error("migrate_boot_timeout",
+			zap.Duration("timeout", bootMigrateTimeout),
+			zap.String("hint", "set GATEWAY_POSTGRES_AUTO_MIGRATE=false and run `workspace migrate` (expand) out of band"),
+			zap.Error(err))
+		return true
+	default:
+		return true
+	}
+}
+
+// bootMigrateTimeout bounds the auto-migrate-on-boot expand so a replica waiting
+// on the migration lock does not hang forever: a lock-held wait resolves to a
+// benign start-without-migrating, and an exceeded deadline (a too-slow
+// CONCURRENTLY build) hard-exits with an actionable log. Out-of-band
+// `workspace migrate` uses an unbounded context.
+const bootMigrateTimeout = 3 * time.Minute
+
+// parseMigrateArgs parses the `migrate` subcommand arguments with the flag
+// package so an unknown/typo'd flag errors with a usage message (and a non-zero
+// exit) instead of silently running expand. It accepts -contract / --contract.
+func parseMigrateArgs(args []string) (contract bool, err error) {
+	fs := flag.NewFlagSet("migrate", flag.ContinueOnError)
+	// We surface the failure via the returned error + a structured log line, so
+	// suppress flag's own bare stderr usage dump.
+	fs.SetOutput(io.Discard)
+	c := fs.Bool("contract", false,
+		"run the contract phase (promote composite indexes to PRIMARY KEY); default is expand")
+	if err := fs.Parse(args); err != nil {
+		return false, err
+	}
+	if fs.NArg() > 0 {
+		return false, fmt.Errorf("unexpected argument %q (usage: workspace migrate [--contract])", fs.Arg(0))
+	}
+	return *c, nil
+}
+
+// runMigrate runs the expand phase (`workspace migrate`) or, when contract is
+// true (`workspace migrate --contract`), the contract phase that promotes the
+// composite indexes to primary keys. Contract is a deliberate, out-of-band step
+// run only after the whole fleet is on the new binary.
+func runMigrate(cfg *config.Config, logger *zap.Logger, contract bool) int {
 	if cfg.PostgresDSN == "" {
 		logger.Error("migrate_requires_postgres", zap.String("hint", "set GATEWAY_POSTGRES_DSN"))
 		return 2
 	}
+	// Out-of-band migration: unbounded context (an operator deliberately ran this
+	// and can wait out a contended boot, unlike a replica that must fail readiness).
 	ctx := context.Background()
-	store, err := postgres.Open(ctx, cfg.PostgresDSN)
+	store, err := postgres.Open(ctx, cfg.PostgresDSN, postgres.WithLogger(logger))
 	if err != nil {
 		logger.Error("migrate_open_failed", zap.Error(err))
 		return 1
 	}
 	defer store.Close()
+	phase := "expand"
+	if contract {
+		phase = "contract"
+	}
+	logger.Info("migrate_start", zap.String("phase", phase), zap.Bool("boot", false))
+	if contract {
+		if err := store.Contract(ctx); err != nil {
+			logger.Error("migrate_failed", zap.String("phase", phase), zap.Error(err))
+			return 1
+		}
+		logger.Info("migrate_complete", zap.String("phase", phase), zap.Bool("boot", false))
+		return 0
+	}
 	if err := store.Migrate(ctx); err != nil {
-		logger.Error("migrate_failed", zap.Error(err))
+		logger.Error("migrate_failed", zap.String("phase", phase), zap.Error(err))
 		return 1
 	}
-	logger.Info("migrate_complete")
+	logger.Info("migrate_complete", zap.String("phase", phase), zap.Bool("boot", false))
 	return 0
 }

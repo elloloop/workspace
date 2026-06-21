@@ -27,8 +27,8 @@ func TestLoadDefaults(t *testing.T) {
 	if c.DefaultProjectID != DefaultProjectIDFallback {
 		t.Fatalf("default project = %q, want %q", c.DefaultProjectID, DefaultProjectIDFallback)
 	}
-	if !c.PostgresAutoMigrate {
-		t.Fatal("auto-migrate should default true")
+	if c.PostgresAutoMigrate {
+		t.Fatal("auto-migrate should default false (opt-in)")
 	}
 	if c.HTTPMaxBodyBytes != 1<<20 {
 		t.Fatalf("max body = %d, want %d", c.HTTPMaxBodyBytes, 1<<20)
@@ -42,7 +42,7 @@ func TestLoadOverrides(t *testing.T) {
 	t.Setenv("GATEWAY_CONNECT_PORT", "9191")
 	t.Setenv("GATEWAY_DEFAULT_PROJECT_ID", "acme")
 	t.Setenv("GATEWAY_POSTGRES_DSN", "postgres://x")
-	t.Setenv("GATEWAY_POSTGRES_AUTO_MIGRATE", "false")
+	t.Setenv("GATEWAY_POSTGRES_AUTO_MIGRATE", "true")
 	t.Setenv("GATEWAY_SERVICE_AUTH_TOKENS", "a, b ,, c")
 	t.Setenv("GATEWAY_ALLOWED_ORIGINS", "https://app.example.com, https://x.example.com")
 
@@ -53,8 +53,8 @@ func TestLoadOverrides(t *testing.T) {
 	if c.ConnectPort != 9191 || c.DefaultProjectID != "acme" || c.PostgresDSN != "postgres://x" {
 		t.Fatalf("overrides not applied: %+v", c)
 	}
-	if c.PostgresAutoMigrate {
-		t.Fatal("auto-migrate should be false")
+	if !c.PostgresAutoMigrate {
+		t.Fatal("auto-migrate should parse true when set")
 	}
 	if len(c.ServiceAuthTokens) != 3 { // empty entries trimmed
 		t.Fatalf("service tokens = %v, want 3 non-empty", c.ServiceAuthTokens)
