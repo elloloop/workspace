@@ -294,10 +294,26 @@ long `ACCESS EXCLUSIVE` lock on a populated hot-path table:
   during a rolling deploy (no `42P10`; writes' `ON CONFLICT` targets the
   composite columns, satisfied by the new index). On a fresh database the
   `CREATE TABLE` installs the composite key directly (instant on an empty table)
-  and expand is a no-op. DDL runs outside a wrapping transaction (required for
-  `CONCURRENTLY`) under a **session-level advisory lock** so concurrent replicas
-  serialize, with a per-session `lock_timeout` so a contended statement fails
-  fast instead of stalling the data plane.
+  and expand is a no-op. DDL runs on a **dedicated, short-lived connection**
+  (never the request-serving pool, so the per-session `lock_timeout` it sets can
+  never leak onto a connection that later serves traffic) outside a wrapping
+  transaction (required for `CONCURRENTLY`), under a **session-level advisory
+  lock** so concurrent replicas serialize. The advisory-lock wait is **bounded**
+  (~30s, via `pg_try_advisory_lock` polling): a replica blocked behind a stuck or
+  long out-of-band migrator fails fast with `another migration holds the lock;
+  retry` rather than hanging forever and never going ready. The boot-path
+  (auto-migrate) expand additionally runs under a bounded context so a stalled
+  replica fails readiness and is rescheduled. The stale pre-tenant
+  `workspaces_personal_uniq` index is replaced **without a uniqueness gap**: the
+  tenant-scoped index is built `CONCURRENTLY` under a temp name first, then the
+  old index is dropped and the temp renamed in one short transaction.
+
+  Each phase logs `migrate_start` and `migrate_complete` with
+  `phase=expand|contract`. After expand, any table whose primary key is not yet
+  composite is reported via a structured **`migrate_contract_pending`** WARN
+  listing those tables — a signal that cross-tenant id/tuple reuse is not yet
+  enabled and `workspace migrate --contract` is still required. It never fires on
+  a fresh (born-composite) database. Alert on it lingering after a deploy.
 - **Contract — `workspace migrate --contract`.** A separate, **deliberately
   invoked** step, run **only after the whole fleet is on the new binary**. It
   promotes each composite unique index to the table's `PRIMARY KEY` (via `ADD
@@ -305,7 +321,10 @@ long `ACCESS EXCLUSIVE` lock on a populated hot-path table:
   rather than rebuilding it, so its `ACCESS EXCLUSIVE` lock is brief and
   independent of table size) and drops the old narrow primary key. Idempotent: a
   table already on the composite key is skipped. **Never** run automatically on
-  boot.
+  boot. **Cross-tenant id/tuple reuse activates only after contract:** in the
+  expand-only window the old narrow PK is still in force, so reusing a logical id
+  in a second tenant collides on it; promoting the composite key to the PK is
+  what enables the reuse.
 
 **On a large, already-populated database**, set
 `GATEWAY_POSTGRES_AUTO_MIGRATE=false` so boot does not run migrations on the
