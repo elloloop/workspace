@@ -73,7 +73,7 @@ func projectToProto(p *service.Project) (*workspacev1.Project, error) {
 		Status:        projectStatusToProto(p.Status),
 		ModelJson:     modelJSON,
 		DataRegion:    p.DataRegion,
-		MaxCheckReads: int32(p.MaxCheckReads),
+		MaxCheckReads: i32(p.MaxCheckReads),
 		CreatedAt:     timestamppb.New(p.CreatedAt),
 		UpdatedAt:     timestamppb.New(p.UpdatedAt),
 	}, nil

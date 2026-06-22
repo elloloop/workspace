@@ -368,6 +368,20 @@ but unusually deep/wide hierarchy), raise the caps in step; if abusive, the
 `ResourceExhausted` errors are the intended signal. In `BatchCheck`, a budget
 trip is isolated to the offending item and does not fail the batch.
 
+**Per-project override.** `GATEWAY_MAX_CHECK_READS` is the fleet-wide default; a
+single project can override it without raising the ceiling for everyone. Set
+`max_check_reads` on `CreateProject`/`UpdateProject` (mirrors `data_region`: it
+rides the project's config envelope, no schema change). A positive value
+replaces the global budget for that project's `Check`/`CheckSet`/`Expand`/
+`ListObjects` (the fan-out/expand budgets scale off it exactly as they scale off
+the global); `0`/unset falls back to `GATEWAY_MAX_CHECK_READS`. The override is
+validated against the same floor as the global (`>= 100`) and rejected with
+`InvalidArgument` below it. Reset a project to the global default with
+`UpdateProject`'s `clear_max_check_reads`. Like a `data_region` repin, an
+override change converges fleet-wide only after the resolver TTL (~30s). Use it
+for the one read-heavy, wide-model tenant whose legitimate `Check` would
+otherwise force a global ceiling raise.
+
 The single-`Check` budget is **global** (one value for the whole fleet); there is
 no per-project/per-tenant override yet. A read-heavy single-`Check` tenant (an
 unusually wide `union`/`tupleToUserset` model) can therefore force the global
