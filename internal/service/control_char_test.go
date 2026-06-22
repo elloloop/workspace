@@ -20,16 +20,16 @@ func TestCreateProjectRejectsControlCharID(t *testing.T) {
 	ctx := context.Background()
 
 	for _, id := range []string{"p\x00x", "p\x01x", "\x1fp"} {
-		if _, err := svc.CreateProject(ctx, id, "n", nil, ""); !errors.Is(err, service.ErrInvalidArgument) {
+		if _, err := svc.CreateProject(ctx, id, "n", nil, "", 0); !errors.Is(err, service.ErrInvalidArgument) {
 			t.Fatalf("CreateProject(%q) = %v, want ErrInvalidArgument", id, err)
 		}
-		if _, err := svc.UpdateProject(ctx, id, "n", "", nil, "", false); !errors.Is(err, service.ErrInvalidArgument) {
+		if _, err := svc.UpdateProject(ctx, id, "n", "", nil, "", false, 0, false); !errors.Is(err, service.ErrInvalidArgument) {
 			t.Fatalf("UpdateProject(%q) = %v, want ErrInvalidArgument", id, err)
 		}
 	}
 
 	// A control-char-free id is accepted (no false positive on path-like ids).
-	if _, err := svc.CreateProject(ctx, "tenant/sub-1", "n", nil, ""); err != nil {
+	if _, err := svc.CreateProject(ctx, "tenant/sub-1", "n", nil, "", 0); err != nil {
 		t.Fatalf("CreateProject(path-like id) = %v, want nil", err)
 	}
 }

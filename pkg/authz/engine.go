@@ -74,21 +74,35 @@ func newEvalState(maxReads int) *evalState {
 	return &evalState{visited: map[string]bool{}, memo: map[string]bool{}, maxReads: maxReads}
 }
 
+// effectiveMaxReads resolves the BASE single-Check read budget for one request:
+// a positive per-request override (a per-project budget the caller resolved)
+// wins, otherwise the engine's globally-configured default (e.maxReads). A
+// non-positive result means unbounded. This is the single point where a
+// per-project override replaces the fleet default; the fan-out/expand budgets
+// scale off the value it returns, so the override flows through them unchanged.
+func (e *Engine) effectiveMaxReads(override int) int {
+	if override > 0 {
+		return override
+	}
+	return e.maxReads
+}
+
 // fanOutBudget is the read budget for a FAN-OUT operation (ListObjects, and the
 // CheckSet member fan-out): it must not deny a legitimate full-cap, fully-deep
 // scan, whose cost is bounded by candidates × maxDepth reads. We scale that by
 // fanOutHeadroom and take the max with the single-Check budget, so the fan-out
-// budget is never tighter than a single Check's. A non-positive base maxReads
-// stays unbounded. candidates is the operation's candidate cap.
-func (e *Engine) fanOutBudget(candidates int) int {
-	if e.maxReads <= 0 {
+// budget is never tighter than a single Check's. base is the effective
+// single-Check budget (a per-project override or the global default); a
+// non-positive base stays unbounded. candidates is the operation's candidate cap.
+func (e *Engine) fanOutBudget(base, candidates int) int {
+	if base <= 0 {
 		return 0 // unbounded
 	}
 	scaled := candidates * e.maxDepth * fanOutHeadroom
-	if scaled > e.maxReads {
+	if scaled > base {
 		return scaled
 	}
-	return e.maxReads
+	return base
 }
 
 // expandBudget is the read budget for an Expand operation. Expand is itself a
@@ -101,15 +115,15 @@ func (e *Engine) fanOutBudget(candidates int) int {
 // never be tighter than it. We scale the node cap by fanOutHeadroom and take the
 // max with the single-Check budget. A non-positive base maxReads stays
 // unbounded.
-func (e *Engine) expandBudget(maxNodes int) int {
-	if e.maxReads <= 0 {
+func (e *Engine) expandBudget(base, maxNodes int) int {
+	if base <= 0 {
 		return 0 // unbounded
 	}
 	scaled := maxNodes * fanOutHeadroom
-	if scaled > e.maxReads {
+	if scaled > base {
 		return scaled
 	}
-	return e.maxReads
+	return base
 }
 
 // defaultCheckSetFanOutCandidates is the fallback candidate count CheckSet uses
@@ -204,14 +218,17 @@ func (e *Engine) Check(ctx context.Context, projectID, tenantID, namespace, obje
 	if err != nil {
 		return false, err
 	}
-	return e.CheckWithModel(ctx, m, projectID, tenantID, namespace, objectID, relation, userID, cc)
+	return e.CheckWithModel(ctx, m, projectID, tenantID, namespace, objectID, relation, userID, cc, 0)
 }
 
 // CheckWithModel is Check against an already-resolved model, so a caller that
 // has resolved the project once (e.g. for a suspension check) does not trigger a
 // second resolve.
-func (e *Engine) CheckWithModel(ctx context.Context, m Model, projectID, tenantID, namespace, objectID, relation, userID string, cc map[string]any) (bool, error) {
-	return e.check(ctx, m, projectID, tenantID, namespace, objectID, relation, subjectQuery{user: userID}, cc, false, newEvalState(e.maxReads), 0)
+// maxReads is a per-request read-budget override: > 0 replaces the engine's
+// globally-configured default (e.g. a per-project budget the caller resolved),
+// <= 0 falls back to it.
+func (e *Engine) CheckWithModel(ctx context.Context, m Model, projectID, tenantID, namespace, objectID, relation, userID string, cc map[string]any, maxReads int) (bool, error) {
+	return e.check(ctx, m, projectID, tenantID, namespace, objectID, relation, subjectQuery{user: userID}, cc, false, newEvalState(e.effectiveMaxReads(maxReads)), 0)
 }
 
 func visitKey(ns, obj, rel string) string { return ns + ":" + obj + "#" + rel }
@@ -406,13 +423,14 @@ func (e *Engine) ListObjects(ctx context.Context, projectID, tenantID, namespace
 	if err != nil {
 		return nil, err
 	}
-	return e.ListObjectsWithModel(ctx, m, projectID, tenantID, namespace, relation, userID, maxObjects)
+	return e.ListObjectsWithModel(ctx, m, projectID, tenantID, namespace, relation, userID, maxObjects, 0)
 }
 
 // ListObjectsWithModel is ListObjects against an already-resolved model; the
 // per-object Check reuses that model rather than re-resolving the project for
-// every candidate.
-func (e *Engine) ListObjectsWithModel(ctx context.Context, m Model, projectID, tenantID, namespace, relation, userID string, maxObjects int) ([]string, error) {
+// every candidate. maxReads is a per-request budget override: > 0 replaces the
+// engine's global default as the fan-out budget's base, <= 0 falls back to it.
+func (e *Engine) ListObjectsWithModel(ctx context.Context, m Model, projectID, tenantID, namespace, relation, userID string, maxObjects, maxReads int) ([]string, error) {
 	lister, ok := e.reader.(ObjectLister)
 	if !ok {
 		return nil, errors.New("authz: tuple store does not support ListObjects")
@@ -440,7 +458,7 @@ func (e *Engine) ListObjectsWithModel(ctx context.Context, m Model, projectID, t
 	if candidates <= 0 {
 		candidates = len(ids)
 	}
-	st := newEvalState(e.fanOutBudget(candidates))
+	st := newEvalState(e.fanOutBudget(e.effectiveMaxReads(maxReads), candidates))
 	out := make([]string, 0, len(ids))
 	for _, id := range ids {
 		st.visited = map[string]bool{}

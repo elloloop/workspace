@@ -60,6 +60,9 @@ type AdminAuditRecord struct {
 	// RegionChanged records a data-residency (data_region) pin/repin — a
 	// compliance-critical mutation that must be attributable.
 	RegionChanged bool
+	// BudgetChanged records a per-project read-budget (max_check_reads)
+	// override change — an operational/capacity knob that should be attributable.
+	BudgetChanged bool
 	At            time.Time
 }
 

@@ -23,14 +23,16 @@ func (e *Engine) CheckSet(ctx context.Context, projectID, tenantID, namespace, o
 	if err != nil {
 		return false, err
 	}
-	return e.CheckSetWithModel(ctx, m, projectID, tenantID, namespace, objectID, relation, set, cc)
+	return e.CheckSetWithModel(ctx, m, projectID, tenantID, namespace, objectID, relation, set, cc, 0)
 }
 
 // CheckSetWithModel is CheckSet against an already-resolved model. cc is the
 // request context conditional grants (caveats) are evaluated against, threaded
 // to the target Check exactly as the concrete-user Check path does, so a
 // conditional grant behaves identically whether queried by a user or a userset.
-func (e *Engine) CheckSetWithModel(ctx context.Context, m Model, projectID, tenantID, namespace, objectID, relation string, set SubjectSet, cc map[string]any) (bool, error) {
+// maxReads is a per-request read-budget override (> 0 wins, <= 0 falls back to
+// the engine default) that bases the fan-out budget below.
+func (e *Engine) CheckSetWithModel(ctx context.Context, m Model, projectID, tenantID, namespace, objectID, relation string, set SubjectSet, cc map[string]any, maxReads int) (bool, error) {
 	// ONE evalState — hence ONE read budget — is shared across the whole CheckSet
 	// operation: the structural walk, member resolution (which expands usersets),
 	// and the per-member Checks all charge the same budget, so a query set with
@@ -43,7 +45,7 @@ func (e *Engine) CheckSetWithModel(ctx context.Context, m Model, projectID, tena
 	// legitimate group (members × deep hierarchy) must not be wrongly denied. It
 	// has no explicit member cap, so it borrows the same candidate ceiling a
 	// full-cap ListObjects gets; an extreme group fan-out still trips the budget.
-	st := newEvalState(e.fanOutBudget(e.maxListObjectsOrDefault()))
+	st := newEvalState(e.fanOutBudget(e.effectiveMaxReads(maxReads), e.maxListObjectsOrDefault()))
 
 	// (1) structural inclusion through the monotone fragment, or target-public.
 	ok, err := e.check(ctx, m, projectID, tenantID, namespace, objectID, relation, subjectQuery{set: &set}, cc, false, st, 0)

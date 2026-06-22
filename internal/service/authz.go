@@ -149,7 +149,7 @@ func (s *Service) Check(ctx context.Context, p Principal, namespace, objectID, r
 	if res.suspended {
 		return false, nil // a suspended project denies every check
 	}
-	allowed, err = s.engine.CheckWithModel(ctx, res.modelOrDefault(), p.ProjectID, p.TenantID, namespace, objectID, relation, subjectUserID, reqContext)
+	allowed, err = s.engine.CheckWithModel(ctx, res.modelOrDefault(), p.ProjectID, p.TenantID, namespace, objectID, relation, subjectUserID, reqContext, res.maxCheckReads)
 	return allowed, mapBudgetErr(err)
 }
 
@@ -198,7 +198,7 @@ func (s *Service) CheckSet(ctx context.Context, p Principal, namespace, objectID
 	if res.suspended {
 		return false, nil // a suspended project denies every check
 	}
-	allowed, err = s.engine.CheckSetWithModel(ctx, res.modelOrDefault(), p.ProjectID, p.TenantID, namespace, objectID, relation, set, reqContext)
+	allowed, err = s.engine.CheckSetWithModel(ctx, res.modelOrDefault(), p.ProjectID, p.TenantID, namespace, objectID, relation, set, reqContext, res.maxCheckReads)
 	return allowed, mapBudgetErr(err)
 }
 
@@ -217,7 +217,7 @@ func (s *Service) Expand(ctx context.Context, p Principal, namespace, objectID, 
 	if res.suspended {
 		return authz.Tree{}, fmt.Errorf("%w: project %q is suspended", ErrFailedPrecondition, p.ProjectID)
 	}
-	tree, err := s.engine.ExpandWithModel(ctx, res.modelOrDefault(), p.ProjectID, p.TenantID, namespace, objectID, relation, s.maxExpandNodes)
+	tree, err := s.engine.ExpandWithModel(ctx, res.modelOrDefault(), p.ProjectID, p.TenantID, namespace, objectID, relation, s.maxExpandNodes, res.maxCheckReads)
 	if errors.Is(err, authz.ErrExpandTooLarge) {
 		return authz.Tree{}, fmt.Errorf("%w: expand result exceeds %d nodes; narrow the query", ErrResourceExhausted, s.maxExpandNodes)
 	}
@@ -240,7 +240,7 @@ func (s *Service) ListObjects(ctx context.Context, p Principal, namespace, relat
 	if res.suspended {
 		return nil, fmt.Errorf("%w: project %q is suspended", ErrFailedPrecondition, p.ProjectID)
 	}
-	ids, err := s.engine.ListObjectsWithModel(ctx, res.modelOrDefault(), p.ProjectID, p.TenantID, namespace, relation, subjectUserID, s.maxListObjects)
+	ids, err := s.engine.ListObjectsWithModel(ctx, res.modelOrDefault(), p.ProjectID, p.TenantID, namespace, relation, subjectUserID, s.maxListObjects, res.maxCheckReads)
 	if errors.Is(err, authz.ErrTooManyObjects) {
 		return nil, fmt.Errorf("%w: namespace has more than %d objects; narrow the query (pagination is a tracked follow-up)", ErrResourceExhausted, s.maxListObjects)
 	}

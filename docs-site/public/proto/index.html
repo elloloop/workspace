@@ -1398,6 +1398,15 @@ read latest. A malformed or foreign-shard token is rejected. </p></td>
                   <td><p> </p></td>
                 </tr>
               
+                <tr>
+                  <td>max_check_reads</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>max_check_reads: 0 leaves the project on the global default budget. A
+positive value overrides it and must be &gt;= the same floor as the global
+(see GATEWAY_MAX_CHECK_READS). </p></td>
+                </tr>
+              
             </tbody>
           </table>
 
@@ -3048,6 +3057,15 @@ closed). Empty means unpinned. Multi-region storage ROUTING is forward-
 compat; today this is recorded, validated, and enforced as a serving guard. </p></td>
                 </tr>
               
+                <tr>
+                  <td>max_check_reads</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>max_check_reads, when &gt; 0, overrides the global per-request read budget
+(GATEWAY_MAX_CHECK_READS) for this project&#39;s Check/Expand/ListObjects
+evaluations. 0 means unset: the project uses the fleet-wide default. </p></td>
+                </tr>
+              
             </tbody>
           </table>
 
@@ -4208,6 +4226,25 @@ only after the resolver TTL (~30s), so it is not instantaneous. </p></td>
                   <td><p>clear_data_region, when true, reverts the project to region-agnostic
 (unpinned). Mutually exclusive with a non-empty data_region. This is the
 explicit &#34;unpin&#34; path, since an empty data_region means &#34;leave unchanged&#34;. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>max_check_reads</td>
+                  <td><a href="#int32">int32</a></td>
+                  <td></td>
+                  <td><p>max_check_reads: 0 leaves it unchanged (like name/model). A positive value
+overrides the global per-request read budget and must be &gt;= the same floor
+as the global default. The override converges across a horizontally-scaled
+fleet only after the resolver TTL (~30s), so it is not instantaneous. </p></td>
+                </tr>
+              
+                <tr>
+                  <td>clear_max_check_reads</td>
+                  <td><a href="#bool">bool</a></td>
+                  <td></td>
+                  <td><p>clear_max_check_reads, when true, reverts the project to the global default
+budget. Mutually exclusive with a positive max_check_reads. This is the
+explicit &#34;reset&#34; path, since a 0 max_check_reads means &#34;leave unchanged&#34;. </p></td>
                 </tr>
               
             </tbody>

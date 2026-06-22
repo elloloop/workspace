@@ -79,7 +79,7 @@ func TestValidate(t *testing.T) {
 		"low tenant rate":      func(c *Config) { c.TenantRateLimitPerMinute = 1 },
 		"low tenant rate (59)": func(c *Config) { c.TenantRateLimitPerMinute = minTenantRateLimitPerMinute - 1 },
 		"low max check reads":  func(c *Config) { c.MaxCheckReads = 5 },
-		"max check reads (99)": func(c *Config) { c.MaxCheckReads = minMaxCheckReads - 1 },
+		"max check reads (99)": func(c *Config) { c.MaxCheckReads = MinMaxCheckReads - 1 },
 	} {
 		c := base()
 		mut(c)

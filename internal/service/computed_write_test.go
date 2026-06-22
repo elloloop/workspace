@@ -70,7 +70,7 @@ func TestWriteTuplesComputedOnlyPerProjectModel(t *testing.T) {
 			"can_view": authz.Rewrite{Computed: "enrolled"}, // computed-only
 		},
 	}
-	if _, err := svc.CreateProject(ctx, "edu", "Edu", model, ""); err != nil {
+	if _, err := svc.CreateProject(ctx, "edu", "Edu", model, "", 0); err != nil {
 		t.Fatalf("CreateProject: %v", err)
 	}
 	p := service.Principal{ProjectID: "edu"}
