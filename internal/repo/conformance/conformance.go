@@ -583,7 +583,7 @@ func testProjects(t *testing.T, r service.Repository) {
 		t.Fatalf("ParseModel: %v", err)
 	}
 
-	p1 := &service.Project{ID: "prj1", Name: "Kids", Status: service.ProjectActive, Model: model, DataRegion: "us-east-1", CreatedAt: now, UpdatedAt: now}
+	p1 := &service.Project{ID: "prj1", Name: "Kids", Status: service.ProjectActive, Model: model, DataRegion: "us-east-1", MaxCheckReads: 750, CreatedAt: now, UpdatedAt: now}
 	if err := r.CreateProject(ctx(), p1); err != nil {
 		t.Fatalf("CreateProject: %v", err)
 	}
@@ -616,8 +616,12 @@ func testProjects(t *testing.T, r service.Repository) {
 	if got.DataRegion != "us-east-1" {
 		t.Fatalf("data region round-trip = %q, want us-east-1", got.DataRegion)
 	}
-	if got2, _ := r.GetProject(ctx(), "prj2"); got2.Model != nil || got2.DataRegion != "" {
-		t.Fatalf("prj2 = %+v, want nil model + empty region", got2)
+	// The config_json envelope round-trips the per-project read-budget override.
+	if got.MaxCheckReads != 750 {
+		t.Fatalf("max_check_reads round-trip = %d, want 750", got.MaxCheckReads)
+	}
+	if got2, _ := r.GetProject(ctx(), "prj2"); got2.Model != nil || got2.DataRegion != "" || got2.MaxCheckReads != 0 {
+		t.Fatalf("prj2 = %+v, want nil model + empty region + zero budget", got2)
 	}
 
 	list, err := r.ListProjects(ctx())
@@ -632,7 +636,7 @@ func testProjects(t *testing.T, r service.Repository) {
 	if err := r.UpdateProject(ctx(), got); err != nil {
 		t.Fatalf("UpdateProject: %v", err)
 	}
-	if after, _ := r.GetProject(ctx(), "prj1"); after.Status != service.ProjectSuspended || after.Model != nil || after.DataRegion != "us-east-1" {
+	if after, _ := r.GetProject(ctx(), "prj1"); after.Status != service.ProjectSuspended || after.Model != nil || after.DataRegion != "us-east-1" || after.MaxCheckReads != 750 {
 		t.Fatalf("after update = %+v", after)
 	}
 

@@ -359,6 +359,20 @@ A pathologically wide union / `tupleToUserset` model could still need a higher
 tripping the budget (an unusually deep/wide but valid hierarchy) is caught and the
 caps re-sized before users notice denied lists.
 
+A **per-project override** lets one read-heavy tenant carry a different budget
+without raising the fleet ceiling for everyone. A project may set `max_check_reads`
+via `AdminService.CreateProject` / `UpdateProject` (it rides the project's config
+envelope exactly like `data_region`, so there is no schema change). When set to a
+positive value it **replaces** `GATEWAY_MAX_CHECK_READS` as the BASE budget for
+that project's `Check`/`CheckSet`/`Expand`/`ListObjects` — the fan-out and expand
+budgets scale off the override the same way they scale off the global. `0` (or
+unset) falls back to `GATEWAY_MAX_CHECK_READS`. The override is validated against
+the same floor as the global (`>= 100`, else `InvalidArgument`). Revert a project
+to the global default with `clear_max_check_reads` on `UpdateProject` (a `0`
+`max_check_reads` means "leave unchanged"). Like a `data_region` repin, an
+override change converges across a horizontally-scaled fleet only after the
+resolver TTL (~30s).
+
 In a `BatchCheck`, a budget exhaustion is **item-specific**: only the offending
 item's result carries the `ResourceExhausted` error; sibling items still return.
 It is not treated as a systemic outage (which would abort the whole call).
