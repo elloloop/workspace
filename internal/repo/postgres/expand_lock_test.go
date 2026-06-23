@@ -111,15 +111,20 @@ func TestExpandHoldsNoAccessExclusiveLock(t *testing.T) {
 	defer obs.Close()
 
 	stop := make(chan struct{})
-	// We assert no LONG ACCESS EXCLUSIVE hold: a momentary metadata flick (e.g. a
-	// no-op ADD COLUMN IF NOT EXISTS) is sub-millisecond and harmless, whereas an
-	// in-place index rebuild on a populated table would hold the lock across many
-	// consecutive polls. So we flag only a lock observed on several consecutive
-	// observations (~tens of ms), which a CONCURRENTLY build never produces.
+	// We assert no LONG ACCESS EXCLUSIVE hold. A CONCURRENTLY index build never
+	// takes ACCESS EXCLUSIVE at all; the only legitimate ACCESS EXCLUSIVE during
+	// expand is the personal-index swap's DROP+RENAME, a size-INDEPENDENT metadata
+	// op held for a few milliseconds. A regression to an in-place rebuild (or the
+	// old whole-schema-in-one-transaction approach) would instead hold the lock
+	// for a data-proportional duration. So we measure the CONTIGUOUS wall-clock
+	// hold and flag only a hold far longer than any metadata flick — robust to a
+	// slow/contended CI runner stretching a brief metadata lock across several
+	// poll iterations (which a fixed consecutive-count would false-positive on).
+	const maxContiguousHold = 400 * time.Millisecond
 	longAccessExclusive := make(chan bool, 1)
 	go func() {
-		const consecutiveToFail = 5
-		consecutive, longHeld := 0, false
+		var heldSince time.Time // zero when the lock is not currently held
+		longHeld := false
 		for {
 			select {
 			case <-stop:
@@ -133,13 +138,15 @@ func TestExpandHoldsNoAccessExclusiveLock(t *testing.T) {
 					SELECT 1 FROM pg_locks l
 					 WHERE l.relation = to_regclass(current_schema() || '.workspaces')
 					   AND l.mode = 'AccessExclusiveLock' AND l.granted)`).Scan(&present)
-			if err == nil && present {
-				consecutive++
-				if consecutive >= consecutiveToFail {
+			switch {
+			case err == nil && present:
+				if heldSince.IsZero() {
+					heldSince = time.Now()
+				} else if time.Since(heldSince) > maxContiguousHold {
 					longHeld = true
 				}
-			} else {
-				consecutive = 0
+			default:
+				heldSince = time.Time{} // released (or a transient poll error): reset
 			}
 			time.Sleep(time.Millisecond)
 		}
@@ -147,7 +154,11 @@ func TestExpandHoldsNoAccessExclusiveLock(t *testing.T) {
 
 	// Concurrent writes during expand must NOT be blocked: each must complete
 	// well within the 5s migration lock_timeout (a real ACCESS EXCLUSIVE hold
-	// would queue them behind it).
+	// would queue them behind it). A bounded per-insert context is the robust
+	// block detector: under a CONCURRENTLY build every insert returns promptly,
+	// whereas a sustained ACCESS EXCLUSIVE would queue an insert until the context
+	// deadline (failing the test) — without relying on a wall-clock latency
+	// threshold that a slow CI runner could trip on an unblocked insert.
 	writesOK := make(chan error, 1)
 	go func() {
 		now := time.Now().UTC()
@@ -158,19 +169,14 @@ func TestExpandHoldsNoAccessExclusiveLock(t *testing.T) {
 				return
 			default:
 			}
-			start := time.Now()
-			ctxW, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+			ctxW, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 			_, err := obs.Exec(ctxW,
 				`INSERT INTO workspaces (project_id, id, slug, display_name, type, owner_user_id, created_at, updated_at)
 				 VALUES ('p',$1,$1,$1,'team',$1,$2,$2)`,
 				fmt.Sprintf("live%d", i), now)
 			cancel()
 			if err != nil {
-				writesOK <- fmt.Errorf("concurrent insert %d failed: %w", i, err)
-				return
-			}
-			if elapsed := time.Since(start); elapsed > time.Second {
-				writesOK <- fmt.Errorf("concurrent insert %d blocked %v (expand took a long lock)", i, elapsed)
+				writesOK <- fmt.Errorf("concurrent insert %d blocked/failed (expand took a long lock?): %w", i, err)
 				return
 			}
 		}

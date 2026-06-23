@@ -2,6 +2,7 @@ package config
 
 import (
 	"os"
+	"strings"
 	"testing"
 )
 
@@ -124,5 +125,25 @@ func TestValidate(t *testing.T) {
 	c.MaxCheckReads = DefaultMaxCheckReads
 	if err := c.Validate(); err != nil {
 		t.Errorf("healthy max check reads rejected: %v", err)
+	}
+}
+
+func TestValidateDataRegion(t *testing.T) {
+	// Empty (region-agnostic) and well-formed values pass.
+	for _, ok := range []string{"", "us-east-1", "eu_west_2", "region0"} {
+		if err := validateDataRegion(ok); err != nil {
+			t.Errorf("validateDataRegion(%q) = %v, want nil", ok, err)
+		}
+	}
+	// Bad charset (uppercase, dot, space, slash) and over-length are rejected.
+	bad := []string{"US-EAST-1", "us.east.1", "us east", "a/b", strings.Repeat("a", maxDataRegionLen+1)}
+	for _, b := range bad {
+		if err := validateDataRegion(b); err == nil {
+			t.Errorf("validateDataRegion(%q) = nil, want error", b)
+		}
+	}
+	// A value exactly at the length bound is allowed.
+	if err := validateDataRegion(strings.Repeat("a", maxDataRegionLen)); err != nil {
+		t.Errorf("region at the length bound rejected: %v", err)
 	}
 }
