@@ -10,6 +10,7 @@ import (
 	"go.uber.org/zap"
 	"golang.org/x/sync/singleflight"
 
+	"github.com/elloloop/workspace/internal/config"
 	"github.com/elloloop/workspace/pkg/authz"
 )
 
@@ -35,7 +36,11 @@ type resolved struct {
 	model      authz.Model
 	suspended  bool
 	dataRegion string
-	at         time.Time
+	// maxCheckReads is the project's per-request read-budget override: > 0
+	// replaces the global GATEWAY_MAX_CHECK_READS for this project's
+	// Check/CheckSet/Expand/ListObjects, 0 means use the fleet default.
+	maxCheckReads int
+	at            time.Time
 }
 
 func (e resolved) modelOrDefault() authz.Model {
@@ -123,7 +128,7 @@ func (r *modelResolver) load(ctx context.Context, projectID string) (resolved, e
 		// is diagnosable rather than surfacing as an opaque CodeInternal.
 		return resolved{}, fmt.Errorf("authz: resolve project %q: %w", projectID, err)
 	}
-	e := resolved{suspended: p.Status == ProjectSuspended, dataRegion: p.DataRegion, at: r.now()}
+	e := resolved{suspended: p.Status == ProjectSuspended, dataRegion: p.DataRegion, maxCheckReads: p.MaxCheckReads, at: r.now()}
 	if len(p.Model) > 0 {
 		// Overlay the project's namespaces onto a fresh copy of the defaults so
 		// the built-in product surface survives a custom model; never mutate
@@ -188,7 +193,7 @@ func (r *modelResolver) invalidate(projectID string) {
 // A nil model means the project uses the built-in default model. This is the
 // configuration surface that lets two products (e.g. a kids platform and a
 // professionals platform) run distinct models on one deployment.
-func (s *Service) CreateProject(ctx context.Context, id, name string, model authz.Model, dataRegion string) (*Project, error) {
+func (s *Service) CreateProject(ctx context.Context, id, name string, model authz.Model, dataRegion string, maxCheckReads int) (*Project, error) {
 	if id == "" {
 		return nil, fmt.Errorf("%w: project id is required", ErrInvalidArgument)
 	}
@@ -201,15 +206,19 @@ func (s *Service) CreateProject(ctx context.Context, id, name string, model auth
 	if err := ValidateRegion(dataRegion); err != nil {
 		return nil, err
 	}
+	if err := ValidateMaxCheckReads(maxCheckReads); err != nil {
+		return nil, err
+	}
 	now := s.now()
 	p := &Project{
-		ID:         id,
-		Name:       name,
-		Status:     ProjectActive,
-		Model:      model,
-		DataRegion: dataRegion,
-		CreatedAt:  now,
-		UpdatedAt:  now,
+		ID:            id,
+		Name:          name,
+		Status:        ProjectActive,
+		Model:         model,
+		DataRegion:    dataRegion,
+		MaxCheckReads: maxCheckReads,
+		CreatedAt:     now,
+		UpdatedAt:     now,
 	}
 	if err := s.repo.CreateProject(ctx, p); err != nil {
 		return nil, err
@@ -219,7 +228,7 @@ func (s *Service) CreateProject(ctx context.Context, id, name string, model auth
 		s.auditLog.LogAdminMutation(ctx, AdminAuditRecord{
 			Action: AdminActionCreateProject, ProjectID: id, NewStatus: p.Status,
 			StatusChanged: true, ModelChanged: len(model) > 0,
-			RegionChanged: dataRegion != "", At: now,
+			RegionChanged: dataRegion != "", BudgetChanged: maxCheckReads > 0, At: now,
 		})
 	}
 	return p, nil
@@ -243,7 +252,7 @@ func (s *Service) ListProjects(ctx context.Context) ([]*Project, error) {
 // custom model or name. An empty name and an empty/nil model both mean "leave
 // unchanged", and an empty/unspecified status means "leave unchanged".
 // (Resetting a model back to the default is not expressed through Update.)
-func (s *Service) UpdateProject(ctx context.Context, id, name string, status ProjectStatus, model authz.Model, dataRegion string, clearRegion bool) (*Project, error) {
+func (s *Service) UpdateProject(ctx context.Context, id, name string, status ProjectStatus, model authz.Model, dataRegion string, clearRegion bool, maxCheckReads int, clearBudget bool) (*Project, error) {
 	if id == "" {
 		return nil, fmt.Errorf("%w: project id is required", ErrInvalidArgument)
 	}
@@ -262,11 +271,17 @@ func (s *Service) UpdateProject(ctx context.Context, id, name string, status Pro
 	if clearRegion && dataRegion != "" {
 		return nil, fmt.Errorf("%w: set clear_data_region OR data_region, not both", ErrInvalidArgument)
 	}
+	if err := ValidateMaxCheckReads(maxCheckReads); err != nil {
+		return nil, err
+	}
+	if clearBudget && maxCheckReads > 0 {
+		return nil, fmt.Errorf("%w: set clear_max_check_reads OR max_check_reads, not both", ErrInvalidArgument)
+	}
 	p, err := s.repo.GetProject(ctx, id)
 	if err != nil {
 		return nil, err
 	}
-	oldStatus, oldRegion := p.Status, p.DataRegion
+	oldStatus, oldRegion, oldBudget := p.Status, p.DataRegion, p.MaxCheckReads
 	if name != "" {
 		p.Name = name
 	}
@@ -281,6 +296,12 @@ func (s *Service) UpdateProject(ctx context.Context, id, name string, status Pro
 		p.DataRegion = "" // explicit revert to region-agnostic
 	case dataRegion != "":
 		p.DataRegion = dataRegion
+	}
+	switch {
+	case clearBudget:
+		p.MaxCheckReads = 0 // explicit revert to the global default budget
+	case maxCheckReads > 0:
+		p.MaxCheckReads = maxCheckReads
 	}
 	// A repin to a region THIS instance does not serve would, after the resolver
 	// TTL, make every request to the project fail closed fleet-wide — warn the
@@ -301,7 +322,8 @@ func (s *Service) UpdateProject(ctx context.Context, id, name string, status Pro
 			Action: AdminActionUpdateProject, ProjectID: id, NewStatus: p.Status,
 			StatusChanged: status != "" && status != oldStatus,
 			ModelChanged:  len(model) > 0,
-			RegionChanged: p.DataRegion != oldRegion, At: p.UpdatedAt,
+			RegionChanged: p.DataRegion != oldRegion,
+			BudgetChanged: p.MaxCheckReads != oldBudget, At: p.UpdatedAt,
 		})
 	}
 	return p, nil
@@ -330,7 +352,7 @@ func (s *Service) EnsureDefaultProject(ctx context.Context, id string) error {
 	} else if !isNotFound(err) {
 		return err
 	}
-	_, err := s.CreateProject(ctx, id, "Default", nil, "") // region-agnostic; never auto-pinned
+	_, err := s.CreateProject(ctx, id, "Default", nil, "", 0) // region-agnostic, global budget; never auto-pinned
 	if isAlreadyExists(err) {
 		return nil // lost a race; the winner seeded it
 	}
@@ -404,6 +426,19 @@ func (s *Service) ensureRegion(ctx context.Context, p Principal) error {
 // depth.)
 func (s *Service) EnsureServable(ctx context.Context, p Principal) error {
 	return s.ensureRegion(ctx, p)
+}
+
+// ValidateMaxCheckReads rejects a malformed per-project read-budget override. 0
+// (or negative) is allowed and means "use the global GATEWAY_MAX_CHECK_READS
+// default". A positive override must clear the SAME floor the global budget
+// does (config.MinMaxCheckReads), so a small-positive typo (e.g. 5) is rejected
+// rather than silently throttling the project's authz to a near-zero cap.
+func ValidateMaxCheckReads(n int) error {
+	if n > 0 && n < config.MinMaxCheckReads {
+		return fmt.Errorf("%w: max_check_reads, when set, must be >= %d (use 0 for the global default)",
+			ErrInvalidArgument, config.MinMaxCheckReads)
+	}
+	return nil
 }
 
 // validateModel round-trips the model through its JSON form to reject any

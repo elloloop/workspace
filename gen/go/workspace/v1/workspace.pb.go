@@ -5647,7 +5647,11 @@ type Project struct {
 	// An instance configured for a different region refuses to serve it (fail
 	// closed). Empty means unpinned. Multi-region storage ROUTING is forward-
 	// compat; today this is recorded, validated, and enforced as a serving guard.
-	DataRegion    string `protobuf:"bytes,7,opt,name=data_region,json=dataRegion,proto3" json:"data_region,omitempty"`
+	DataRegion string `protobuf:"bytes,7,opt,name=data_region,json=dataRegion,proto3" json:"data_region,omitempty"`
+	// max_check_reads, when > 0, overrides the global per-request read budget
+	// (GATEWAY_MAX_CHECK_READS) for this project's Check/Expand/ListObjects
+	// evaluations. 0 means unset: the project uses the fleet-wide default.
+	MaxCheckReads int32 `protobuf:"varint,8,opt,name=max_check_reads,json=maxCheckReads,proto3" json:"max_check_reads,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -5731,12 +5735,23 @@ func (x *Project) GetDataRegion() string {
 	return ""
 }
 
+func (x *Project) GetMaxCheckReads() int32 {
+	if x != nil {
+		return x.MaxCheckReads
+	}
+	return 0
+}
+
 type CreateProjectRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
-	Name          string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
-	ModelJson     string                 `protobuf:"bytes,3,opt,name=model_json,json=modelJson,proto3" json:"model_json,omitempty"`
-	DataRegion    string                 `protobuf:"bytes,4,opt,name=data_region,json=dataRegion,proto3" json:"data_region,omitempty"`
+	state      protoimpl.MessageState `protogen:"open.v1"`
+	Id         string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	Name       string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	ModelJson  string                 `protobuf:"bytes,3,opt,name=model_json,json=modelJson,proto3" json:"model_json,omitempty"`
+	DataRegion string                 `protobuf:"bytes,4,opt,name=data_region,json=dataRegion,proto3" json:"data_region,omitempty"`
+	// max_check_reads: 0 leaves the project on the global default budget. A
+	// positive value overrides it and must be >= the same floor as the global
+	// (see GATEWAY_MAX_CHECK_READS).
+	MaxCheckReads int32 `protobuf:"varint,5,opt,name=max_check_reads,json=maxCheckReads,proto3" json:"max_check_reads,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -5797,6 +5812,13 @@ func (x *CreateProjectRequest) GetDataRegion() string {
 		return x.DataRegion
 	}
 	return ""
+}
+
+func (x *CreateProjectRequest) GetMaxCheckReads() int32 {
+	if x != nil {
+		return x.MaxCheckReads
+	}
+	return 0
 }
 
 type CreateProjectResponse struct {
@@ -5945,8 +5967,17 @@ type UpdateProjectRequest struct {
 	// (unpinned). Mutually exclusive with a non-empty data_region. This is the
 	// explicit "unpin" path, since an empty data_region means "leave unchanged".
 	ClearDataRegion bool `protobuf:"varint,6,opt,name=clear_data_region,json=clearDataRegion,proto3" json:"clear_data_region,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	// max_check_reads: 0 leaves it unchanged (like name/model). A positive value
+	// overrides the global per-request read budget and must be >= the same floor
+	// as the global default. The override converges across a horizontally-scaled
+	// fleet only after the resolver TTL (~30s), so it is not instantaneous.
+	MaxCheckReads int32 `protobuf:"varint,7,opt,name=max_check_reads,json=maxCheckReads,proto3" json:"max_check_reads,omitempty"`
+	// clear_max_check_reads, when true, reverts the project to the global default
+	// budget. Mutually exclusive with a positive max_check_reads. This is the
+	// explicit "reset" path, since a 0 max_check_reads means "leave unchanged".
+	ClearMaxCheckReads bool `protobuf:"varint,8,opt,name=clear_max_check_reads,json=clearMaxCheckReads,proto3" json:"clear_max_check_reads,omitempty"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
 }
 
 func (x *UpdateProjectRequest) Reset() {
@@ -6017,6 +6048,20 @@ func (x *UpdateProjectRequest) GetDataRegion() string {
 func (x *UpdateProjectRequest) GetClearDataRegion() bool {
 	if x != nil {
 		return x.ClearDataRegion
+	}
+	return false
+}
+
+func (x *UpdateProjectRequest) GetMaxCheckReads() int32 {
+	if x != nil {
+		return x.MaxCheckReads
+	}
+	return 0
+}
+
+func (x *UpdateProjectRequest) GetClearMaxCheckReads() bool {
+	if x != nil {
+		return x.ClearMaxCheckReads
 	}
 	return false
 }
@@ -7252,7 +7297,7 @@ const file_workspace_v1_workspace_proto_rawDesc = "" +
 	"\brelation\x18\x04 \x01(\tR\brelation\x12\x1b\n" +
 	"\tvia_group\x18\x05 \x01(\tR\bviaGroup\"Q\n" +
 	"\x1bExportSubjectGrantsResponse\x122\n" +
-	"\x06grants\x18\x01 \x03(\v2\x1a.workspace.v1.SubjectGrantR\x06grants\"\x98\x02\n" +
+	"\x06grants\x18\x01 \x03(\v2\x1a.workspace.v1.SubjectGrantR\x06grants\"\xc0\x02\n" +
 	"\aProject\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x123\n" +
@@ -7264,20 +7309,22 @@ const file_workspace_v1_workspace_proto_rawDesc = "" +
 	"\n" +
 	"updated_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\x12\x1f\n" +
 	"\vdata_region\x18\a \x01(\tR\n" +
-	"dataRegion\"z\n" +
+	"dataRegion\x12&\n" +
+	"\x0fmax_check_reads\x18\b \x01(\x05R\rmaxCheckReads\"\xa2\x01\n" +
 	"\x14CreateProjectRequest\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x1d\n" +
 	"\n" +
 	"model_json\x18\x03 \x01(\tR\tmodelJson\x12\x1f\n" +
 	"\vdata_region\x18\x04 \x01(\tR\n" +
-	"dataRegion\"H\n" +
+	"dataRegion\x12&\n" +
+	"\x0fmax_check_reads\x18\x05 \x01(\x05R\rmaxCheckReads\"H\n" +
 	"\x15CreateProjectResponse\x12/\n" +
 	"\aproject\x18\x01 \x01(\v2\x15.workspace.v1.ProjectR\aproject\"#\n" +
 	"\x11GetProjectRequest\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\"E\n" +
 	"\x12GetProjectResponse\x12/\n" +
-	"\aproject\x18\x01 \x01(\v2\x15.workspace.v1.ProjectR\aproject\"\xdb\x01\n" +
+	"\aproject\x18\x01 \x01(\v2\x15.workspace.v1.ProjectR\aproject\"\xb6\x02\n" +
 	"\x14UpdateProjectRequest\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x123\n" +
@@ -7286,7 +7333,9 @@ const file_workspace_v1_workspace_proto_rawDesc = "" +
 	"model_json\x18\x04 \x01(\tR\tmodelJson\x12\x1f\n" +
 	"\vdata_region\x18\x05 \x01(\tR\n" +
 	"dataRegion\x12*\n" +
-	"\x11clear_data_region\x18\x06 \x01(\bR\x0fclearDataRegion\"H\n" +
+	"\x11clear_data_region\x18\x06 \x01(\bR\x0fclearDataRegion\x12&\n" +
+	"\x0fmax_check_reads\x18\a \x01(\x05R\rmaxCheckReads\x121\n" +
+	"\x15clear_max_check_reads\x18\b \x01(\bR\x12clearMaxCheckReads\"H\n" +
 	"\x15UpdateProjectResponse\x12/\n" +
 	"\aproject\x18\x01 \x01(\v2\x15.workspace.v1.ProjectR\aproject\"\x15\n" +
 	"\x13ListProjectsRequest\"I\n" +

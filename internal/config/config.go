@@ -203,8 +203,8 @@ func (c *Config) Validate() error {
 	// A small-positive MaxCheckReads would silently fail authz CLOSED fleet-wide
 	// (every non-trivial Check trips the budget → ResourceExhausted). Require a
 	// sane floor when set; 0/negative keeps the generous service default.
-	if c.MaxCheckReads > 0 && c.MaxCheckReads < minMaxCheckReads {
-		return fmt.Errorf("GATEWAY_MAX_CHECK_READS, when set, must be >= %d (use 0/negative for the default)", minMaxCheckReads)
+	if c.MaxCheckReads > 0 && c.MaxCheckReads < MinMaxCheckReads {
+		return fmt.Errorf("GATEWAY_MAX_CHECK_READS, when set, must be >= %d (use 0/negative for the default)", MinMaxCheckReads)
 	}
 	// The instance region is compared char-for-char against a project's pinned
 	// data_region (same lowercase [a-z0-9_-], <=64 charset). Reject a malformed
@@ -246,11 +246,13 @@ const minAdminSecretLen = 32
 // throttle the authz data plane to a near-zero cap.
 const minTenantRateLimitPerMinute = 60
 
-// minMaxCheckReads floors a configured per-request read budget. Well below
-// DefaultMaxCheckReads but above any real single-evaluation read count, so a
-// small-positive typo (e.g. 5) is rejected at startup rather than silently
-// failing authz closed fleet-wide; 0/negative still selects the default.
-const minMaxCheckReads = 100
+// MinMaxCheckReads floors a configured per-request read budget — both the global
+// GATEWAY_MAX_CHECK_READS and a per-project override (service.CreateProject /
+// UpdateProject reuse this same floor). Well below DefaultMaxCheckReads but above
+// any real single-evaluation read count, so a small-positive typo (e.g. 5) is
+// rejected rather than silently failing authz closed; 0/negative selects the
+// default.
+const MinMaxCheckReads = 100
 
 func envStr(key, def string) string {
 	if v, ok := os.LookupEnv(key); ok {

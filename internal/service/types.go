@@ -33,8 +33,12 @@ type Project struct {
 	// An instance configured with GATEWAY_DATA_REGION serves only projects whose
 	// region matches (or is unset); a mismatch fails closed. Empty ⇒ unpinned.
 	DataRegion string
-	CreatedAt  time.Time
-	UpdatedAt  time.Time
+	// MaxCheckReads, when > 0, overrides the global GATEWAY_MAX_CHECK_READS
+	// per-request read budget for this project's Check/CheckSet/Expand/
+	// ListObjects evaluations. 0 ⇒ the project uses the fleet-wide default.
+	MaxCheckReads int
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
 }
 
 // Role is a workspace membership grade. It is also the relation name written

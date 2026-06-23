@@ -580,6 +580,14 @@ components:
         dataRegion:
           type: string
           title: data_region
+        maxCheckReads:
+          type: integer
+          title: max_check_reads
+          format: int32
+          description: |-
+            max_check_reads: 0 leaves the project on the global default budget. A
+             positive value overrides it and must be >= the same floor as the global
+             (see GATEWAY_MAX_CHECK_READS).
       title: CreateProjectRequest
       additionalProperties: false
     workspace.v1.CreateProjectResponse:
@@ -1272,6 +1280,14 @@ components:
              An instance configured for a different region refuses to serve it (fail
              closed). Empty means unpinned. Multi-region storage ROUTING is forward-
              compat; today this is recorded, validated, and enforced as a serving guard.
+        maxCheckReads:
+          type: integer
+          title: max_check_reads
+          format: int32
+          description: |-
+            max_check_reads, when > 0, overrides the global per-request read budget
+             (GATEWAY_MAX_CHECK_READS) for this project's Check/Expand/ListObjects
+             evaluations. 0 means unset: the project uses the fleet-wide default.
       title: Project
       additionalProperties: false
     workspace.v1.ReadRelationTuplesRequest:
@@ -1788,6 +1804,22 @@ components:
             clear_data_region, when true, reverts the project to region-agnostic
              (unpinned). Mutually exclusive with a non-empty data_region. This is the
              explicit "unpin" path, since an empty data_region means "leave unchanged".
+        maxCheckReads:
+          type: integer
+          title: max_check_reads
+          format: int32
+          description: |-
+            max_check_reads: 0 leaves it unchanged (like name/model). A positive value
+             overrides the global per-request read budget and must be >= the same floor
+             as the global default. The override converges across a horizontally-scaled
+             fleet only after the resolver TTL (~30s), so it is not instantaneous.
+        clearMaxCheckReads:
+          type: boolean
+          title: clear_max_check_reads
+          description: |-
+            clear_max_check_reads, when true, reverts the project to the global default
+             budget. Mutually exclusive with a positive max_check_reads. This is the
+             explicit "reset" path, since a 0 max_check_reads means "leave unchanged".
       title: UpdateProjectRequest
       additionalProperties: false
     workspace.v1.UpdateProjectResponse:

@@ -39,7 +39,7 @@ func TestEnsureDefaultProjectRegion(t *testing.T) {
 	}
 
 	// Only an EXPLICIT pin to a different region triggers the boot fail-fast.
-	if _, err := east.UpdateProject(ctx, "default", "", "", nil, "us-east-1", false); err != nil {
+	if _, err := east.UpdateProject(ctx, "default", "", "", nil, "us-east-1", false, 0, false); err != nil {
 		t.Fatalf("pin default: %v", err)
 	}
 	if err := west.EnsureDefaultProject(ctx, "default"); !errors.Is(err, service.ErrFailedPrecondition) {
@@ -59,23 +59,23 @@ func TestUpdateProjectClearAndRepin(t *testing.T) {
 		service.WithDataRegion("us-east-1"), service.WithLogger(zap.New(core)))
 	ctx := context.Background()
 
-	if _, err := svc.CreateProject(ctx, "p", "P", nil, "us-east-1"); err != nil {
+	if _, err := svc.CreateProject(ctx, "p", "P", nil, "us-east-1", 0); err != nil {
 		t.Fatalf("CreateProject: %v", err)
 	}
 
 	// Clear the pin → region-agnostic.
-	got, err := svc.UpdateProject(ctx, "p", "", "", nil, "", true)
+	got, err := svc.UpdateProject(ctx, "p", "", "", nil, "", true, 0, false)
 	if err != nil || got.DataRegion != "" {
 		t.Fatalf("clear pin = %+v, %v; want empty region", got, err)
 	}
 
 	// clear + a region value is a contradiction.
-	if _, err := svc.UpdateProject(ctx, "p", "", "", nil, "eu-west-1", true); !errors.Is(err, service.ErrInvalidArgument) {
+	if _, err := svc.UpdateProject(ctx, "p", "", "", nil, "eu-west-1", true, 0, false); !errors.Is(err, service.ErrInvalidArgument) {
 		t.Fatalf("clear+region = %v, want ErrInvalidArgument", err)
 	}
 
 	// Repin to a region this instance does NOT serve → succeeds but warns.
-	if _, err := svc.UpdateProject(ctx, "p", "", "", nil, "eu-west-1", false); err != nil {
+	if _, err := svc.UpdateProject(ctx, "p", "", "", nil, "eu-west-1", false, 0, false); err != nil {
 		t.Fatalf("repin: %v", err)
 	}
 	if logs.FilterMessage("data_region_repin_unservable_here").Len() == 0 {
@@ -91,7 +91,7 @@ func TestRegionRefusalWarns(t *testing.T) {
 		service.WithDataRegion("us-east-1"), service.WithLogger(zap.New(core)))
 	ctx := context.Background()
 
-	if _, err := svc.CreateProject(ctx, "eu", "EU", nil, "eu-west-1"); err != nil {
+	if _, err := svc.CreateProject(ctx, "eu", "EU", nil, "eu-west-1", 0); err != nil {
 		t.Fatalf("CreateProject: %v", err)
 	}
 	err := svc.EnsureServable(ctx, service.Principal{ProjectID: "eu"})
@@ -105,7 +105,7 @@ func TestRegionRefusalWarns(t *testing.T) {
 		t.Fatal("a residency refusal must log a breadcrumb")
 	}
 	// A matching-region project is servable.
-	if _, err := svc.CreateProject(ctx, "us", "US", nil, "us-east-1"); err != nil {
+	if _, err := svc.CreateProject(ctx, "us", "US", nil, "us-east-1", 0); err != nil {
 		t.Fatalf("CreateProject us: %v", err)
 	}
 	if err := svc.EnsureServable(ctx, service.Principal{ProjectID: "us"}); err != nil {

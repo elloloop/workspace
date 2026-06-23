@@ -96,7 +96,7 @@ func TestDecisionMetrics(t *testing.T) {
 func TestRegionRefusedMetric(t *testing.T) {
 	svc := service.New(memory.New(), nil, nil, service.WithDataRegion("us-east-1"))
 	ctx := context.Background()
-	if _, err := svc.CreateProject(ctx, "eu", "EU", nil, "eu-west-1"); err != nil {
+	if _, err := svc.CreateProject(ctx, "eu", "EU", nil, "eu-west-1", 0); err != nil {
 		t.Fatalf("CreateProject: %v", err)
 	}
 	h := NewHandler(svc, "default", "", "", 100, 0, 0)
