@@ -8,6 +8,12 @@ include:
   - internal/
   - pkg/
 
+# Build-time code generators (run via `go generate`, validated by the
+# docs-gen freshness test, not by line coverage) — excluded like cmd/.
+exclude:
+  - internal/config/gen
+  - internal/service/gen
+
 packages:
   internal/app: 85
   internal/config: 88
