@@ -39,10 +39,11 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	cfg, err := config.Load()
+	opts, err := workspaceserver.OptionsFromEnv()
 	if err != nil {
 		logger.Fatal("config_invalid", zap.Error(err))
 	}
+	cfg := &opts.Config // the env-only knobs (ports, DSN, …) the container reads directly
 
 	if len(os.Args) > 1 && os.Args[1] == "migrate" {
 		contract, err := parseMigrateArgs(os.Args[2:])
@@ -64,27 +65,11 @@ func main() {
 	}
 	defer closeRepo()
 
-	srv, err := workspaceserver.New(ctx, workspaceserver.Options{
-		Logger: logger,
-		Repo:   repo,
-		Config: workspaceserver.Config{
-			DefaultProjectID:         cfg.DefaultProjectID,
-			DefaultTenantID:          cfg.DefaultTenantID,
-			DataRegion:               cfg.DataRegion,
-			AllowedOrigins:           cfg.AllowedOrigins,
-			ServiceAuthTokens:        cfg.ServiceAuthTokens,
-			ServiceCredentials:       cfg.ServiceCredentials,
-			AdminAPISecret:           cfg.AdminAPISecret,
-			MaxListObjects:           cfg.MaxListObjects,
-			MaxExpandNodes:           cfg.MaxExpandNodes,
-			MaxBatchCheckItems:       cfg.MaxBatchCheckItems,
-			MaxCheckReads:            cfg.MaxCheckReads,
-			AdminRateLimitPerMinute:  cfg.AdminRateLimitPerMinute,
-			TenantRateLimitPerMinute: cfg.TenantRateLimitPerMinute,
-			DecisionLog:              cfg.DecisionLog,
-			AuditLog:                 cfg.AuditLog,
-		},
-	})
+	// opts already carries the env-loaded Config (from OptionsFromEnv); the
+	// container owns the repo lifecycle, so it supplies the built repo + logger.
+	opts.Logger = logger
+	opts.Repo = repo
+	srv, err := workspaceserver.New(ctx, opts)
 	if err != nil {
 		logger.Fatal("server_init_failed", zap.Error(err))
 	}

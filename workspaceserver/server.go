@@ -12,61 +12,37 @@ import (
 
 	"github.com/elloloop/workspace/internal/app"
 	"github.com/elloloop/workspace/internal/auditlog"
+	"github.com/elloloop/workspace/internal/config"
 	"github.com/elloloop/workspace/internal/decisionlog"
-	"github.com/elloloop/workspace/internal/middleware"
 	"github.com/elloloop/workspace/internal/repo/memory"
 	"github.com/elloloop/workspace/internal/service"
 )
 
-// Config is the embedder-facing subset of service configuration.
-type Config struct {
-	DefaultProjectID string
-	// DefaultTenantID is applied when a request omits tenant_id.
-	DefaultTenantID string
-	// DataRegion is the region this instance serves; empty = region-agnostic.
-	DataRegion     string
-	AllowedOrigins []string
-	// ServiceAuthTokens are the accepted service credentials. Empty disables
-	// the requirement (trusted network / mesh).
-	ServiceAuthTokens []string
-	// ServiceCredentials optionally maps a credential to a named calling-service
-	// identity (and project pin); additive to ServiceAuthTokens.
-	ServiceCredentials []middleware.ServiceCredential
-	// AdminAPISecret gates the AdminService (project configuration). Empty
-	// disables the admin RPCs.
-	AdminAPISecret string
-	// MaxListObjects caps a ListObjects candidate set; non-positive uses the
-	// service default.
-	MaxListObjects int
-	// MaxExpandNodes caps an Expand result tree; non-positive uses the service
-	// default.
-	MaxExpandNodes int
-	// MaxBatchCheckItems caps a single BatchCheck request; non-positive uses
-	// the configured default.
-	MaxBatchCheckItems int
-	// MaxCheckReads caps the store reads one engine evaluation may perform;
-	// non-positive uses the service default.
-	MaxCheckReads int
-	// AdminRateLimitPerMinute throttles the admin API per caller; non-positive
-	// disables the limiter.
-	AdminRateLimitPerMinute int
-	// TenantRateLimitPerMinute throttles authz RPCs per (project, tenant);
-	// non-positive disables the limiter.
-	TenantRateLimitPerMinute int
-	// DecisionLog enables the async authorization decision audit log. Default
-	// false. When enabled, call Server.Close on shutdown to flush it.
-	DecisionLog bool
-	// AuditLog enables the async tuple-change + admin-mutation audit log.
-	// Default false. When enabled, call Server.Close on shutdown to flush it.
-	AuditLog bool
-}
+// Config is the service configuration an embedder passes. It is the SAME
+// canonical struct the container's env loader fills (config.Config), aliased
+// here so the embeddable surface and the env path can never drift apart — add a
+// knob once, in config.Config, and both paths get it. An embedder simply leaves
+// the container-only fields (ports, PostgresDSN, …) at their zero values.
+type Config = config.Config
 
-// Options configures New. Repo defaults to an in-memory store; Logger
-// defaults to a no-op.
+// Options configures New. Repo defaults to an in-memory store; Logger defaults
+// to a no-op. Config carries the service knobs; the other fields are runtime
+// dependencies that are not env-expressible.
 type Options struct {
 	Logger *zap.Logger
 	Repo   service.Repository
 	Config Config
+}
+
+// OptionsFromEnv builds Options from the process environment (GATEWAY_*),
+// validating it. It is the one place the container binary turns env into
+// Options; an embedder constructs Options directly instead.
+func OptionsFromEnv() (Options, error) {
+	cfg, err := config.Load()
+	if err != nil {
+		return Options{}, err
+	}
+	return Options{Config: *cfg}, nil
 }
 
 // Server is the assembled workspace service.
@@ -93,37 +69,23 @@ func New(ctx context.Context, opts Options) (*Server, error) {
 	if err := service.ValidateRegion(opts.Config.DataRegion); err != nil {
 		return nil, err
 	}
-	projectID := opts.Config.DefaultProjectID
-	if projectID == "" {
-		projectID = "default"
+	// Copy the config so we can default a field, and hand app a pointer to the
+	// single canonical struct rather than re-listing every knob.
+	cfg := opts.Config
+	if cfg.DefaultProjectID == "" {
+		cfg.DefaultProjectID = config.DefaultProjectIDFallback
 	}
-	deps := app.Deps{
-		Logger:                   logger,
-		Repo:                     repo,
-		DefaultProjectID:         projectID,
-		DefaultTenantID:          opts.Config.DefaultTenantID,
-		DataRegion:               opts.Config.DataRegion,
-		AllowedOrigins:           opts.Config.AllowedOrigins,
-		ServiceAuthTokens:        opts.Config.ServiceAuthTokens,
-		ServiceCredentials:       opts.Config.ServiceCredentials,
-		AdminAPISecret:           opts.Config.AdminAPISecret,
-		MaxListObjects:           opts.Config.MaxListObjects,
-		MaxExpandNodes:           opts.Config.MaxExpandNodes,
-		MaxBatchCheckItems:       opts.Config.MaxBatchCheckItems,
-		MaxCheckReads:            opts.Config.MaxCheckReads,
-		AdminRateLimitPerMinute:  opts.Config.AdminRateLimitPerMinute,
-		TenantRateLimitPerMinute: opts.Config.TenantRateLimitPerMinute,
-	}
+	deps := app.Deps{Config: &cfg, Repo: repo, Logger: logger}
 	// Only construct (and only then set the interface field) when enabled, so a
-	// disabled log leaves a genuinely nil DecisionLogger interface — not a
-	// typed nil that would look non-nil to app.New.
+	// disabled log leaves a genuinely nil interface — not a typed nil that would
+	// look non-nil to app.New.
 	var dl *decisionlog.ZapLogger
-	if opts.Config.DecisionLog {
+	if cfg.DecisionLog {
 		dl = decisionlog.NewZap(logger, 0)
 		deps.DecisionLogger = dl
 	}
 	var al *auditlog.ZapLogger
-	if opts.Config.AuditLog {
+	if cfg.AuditLog {
 		al = auditlog.NewZap(logger, 0)
 		deps.AuditLogger = al
 	}
