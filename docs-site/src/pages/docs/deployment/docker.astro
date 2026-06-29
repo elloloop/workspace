@@ -28,9 +28,13 @@ docker compose down -v               # stop and wipe the postgres volume`}
     title="docker compose"
   />
   <p>
-    With <code>GATEWAY_POSTGRES_AUTO_MIGRATE=true</code> (the default) the
-    schema is applied on first connect, so the stack is ready as soon as
-    Postgres is healthy.
+    Migrations are a deliberate operator step:
+    <code>GATEWAY_POSTGRES_AUTO_MIGRATE</code> defaults to <code>false</code>,
+    so apply the schema explicitly with <code>workspace migrate</code> (an init
+    container or a one-shot job) before serving, or set it to <code>true</code>
+    for a small dev database to migrate on first connect. See
+    <a href={`${base}docs/installation/configuration`}>Configuration</a> for the
+    full knob reference.
   </p>
 
   <h2>A Compose snippet</h2>

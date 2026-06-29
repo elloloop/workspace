@@ -88,7 +88,7 @@ func collectDocFiles(t *testing.T, root string) []string {
 
 func readFile(t *testing.T, path string) string {
 	t.Helper()
-	b, err := os.ReadFile(path)
+	b, err := os.ReadFile(path) //nolint:gosec // test reads repo files under a fixed root
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -146,7 +146,10 @@ func validGoFuncs(t *testing.T, root string) map[string]bool {
 	for _, dir := range []string{"pkg", "internal", "workspaceserver"} {
 		base := filepath.Join(root, dir)
 		_ = filepath.Walk(base, func(path string, info os.FileInfo, err error) error {
-			if err != nil || info.IsDir() || !strings.HasSuffix(path, ".go") {
+			if err != nil {
+				return err
+			}
+			if info.IsDir() || !strings.HasSuffix(path, ".go") {
 				return nil
 			}
 			for _, m := range goFuncRE.FindAllStringSubmatch(readFile(t, path), -1) {

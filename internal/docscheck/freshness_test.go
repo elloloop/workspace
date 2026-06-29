@@ -25,7 +25,7 @@ func TestGeneratedDocsAreFresh(t *testing.T) {
 	tmp := t.TempDir()
 
 	for _, pkg := range generators {
-		cmd := exec.Command("go", "run", pkg)
+		cmd := exec.Command("go", "run", pkg) //nolint:gosec // pkg is a fixed in-repo generator path
 		cmd.Dir = root
 		cmd.Env = append(os.Environ(), "DOCS_GEN_OUT="+tmp)
 		if out, err := cmd.CombinedOutput(); err != nil {
