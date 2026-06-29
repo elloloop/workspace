@@ -177,6 +177,11 @@ fuzz: ## Fuzz smoke — runs each fuzz target with seed corpus + 15s fuzzing
 
 CONNECT_OPENAPI_VERSION ?= v0.18.0
 
+.PHONY: docs-gen
+docs-gen: ## Regenerate the docs reference JSON (config + audit/metrics) from code
+	$(GO) generate ./internal/config/... ./internal/service/...
+	@echo "==> docs reference JSON regenerated → docs-site/src/data/generated"
+
 .PHONY: proto
 proto: ## Regenerate Go stubs + OpenAPI + proto reference from proto
 	$(BUF) generate

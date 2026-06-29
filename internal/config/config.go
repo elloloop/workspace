@@ -14,13 +14,20 @@ import (
 	"github.com/elloloop/workspace/internal/middleware"
 )
 
+//go:generate go run ./gen
+
 // DefaultProjectIDFallback is used when no default project is configured.
 const DefaultProjectIDFallback = "default"
 
 // Config is the fully-resolved service configuration.
 type Config struct {
-	ConnectPort      int
-	MetricsPort      int
+	// ConnectPort is the Connect/HTTP listener serving JSON, gRPC, and
+	// gRPC-Web RPCs.
+	ConnectPort int
+	// MetricsPort serves the Prometheus /metrics endpoint and the health probes.
+	MetricsPort int
+	// DefaultProjectID is the project shard used for any request whose
+	// project_id is empty.
 	DefaultProjectID string
 	// DefaultTenantID is the tenant pinned for requests that omit tenant_id
 	// (the project's default tenant). Empty is the conventional default.
@@ -57,7 +64,11 @@ type Config struct {
 	// as the `X-Admin-Secret` header. Empty disables the admin RPCs entirely.
 	AdminAPISecret string
 
-	AllowedOrigins   []string
+	// AllowedOrigins is the CORS allow-list of browser origins permitted to
+	// call the API. Empty allows none.
+	AllowedOrigins []string
+	// HTTPMaxBodyBytes is the maximum accepted request body, in bytes. Must be
+	// positive.
 	HTTPMaxBodyBytes int64
 
 	// MaxListObjects caps the candidate set a single ListObjects call scans,

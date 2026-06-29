@@ -1,8 +1,22 @@
 ---
 import DocsLayout from "../../../layouts/DocsLayout.astro";
 import { Code } from "astro-expressive-code/components";
+import auditData from "../../../data/generated/audit-events.json";
 
 const base = import.meta.env.BASE_URL.replace(/\/$/, "") + "/";
+
+// The metric and audit-event tables below are generated from
+// internal/connect/metrics.go and internal/service/auditlog.go by
+// `make docs-gen`; a CI drift check fails if this JSON is stale.
+type Metric = { name: string; description: string };
+type AuditEvent = {
+  name: string;
+  kind: string;
+  const: string;
+  description: string;
+};
+const metrics = auditData.metrics as Metric[];
+const auditEvents = auditData.events as AuditEvent[];
 ---
 
 <DocsLayout title="Health & Metrics">
@@ -59,6 +73,57 @@ curl -i http://localhost:8080/readyz    # readiness`}
     lang="yaml"
     title="prometheus.yml"
   />
+
+  <h3>Exported metrics</h3>
+  <p>
+    The authorization decision metrics the service exports. Labels are kept to
+    low-cardinality dimensions (namespace, relation, outcome, RPC, reason) —
+    never object or subject identifiers. This list is generated from the
+    service's metrics source, so it stays in lockstep with the code.
+  </p>
+  <table>
+    <thead>
+      <tr><th>Metric</th><th>Meaning</th></tr>
+    </thead>
+    <tbody>
+      {
+        metrics.map((m) => (
+          <tr>
+            <td>
+              <code>{m.name}</code>
+            </td>
+            <td>{m.description}</td>
+          </tr>
+        ))
+      }
+    </tbody>
+  </table>
+
+  <h2>Audit events</h2>
+  <p>
+    With <code>GATEWAY_AUDIT_LOG=true</code>, every relation-tuple change and
+    admin mutation is emitted to the structured logger as an append-only audit
+    record. The event-type vocabulary — the operation strings carried by those
+    records — is generated from the service's audit source:
+  </p>
+  <table>
+    <thead>
+      <tr><th>Event</th><th>Kind</th><th>Meaning</th></tr>
+    </thead>
+    <tbody>
+      {
+        auditEvents.map((e) => (
+          <tr>
+            <td>
+              <code>{e.name}</code>
+            </td>
+            <td>{e.kind}</td>
+            <td>{e.description}</td>
+          </tr>
+        ))
+      }
+    </tbody>
+  </table>
 
   <h2>Structured logs</h2>
   <p>
