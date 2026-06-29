@@ -323,12 +323,31 @@ jobs:
           exit 1
 
   # ---------------------------------------------------------------------------
+  # 8. Docs drift — docs may not name an env/RPC/metric/path that does not
+  #    exist, and the generated reference JSON must be up to date.
+  # ---------------------------------------------------------------------------
+  docs-drift:
+    name: Docs drift
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: go test ./internal/docscheck/...
+        run: go test -count=1 ./internal/docscheck/...
+
+  # ---------------------------------------------------------------------------
   # Aggregate gate — easy single required check on `main`.
   # ---------------------------------------------------------------------------
   ci:
     name: CI
     runs-on: ubuntu-latest
-    needs: [lint, tidy, vuln, test, smoke, integration, fuzz, docker]
+    needs: [lint, tidy, vuln, test, smoke, integration, fuzz, docker, docs-drift]
     if: always()
     steps:
       - name: All required jobs succeeded

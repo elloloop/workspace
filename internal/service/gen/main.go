@@ -61,6 +61,9 @@ func run() error {
 	sort.Slice(metrics, func(i, j int) bool { return metrics[i].Name < metrics[j].Name })
 
 	out := filepath.Join(root, "docs-site", "src", "data", "generated", "audit-events.json")
+	if dir := os.Getenv("DOCS_GEN_OUT"); dir != "" {
+		out = filepath.Join(dir, "audit-events.json")
+	}
 	return writeJSON(out, payload{Events: events, Metrics: metrics})
 }
 

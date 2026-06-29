@@ -182,6 +182,10 @@ docs-gen: ## Regenerate the docs reference JSON (config + audit/metrics) from co
 	$(GO) generate ./internal/config/... ./internal/service/...
 	@echo "==> docs reference JSON regenerated → docs-site/src/data/generated"
 
+.PHONY: docs-drift
+docs-drift: ## Check docs name only real identifiers + generated JSON is fresh
+	$(GO) test -count=1 ./internal/docscheck/...
+
 .PHONY: proto
 proto: ## Regenerate Go stubs + OpenAPI + proto reference from proto
 	$(BUF) generate

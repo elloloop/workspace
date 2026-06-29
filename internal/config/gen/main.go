@@ -85,8 +85,7 @@ func run() error {
 	}
 	sort.Slice(knobs, func(i, j int) bool { return knobs[i].Name < knobs[j].Name })
 
-	out := filepath.Join(root, "docs-site", "src", "data", "generated", "config.json")
-	return writeJSON(out, knobs)
+	return writeJSON(outPath(root, "config.json"), knobs)
 }
 
 // knobFromCall extracts a knob from an env{Int,Bool,Str,CSV}(...) call, or
@@ -388,6 +387,16 @@ func oneLine(s string) string {
 	s = strings.TrimSpace(s)
 	fields := strings.Fields(s)
 	return strings.Join(fields, " ")
+}
+
+// outPath resolves the destination for a generated JSON file. DOCS_GEN_OUT
+// overrides the directory (used by the freshness test to generate into a temp
+// dir); otherwise it lands under the committed docs-site data tree.
+func outPath(root, name string) string {
+	if dir := os.Getenv("DOCS_GEN_OUT"); dir != "" {
+		return filepath.Join(dir, name)
+	}
+	return filepath.Join(root, "docs-site", "src", "data", "generated", name)
 }
 
 func repoRoot() (string, error) {
