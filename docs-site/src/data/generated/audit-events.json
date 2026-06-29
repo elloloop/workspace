@@ -1,0 +1,54 @@
+{
+  "events": [
+    {
+      "name": "create_project",
+      "kind": "AdminAction",
+      "const": "AdminActionCreateProject",
+      "description": "AdminActionCreateProject records a CreateProject mutation."
+    },
+    {
+      "name": "delete",
+      "kind": "TupleOpKind",
+      "const": "TupleOpDelete",
+      "description": "TupleOpDelete is a revocation (a tuple was removed)."
+    },
+    {
+      "name": "insert",
+      "kind": "TupleOpKind",
+      "const": "TupleOpInsert",
+      "description": "TupleOpInsert is a grant (a tuple was written)."
+    },
+    {
+      "name": "update_project",
+      "kind": "AdminAction",
+      "const": "AdminActionUpdateProject",
+      "description": "AdminActionUpdateProject records an UpdateProject mutation."
+    }
+  ],
+  "metrics": [
+    {
+      "name": "authz_batchcheck_items",
+      "description": "Items per BatchCheck request."
+    },
+    {
+      "name": "authz_check_decisions_total",
+      "description": "Authorization Check/CheckSet/BatchCheck decisions by namespace, relation, and outcome."
+    },
+    {
+      "name": "authz_check_duration_seconds",
+      "description": "Authorization decision RPC latency in seconds."
+    },
+    {
+      "name": "authz_decision_errors_total",
+      "description": "Authorization decision RPC errors (validation + internal)."
+    },
+    {
+      "name": "authz_eval_backstop_total",
+      "description": "Engine per-request safety backstops that fired, by reason: depth/cycle (graceful fail-closed deny) or budget (read-budget exhausted, ResourceExhausted error). A rising rate signals an abusive tenant or a misconfigured deep/cyclic model."
+    },
+    {
+      "name": "authz_region_refused_total",
+      "description": "Requests refused because the project's pinned data region differs from this instance's region (data-residency fail-closed)."
+    }
+  ]
+}

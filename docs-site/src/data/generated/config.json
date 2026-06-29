@@ -1,0 +1,139 @@
+[
+  {
+    "name": "GATEWAY_ADMIN_API_SECRET",
+    "type": "string",
+    "default": "",
+    "required": false,
+    "description": "AdminAPISecret gates the AdminService (project configuration), presented as the `X-Admin-Secret` header. Empty disables the admin RPCs entirely.",
+    "constraint": "must be a high-entropy value of at least 32 characters"
+  },
+  {
+    "name": "GATEWAY_ADMIN_RATE_LIMIT_PER_MINUTE",
+    "type": "int",
+    "default": "30",
+    "required": false,
+    "description": "AdminRateLimitPerMinute throttles the admin API per caller (online brute-force protection); non-positive disables the limiter."
+  },
+  {
+    "name": "GATEWAY_ALLOWED_ORIGINS",
+    "type": "csv",
+    "default": "",
+    "required": false,
+    "description": "AllowedOrigins is the CORS allow-list of browser origins permitted to call the API. Empty allows none."
+  },
+  {
+    "name": "GATEWAY_AUDIT_LOG",
+    "type": "bool",
+    "default": "false",
+    "required": false,
+    "description": "AuditLog enables an async, append-only audit log of every relation-tuple change and admin mutation (to the structured logger). Default false."
+  },
+  {
+    "name": "GATEWAY_CONNECT_PORT",
+    "type": "int",
+    "default": "8080",
+    "required": false,
+    "description": "ConnectPort is the Connect/HTTP listener serving JSON, gRPC, and gRPC-Web RPCs."
+  },
+  {
+    "name": "GATEWAY_DATA_REGION",
+    "type": "string",
+    "default": "",
+    "required": false,
+    "description": "DataRegion is the region this instance serves: it refuses to operate on a project pinned to a different data_region (fail closed). Empty (default) is region-agnostic — serves every project, today's behavior."
+  },
+  {
+    "name": "GATEWAY_DECISION_LOG",
+    "type": "bool",
+    "default": "false",
+    "required": false,
+    "description": "DecisionLog enables an async, append-only audit log of every Check/ CheckSet decision (to the structured logger). Default false."
+  },
+  {
+    "name": "GATEWAY_DEFAULT_PROJECT_ID",
+    "type": "string",
+    "default": "default",
+    "required": false,
+    "description": "DefaultProjectID is the project shard used for any request whose project_id is empty."
+  },
+  {
+    "name": "GATEWAY_DEFAULT_TENANT_ID",
+    "type": "string",
+    "default": "",
+    "required": false,
+    "description": "DefaultTenantID is the tenant pinned for requests that omit tenant_id (the project's default tenant). Empty is the conventional default."
+  },
+  {
+    "name": "GATEWAY_HTTP_MAX_BODY_BYTES",
+    "type": "int",
+    "default": "1048576",
+    "required": false,
+    "description": "HTTPMaxBodyBytes is the maximum accepted request body, in bytes. Must be positive.",
+    "constraint": "must be positive"
+  },
+  {
+    "name": "GATEWAY_MAX_BATCH_CHECK_ITEMS",
+    "type": "int",
+    "default": "1000",
+    "required": false,
+    "description": "MaxBatchCheckItems caps the number of items in a single BatchCheck request, bounding per-request cost."
+  },
+  {
+    "name": "GATEWAY_MAX_CHECK_READS",
+    "type": "int",
+    "default": "5000",
+    "required": false,
+    "description": "MaxCheckReads caps the number of store reads (tuple lookups) a single Check/CheckSet/Expand/ListObjects evaluation may perform, bounding the per-request cost a pathological cyclic/branching graph can inflict. Non-positive uses the service default.",
+    "constraint": "when set, must be \u003e= 100 (use 0/negative for the default)"
+  },
+  {
+    "name": "GATEWAY_MAX_EXPAND_NODES",
+    "type": "int",
+    "default": "10000",
+    "required": false,
+    "description": "MaxExpandNodes caps the size of an Expand result tree, bounding the response a single cheap request can amplify into."
+  },
+  {
+    "name": "GATEWAY_MAX_LIST_OBJECTS",
+    "type": "int",
+    "default": "1000",
+    "required": false,
+    "description": "MaxListObjects caps the candidate set a single ListObjects call scans, bounding its full-scan + per-object Check cost."
+  },
+  {
+    "name": "GATEWAY_METRICS_PORT",
+    "type": "int",
+    "default": "9090",
+    "required": false,
+    "description": "MetricsPort serves the Prometheus /metrics endpoint and the health probes."
+  },
+  {
+    "name": "GATEWAY_POSTGRES_AUTO_MIGRATE",
+    "type": "bool",
+    "default": "false",
+    "required": false,
+    "description": "PostgresAutoMigrate runs the expand migration on boot when true. It defaults to FALSE: migrations are a deliberate operator step (out-of-band `workspace migrate`, an init container, or a migrate Job), so a large existing DB's first deploy can never livelock on a bounded CONCURRENTLY build inside the boot window. Opt in (true) only for small/dev DBs."
+  },
+  {
+    "name": "GATEWAY_POSTGRES_DSN",
+    "type": "string",
+    "default": "",
+    "required": false,
+    "description": "PostgresDSN selects the postgres driver when set; empty uses memory."
+  },
+  {
+    "name": "GATEWAY_SERVICE_AUTH_TOKENS",
+    "type": "csv",
+    "default": "",
+    "required": false,
+    "description": "ServiceAuthTokens are the accepted service credentials presented by calling backends as `Authorization: Bearer \u003ctoken\u003e`. This is an internal service authenticated service-to-service (not by end-user tokens); the user is passed as data in the request. Empty disables the requirement — trust the network/mesh — and the service logs a warning."
+  },
+  {
+    "name": "GATEWAY_TENANT_RATE_LIMIT_PER_MINUTE",
+    "type": "int",
+    "default": "0",
+    "required": false,
+    "description": "TenantRateLimitPerMinute throttles authz data-plane RPCs per (project, tenant); non-positive (the default) disables the limiter.",
+    "constraint": "when enabled, must be \u003e= 60 (use 0 to disable)"
+  }
+]

@@ -22,9 +22,9 @@ const base = import.meta.env.BASE_URL.replace(/\/$/, "") + "/";
     your product backend will present; here we use a single token.
   </p>
   <Code
-    code={`# In docker-compose.yml, the workspaces service sets:
+    code={`# Add a dev service token to the workspaces service in docker-compose.yml:
 #   GATEWAY_SERVICE_AUTH_TOKENS=dev-service-token
-#   GATEWAY_DEFAULT_PROJECT_ID=default
+# (the bundled compose sets GATEWAY_DEFAULT_PROJECT_ID=local)
 docker compose up -d
 
 # health probes
@@ -34,9 +34,11 @@ curl http://localhost:8080/readyz`}
     title="docker compose"
   />
   <p>
-    Pending migrations apply automatically on first connect while
-    <code>GATEWAY_POSTGRES_AUTO_MIGRATE=true</code> (the default). Export the
-    service token so the curls below can reuse it:
+    The bundled <code>docker-compose.yml</code> sets
+    <code>GATEWAY_POSTGRES_AUTO_MIGRATE=true</code> so the dev stack migrates on
+    first connect (it defaults to <code>false</code> — migrations are an
+    explicit operator step in production). Export the service token so the curls
+    below can reuse it:
   </p>
   <Code code={`export WS_SERVICE_TOKEN=dev-service-token`} lang="bash" />
   <aside class="not-prose my-6 rounded-md border-l-4 border-primary bg-muted/40 px-4 py-3 text-sm text-muted-foreground">

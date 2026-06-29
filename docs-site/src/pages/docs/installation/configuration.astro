@@ -1,8 +1,27 @@
 ---
 import DocsLayout from "../../../layouts/DocsLayout.astro";
 import { Code } from "astro-expressive-code/components";
+import configKnobs from "../../../data/generated/config.json";
 
 const base = import.meta.env.BASE_URL.replace(/\/$/, "") + "/";
+
+// The table below is generated from internal/config/config.go by
+// `make docs-gen` — never hand-edit names, defaults, or constraints here.
+// A CI drift check (internal/docscheck) fails if this JSON is stale.
+type Knob = {
+  name: string;
+  type: string;
+  default: string;
+  required: boolean;
+  description: string;
+  constraint?: string;
+};
+const knobs = configKnobs as Knob[];
+
+function renderDefault(k: Knob): string {
+  if (k.type === "csv" || k.default === "") return "(empty)";
+  return k.default;
+}
 ---
 
 <DocsLayout title="Configuration">
@@ -15,73 +34,66 @@ const base = import.meta.env.BASE_URL.replace(/\/$/, "") + "/";
     <strong>zero configuration</strong> for local development; production
     deployments override the Postgres DSN and the service-auth tokens.
   </p>
-
-  <h2>Ports</h2>
-  <table>
-    <thead>
-      <tr><th>Variable</th><th>Purpose</th><th>Default</th></tr>
-    </thead>
-    <tbody>
-      <tr><td><code>GATEWAY_CONNECT_PORT</code></td><td>Connect/HTTP listener — JSON, gRPC, and gRPC-Web RPCs.</td><td><code>8080</code></td></tr>
-      <tr><td><code>GATEWAY_METRICS_PORT</code></td><td>Prometheus <code>/metrics</code> and the health probes.</td><td><code>9090</code></td></tr>
-    </tbody>
-  </table>
-
-  <h2>Project</h2>
-  <table>
-    <thead>
-      <tr><th>Variable</th><th>Purpose</th><th>Default</th></tr>
-    </thead>
-    <tbody>
-      <tr><td><code>GATEWAY_DEFAULT_PROJECT_ID</code></td><td>Project shard used for any request whose <code>project_id</code> is empty.</td><td><code>default</code></td></tr>
-    </tbody>
-  </table>
   <p>
-    Every workspace, group, invitation, and relation tuple is scoped to a
-    project (the isolation shard). One B2C product is typically one project; a
-    B2B platform shards per customer. See
-    <a href={`${base}docs/concepts/projects`}>Projects &amp; Multi-Tenancy</a>.
+    The reference table is generated directly from the service's configuration
+    source (<code>internal/config/config.go</code>), so the variable names,
+    defaults, and validation floors here can never drift from the code.
   </p>
 
-  <h2>Storage</h2>
+  <h2>All variables</h2>
   <table>
     <thead>
-      <tr><th>Variable</th><th>Purpose</th><th>Default</th></tr>
+      <tr>
+        <th>Variable</th>
+        <th>Type</th>
+        <th>Default</th>
+        <th>Description</th>
+        <th>Constraint</th>
+      </tr>
     </thead>
     <tbody>
-      <tr><td><code>GATEWAY_POSTGRES_DSN</code></td><td>Postgres connection string. Selects the Postgres driver. <strong>Empty selects the in-memory store.</strong></td><td><em>(empty)</em></td></tr>
-      <tr><td><code>GATEWAY_POSTGRES_AUTO_MIGRATE</code></td><td>Apply pending migrations automatically on connect.</td><td><code>true</code></td></tr>
+      {
+        knobs.map((k) => (
+          <tr>
+            <td>
+              <code>{k.name}</code>
+            </td>
+            <td>{k.type}</td>
+            <td>
+              {renderDefault(k) === "(empty)" ? (
+                <em>(empty)</em>
+              ) : (
+                <code>{renderDefault(k)}</code>
+              )}
+            </td>
+            <td>{k.description}</td>
+            <td>{k.constraint ? k.constraint : <span aria-hidden="true">—</span>}</td>
+          </tr>
+        ))
+      }
     </tbody>
   </table>
 
-  <h3>Choosing a store: memory vs. Postgres</h3>
+  <h2>Choosing a store: memory vs. Postgres</h2>
   <ul>
     <li>
-      <strong>In-memory</strong> (DSN empty) — the default, and the conformance
-      reference both drivers are pinned against. Data lives in process memory
-      and is lost on restart. Use it for local development, tests, and
-      ephemeral demos.
+      <strong>In-memory</strong> (<code>GATEWAY_POSTGRES_DSN</code> empty) — the
+      default, and the conformance reference both drivers are pinned against.
+      Data lives in process memory and is lost on restart. Use it for local
+      development, tests, and ephemeral demos.
     </li>
     <li>
       <strong>Postgres</strong> (DSN set) — durable, the only choice for
       production and for running more than one replica. Every table and index
-      leads with <code>project_id</code>. With
-      <code>GATEWAY_POSTGRES_AUTO_MIGRATE=true</code> (the default) the schema
-      is applied on connect; to gate migrations behind a deploy step, set it to
-      <code>false</code> and run <code>workspace migrate</code> explicitly (see
-      <a href={`${base}docs/deployment/docker`}>Deploy with Docker</a>).
+      leads with <code>project_id</code>. Migrations are a deliberate operator
+      step: <code>GATEWAY_POSTGRES_AUTO_MIGRATE</code> defaults to
+      <code>false</code>, so run <code>workspace migrate</code> explicitly (see
+      <a href={`${base}docs/deployment/docker`}>Deploy with Docker</a>). Opt in
+      to boot-time migration only for small or dev databases.
     </li>
   </ul>
 
   <h2>Service authentication</h2>
-  <table>
-    <thead>
-      <tr><th>Variable</th><th>Purpose</th><th>Default</th></tr>
-    </thead>
-    <tbody>
-      <tr><td><code>GATEWAY_SERVICE_AUTH_TOKENS</code></td><td>Comma-separated list of accepted service credentials. A caller presents one as <code>Authorization: Bearer &lt;token&gt;</code>. <strong>Empty disables the requirement</strong> and logs a warning — every caller is then trusted.</td><td><em>(empty)</em></td></tr>
-    </tbody>
-  </table>
   <p>
     Workspaces is an internal service-to-service API: the caller is a trusted
     product backend, and the end user is passed as data
@@ -103,26 +115,6 @@ const base = import.meta.env.BASE_URL.replace(/\/$/, "") + "/";
     token, roll callers over, then drop the old one. See
     <a href={`${base}docs/concepts/security`}>Security &amp; Service Auth</a>.
   </div>
-
-  <h2>CORS</h2>
-  <table>
-    <thead>
-      <tr><th>Variable</th><th>Purpose</th><th>Default</th></tr>
-    </thead>
-    <tbody>
-      <tr><td><code>GATEWAY_ALLOWED_ORIGINS</code></td><td>Comma-separated list of CORS origins allowed to call the API from a browser. Empty allows none.</td><td><em>(empty)</em></td></tr>
-    </tbody>
-  </table>
-
-  <h2>Request body size</h2>
-  <table>
-    <thead>
-      <tr><th>Variable</th><th>Purpose</th><th>Default</th></tr>
-    </thead>
-    <tbody>
-      <tr><td><code>GATEWAY_HTTP_MAX_BODY_BYTES</code></td><td>Maximum accepted request body, in bytes. Must be positive.</td><td><code>1048576</code> (1&nbsp;MiB)</td></tr>
-    </tbody>
-  </table>
 
   <h2>A production example</h2>
   <p>

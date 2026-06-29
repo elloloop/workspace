@@ -74,10 +74,16 @@ if [[ "${1:-}" == "--config" ]]; then
       next
     }
     /^[[:space:]]*include:[[:space:]]*$/ { section="include"; next }
+    /^[[:space:]]*exclude:[[:space:]]*$/ { section="exclude"; next }
     /^[[:space:]]*packages:[[:space:]]*$/ { section="packages"; next }
     section == "include" && /^[[:space:]]*-[[:space:]]*/ {
       line=$0; sub(/^[[:space:]]*-[[:space:]]*/, "", line); sub(/[[:space:]]+#.*$/, "", line)
       print "include\t" line
+      next
+    }
+    section == "exclude" && /^[[:space:]]*-[[:space:]]*/ {
+      line=$0; sub(/^[[:space:]]*-[[:space:]]*/, "", line); sub(/[[:space:]]+#.*$/, "", line)
+      print "exclude\t" line
       next
     }
     section == "packages" && /^[[:space:]]*[^[:space:]#][^:]*:[[:space:]]*/ {
@@ -108,6 +114,13 @@ if [[ "${1:-}" == "--config" ]]; then
     includes=("internal/" "pkg/")
   fi
 
+  # Excluded prefixes are dropped from the gate entirely (build-time tooling like
+  # cmd/ and the code generators, validated by their output, not line coverage).
+  excludes=()
+  while IFS=$'\t' read -r _ exclude; do
+    excludes+=("$exclude")
+  done < <(awk -F '\t' '$1 == "exclude" { print $1 "\t" $2 }' "$config_tmp")
+
   seen_tmp="$(mktemp)"
 
   fail=0
@@ -119,6 +132,15 @@ if [[ "${1:-}" == "--config" ]]; then
       esac
     done
     if [[ $included -eq 0 ]]; then
+      continue
+    fi
+    excluded=0
+    for exclude in "${excludes[@]}"; do
+      case "$pkg" in
+        *"$exclude"* ) excluded=1 ;;
+      esac
+    done
+    if [[ $excluded -eq 1 ]]; then
       continue
     fi
 

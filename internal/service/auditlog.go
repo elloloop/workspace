@@ -1,5 +1,7 @@
 package service
 
+//go:generate go run ./gen
+
 import (
 	"context"
 	"time"
