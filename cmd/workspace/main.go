@@ -39,10 +39,11 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	cfg, err := config.Load()
+	opts, err := workspaceserver.OptionsFromEnv()
 	if err != nil {
 		logger.Fatal("config_invalid", zap.Error(err))
 	}
+	cfg := &opts.Config // the env-only knobs (ports, DSN, …) the container reads directly
 
 	if len(os.Args) > 1 && os.Args[1] == "migrate" {
 		contract, err := parseMigrateArgs(os.Args[2:])
@@ -64,14 +65,11 @@ func main() {
 	}
 	defer closeRepo()
 
-	// Thread the loaded config straight through — no field-by-field copy. The
-	// container owns the repo lifecycle, so it passes the built repo + logger;
-	// the env-only knobs (ports, DSN) it consumes itself below.
-	srv, err := workspaceserver.New(ctx, workspaceserver.Options{
-		Logger: logger,
-		Repo:   repo,
-		Config: *cfg,
-	})
+	// opts already carries the env-loaded Config (from OptionsFromEnv); the
+	// container owns the repo lifecycle, so it supplies the built repo + logger.
+	opts.Logger = logger
+	opts.Repo = repo
+	srv, err := workspaceserver.New(ctx, opts)
 	if err != nil {
 		logger.Fatal("server_init_failed", zap.Error(err))
 	}
