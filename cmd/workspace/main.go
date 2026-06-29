@@ -64,26 +64,13 @@ func main() {
 	}
 	defer closeRepo()
 
+	// Thread the loaded config straight through — no field-by-field copy. The
+	// container owns the repo lifecycle, so it passes the built repo + logger;
+	// the env-only knobs (ports, DSN) it consumes itself below.
 	srv, err := workspaceserver.New(ctx, workspaceserver.Options{
 		Logger: logger,
 		Repo:   repo,
-		Config: workspaceserver.Config{
-			DefaultProjectID:         cfg.DefaultProjectID,
-			DefaultTenantID:          cfg.DefaultTenantID,
-			DataRegion:               cfg.DataRegion,
-			AllowedOrigins:           cfg.AllowedOrigins,
-			ServiceAuthTokens:        cfg.ServiceAuthTokens,
-			ServiceCredentials:       cfg.ServiceCredentials,
-			AdminAPISecret:           cfg.AdminAPISecret,
-			MaxListObjects:           cfg.MaxListObjects,
-			MaxExpandNodes:           cfg.MaxExpandNodes,
-			MaxBatchCheckItems:       cfg.MaxBatchCheckItems,
-			MaxCheckReads:            cfg.MaxCheckReads,
-			AdminRateLimitPerMinute:  cfg.AdminRateLimitPerMinute,
-			TenantRateLimitPerMinute: cfg.TenantRateLimitPerMinute,
-			DecisionLog:              cfg.DecisionLog,
-			AuditLog:                 cfg.AuditLog,
-		},
+		Config: *cfg,
 	})
 	if err != nil {
 		logger.Fatal("server_init_failed", zap.Error(err))

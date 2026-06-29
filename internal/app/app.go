@@ -12,48 +12,24 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/elloloop/workspace/gen/go/workspace/v1/workspacev1connect"
+	"github.com/elloloop/workspace/internal/config"
 	connecthandler "github.com/elloloop/workspace/internal/connect"
 	"github.com/elloloop/workspace/internal/middleware"
 	"github.com/elloloop/workspace/internal/service"
 )
 
-// Deps are the injectable dependencies needed to build the handler.
+// Deps are the injectable dependencies needed to build the handler. The full
+// service configuration is the single canonical *config.Config (the same struct
+// the env loader fills and an embedder passes), NOT re-declared field by field;
+// the remaining fields are runtime dependencies that cannot be expressed as env
+// config (the persistence driver, the logger, and the optional audit sinks).
 type Deps struct {
-	Logger           *zap.Logger
-	Repo             service.Repository
-	DefaultProjectID string
-	// DefaultTenantID is applied when a request omits tenant_id.
-	DefaultTenantID string
-	AllowedOrigins  []string
-	// ServiceAuthTokens are the accepted service credentials. Empty disables
-	// the requirement (trusted network / mesh); see middleware.ServiceAuth.
-	ServiceAuthTokens []string
-	// ServiceCredentials optionally maps a credential to a named calling-service
-	// identity (and project pin); additive to ServiceAuthTokens.
-	ServiceCredentials []middleware.ServiceCredential
-	// AdminAPISecret gates the AdminService (project configuration). Empty
-	// disables the admin RPCs.
-	AdminAPISecret string
-	// MaxListObjects caps a ListObjects candidate set; non-positive uses the
-	// service default.
-	MaxListObjects int
-	// MaxExpandNodes caps an Expand result tree; non-positive uses the service
-	// default.
-	MaxExpandNodes int
-	// MaxBatchCheckItems caps a single BatchCheck request; non-positive uses
-	// the configured default.
-	MaxBatchCheckItems int
-	// MaxCheckReads caps the store reads one engine evaluation may perform;
-	// non-positive uses the service default.
-	MaxCheckReads int
-	// AdminRateLimitPerMinute throttles the admin API per caller; non-positive
-	// disables the limiter.
-	AdminRateLimitPerMinute int
-	// TenantRateLimitPerMinute throttles authz RPCs per (project, tenant);
-	// non-positive disables the limiter.
-	TenantRateLimitPerMinute int
-	// DataRegion is the region this instance serves; empty = region-agnostic.
-	DataRegion string
+	// Config is the single source of truth for all service knobs.
+	Config *config.Config
+	// Repo is the persistence driver.
+	Repo service.Repository
+	// Logger is the structured logger; nil becomes a no-op.
+	Logger *zap.Logger
 	// DecisionLogger, when non-nil, receives an audit record for every
 	// Check/CheckSet decision. The caller owns its lifecycle (Close).
 	DecisionLogger service.DecisionLogger
@@ -71,11 +47,15 @@ func New(ctx context.Context, d Deps) (http.Handler, error) {
 	if logger == nil {
 		logger = zap.NewNop()
 	}
+	cfg := d.Config
+	if cfg == nil {
+		cfg = &config.Config{}
+	}
 	opts := []service.Option{
-		service.WithMaxListObjects(d.MaxListObjects),
-		service.WithMaxExpandNodes(d.MaxExpandNodes),
-		service.WithMaxCheckReads(d.MaxCheckReads),
-		service.WithDataRegion(d.DataRegion),
+		service.WithMaxListObjects(cfg.MaxListObjects),
+		service.WithMaxExpandNodes(cfg.MaxExpandNodes),
+		service.WithMaxCheckReads(cfg.MaxCheckReads),
+		service.WithDataRegion(cfg.DataRegion),
 		service.WithLogger(logger),
 	}
 	if d.DecisionLogger != nil {
@@ -85,10 +65,10 @@ func New(ctx context.Context, d Deps) (http.Handler, error) {
 		opts = append(opts, service.WithAuditLogger(d.AuditLogger))
 	}
 	svc := service.New(d.Repo, nil, nil, opts...)
-	if err := svc.EnsureDefaultProject(ctx, d.DefaultProjectID); err != nil {
+	if err := svc.EnsureDefaultProject(ctx, cfg.DefaultProjectID); err != nil {
 		return nil, err
 	}
-	h := connecthandler.NewHandler(svc, d.DefaultProjectID, d.DefaultTenantID, d.AdminAPISecret, d.MaxBatchCheckItems, d.AdminRateLimitPerMinute, d.TenantRateLimitPerMinute)
+	h := connecthandler.NewHandler(svc, cfg.DefaultProjectID, cfg.DefaultTenantID, cfg.AdminAPISecret, cfg.MaxBatchCheckItems, cfg.AdminRateLimitPerMinute, cfg.TenantRateLimitPerMinute)
 
 	mux := http.NewServeMux()
 	// Install the engine-backstop collector centrally on every service handler, so
@@ -113,7 +93,7 @@ func New(ctx context.Context, d Deps) (http.Handler, error) {
 
 	return middleware.Chain(mux,
 		middleware.Recover(logger),
-		middleware.CORS(d.AllowedOrigins),
-		middleware.ServiceAuth(d.ServiceAuthTokens, d.ServiceCredentials, logger),
+		middleware.CORS(cfg.AllowedOrigins),
+		middleware.ServiceAuth(cfg.ServiceAuthTokens, cfg.ServiceCredentials, logger),
 	), nil
 }
