@@ -137,6 +137,49 @@ func TestCheckSetEvaluatesConditions(t *testing.T) {
 	}
 }
 
+// TestCheckSetIntersectionMembers: a query set whose relation is an INTERSECTION
+// resolves to only the members present in EVERY operand, exercising the engine's
+// member-intersection resolution (membersOfTree intersection branch +
+// intersectUsers) — so a CheckSet over an intersection-defined set is sound.
+func TestCheckSetIntersectionMembers(t *testing.T) {
+	// eligible = member AND verified.
+	m := Model{
+		"group": {
+			"member":   this(),
+			"verified": this(),
+			"eligible": intersection(computed("member"), computed("verified")),
+		},
+		"doc": {"viewer": this()},
+	}
+	ctx := context.Background()
+	q := ss("group", "g", "eligible")
+
+	// alice is member AND verified (eligible); bob is member only; carol verified only.
+	base := func() *fakeReader {
+		r := &fakeReader{}
+		r.add("group", "g", "member", user("alice"))
+		r.add("group", "g", "member", user("bob"))
+		r.add("group", "g", "verified", user("alice"))
+		r.add("group", "g", "verified", user("carol"))
+		return r
+	}
+
+	// Target grants viewer to alice (who IS in the intersection) → the set matches.
+	rPos := base()
+	rPos.add("doc", "d1", "viewer", user("alice"))
+	if ok, err := NewEngine(StaticResolver(m), rPos).CheckSet(ctx, "p", "", "doc", "d1", "viewer", q, nil); err != nil || !ok {
+		t.Fatalf("eligible set (contains alice) must have viewer: ok=%v err=%v", ok, err)
+	}
+
+	// Target grants viewer only to bob — member but NOT verified, so NOT eligible →
+	// the intersection excludes bob and the set must not match.
+	rNeg := base()
+	rNeg.add("doc", "d2", "viewer", user("bob"))
+	if ok, err := NewEngine(StaticResolver(m), rNeg).CheckSet(ctx, "p", "", "doc", "d2", "viewer", q, nil); err != nil || ok {
+		t.Fatalf("eligible excludes bob (not verified); set must NOT have viewer: ok=%v err=%v", ok, err)
+	}
+}
+
 // TestCheckSetPublicTarget: a public (wildcard) grant is matched by any
 // non-empty set query.
 func TestCheckSetPublicTarget(t *testing.T) {
