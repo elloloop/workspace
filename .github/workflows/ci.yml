@@ -136,6 +136,20 @@ jobs:
           GATEWAY_TEST_POSTGRES_DSN: postgres://workspaces:workspaces@localhost:5432/workspaces?sslmode=disable
         run: bash scripts/run-coverage.sh
 
+      # When a Postgres DSN is present, the internal/repo/postgres suite MUST
+      # run — a skip here means the CI database step is broken and the gate
+      # would otherwise pass silently. Fail loudly if any postgres test skips.
+      - name: Guard against skipped Postgres tests
+        env:
+          GATEWAY_TEST_POSTGRES_DSN: postgres://workspaces:workspaces@localhost:5432/workspaces?sslmode=disable
+        run: |
+          out=$(go test -count=1 -run . -v ./internal/repo/postgres/... 2>&1)
+          echo "$out"
+          if grep -qE '^--- SKIP|^=== SKIP|no tests to run' <<<"$out"; then
+            echo "::error::Postgres tests SKIPPED while GATEWAY_TEST_POSTGRES_DSN is set — the CI database is not reachable. Failing instead of passing silently."
+            exit 1
+          fi
+
       - name: Coverage summary
         run: go tool cover -func=cover.out | tail -n 30
 

@@ -95,6 +95,11 @@ build: ## go build ./...
 test: ## Unit tests with race detector
 	$(GO) test -count=1 -race -timeout=1200s ./...
 
+.PHONY: test-postgres-local
+test-postgres-local: services-up ## Postgres-driver tests against the local docker-compose postgres (additive; brings up compose, sets the DSN)
+	GATEWAY_TEST_POSTGRES_DSN=postgres://workspaces:workspaces@localhost:5432/workspaces?sslmode=disable \
+		$(GO) test -race -timeout=300s ./internal/repo/postgres/...
+
 .PHONY: test-cover
 test-cover: ## Unit tests + coverage profile + per-package gates (matches CI)
 	bash scripts/run-coverage.sh
