@@ -42,6 +42,106 @@ func TestEvalConditionFailClosed(t *testing.T) {
 	}
 }
 
+// TestEvalConditionIllTypedFailsClosed pins the fail-closed contract when a
+// condition input is present but of the wrong JSON type (e.g. structpb yields a
+// number where a bool is expected). These must DENY, not allow or panic — a
+// client sending {"consent": 0} instead of {"consent": false} is denied.
+func TestEvalConditionIllTypedFailsClosed(t *testing.T) {
+	cases := []struct {
+		name string
+		c    *Condition
+		ctx  map[string]any
+	}{
+		{
+			"consent non-bool denies",
+			&Condition{Name: "consent_granted"},
+			map[string]any{"consent": 1.0},
+		},
+		{
+			"age context non-number denies",
+			&Condition{Name: "age_at_least", Params: map[string]any{"min_age": 13.0}},
+			map[string]any{"age": "15"},
+		},
+		{
+			"age param non-number denies",
+			&Condition{Name: "age_at_least", Params: map[string]any{"min_age": "13"}},
+			map[string]any{"age": 15.0},
+		},
+		{
+			"ip context non-string denies",
+			&Condition{Name: "ip_in_cidrs", Params: map[string]any{"cidrs": []any{"10.0.0.0/8"}}},
+			map[string]any{"ip": 10.0},
+		},
+		{
+			"cidrs param non-array denies",
+			&Condition{Name: "ip_in_cidrs", Params: map[string]any{"cidrs": "10.0.0.0/8"}},
+			map[string]any{"ip": "10.1.2.3"},
+		},
+		{
+			"cidrs element non-string denies",
+			&Condition{Name: "ip_in_cidrs", Params: map[string]any{"cidrs": []any{"10.0.0.0/8", 42.0}}},
+			map[string]any{"ip": "172.16.0.1"},
+		},
+		{
+			"ip malformed string denies",
+			&Condition{Name: "ip_in_cidrs", Params: map[string]any{"cidrs": []any{"10.0.0.0/8"}}},
+			map[string]any{"ip": "not-an-ip"},
+		},
+		{
+			"cidr param malformed denies",
+			&Condition{Name: "ip_in_cidrs", Params: map[string]any{"cidrs": []any{"not-a-cidr"}}},
+			map[string]any{"ip": "10.1.2.3"},
+		},
+		{
+			"not_after until non-string denies",
+			&Condition{Name: "not_after", Params: map[string]any{"until": 2030.0}},
+			map[string]any{"now": "2026-06-16T00:00:00Z"},
+		},
+		{
+			"not_after until malformed denies",
+			&Condition{Name: "not_after", Params: map[string]any{"until": "soon"}},
+			map[string]any{"now": "2026-06-16T00:00:00Z"},
+		},
+		{
+			"not_after now malformed denies",
+			&Condition{Name: "not_after", Params: map[string]any{"until": "2030-01-01T00:00:00Z"}},
+			map[string]any{"now": "yesterday"},
+		},
+		{
+			"scope context non-string denies",
+			&Condition{Name: "scope_in", Params: map[string]any{"allowed": []any{"tasks:read"}}},
+			map[string]any{"scope": 7.0},
+		},
+		{
+			"scope allowed element non-string denies",
+			&Condition{Name: "scope_in", Params: map[string]any{"allowed": []any{1.0}}},
+			map[string]any{"scope": "tasks:read"},
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if EvalCondition(c.c, c.ctx) {
+				t.Errorf("ill-typed input must fail closed (deny), got allow")
+			}
+		})
+	}
+}
+
+// TestStrSliceFieldNativeSlice covers the []string branch of strSliceField,
+// which JSON/structpb never produces but in-process callers can.
+func TestStrSliceFieldNativeSlice(t *testing.T) {
+	got, err := strSliceField(map[string]any{"cidrs": []string{"10.0.0.0/8"}}, "cidrs")
+	if err != nil {
+		t.Fatalf("native []string: unexpected error %v", err)
+	}
+	if len(got) != 1 || got[0] != "10.0.0.0/8" {
+		t.Fatalf("native []string: got %v", got)
+	}
+	if _, err := strSliceField(map[string]any{}, "cidrs"); err == nil {
+		t.Fatal("missing key must error")
+	}
+}
+
 // TestCheckConsentGated: a course#viewer grant conditioned on parental consent
 // denies until the request carries consent, then allows — without re-tupling.
 func TestCheckConsentGated(t *testing.T) {
