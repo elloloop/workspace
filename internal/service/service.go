@@ -155,12 +155,6 @@ func WithLogger(l *zap.Logger) Option {
 	}
 }
 
-// Engine exposes the authz engine for the AuthzService handler.
-func (s *Service) Engine() *authz.Engine { return s.engine }
-
-// Repo exposes the repository for the AuthzService handler's raw read/write.
-func (s *Service) Repo() Repository { return s.repo }
-
 // allowed is a thin wrapper over the engine for the common workspace check.
 func (s *Service) allowed(ctx context.Context, p Principal, workspaceID string, rel Role) (bool, error) {
 	ok, err := s.engine.Check(ctx, p.ProjectID, p.TenantID, "workspace", workspaceID, string(rel), p.UserID, nil)
