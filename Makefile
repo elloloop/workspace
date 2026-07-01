@@ -133,7 +133,7 @@ realpostgres: ## Integration tests against a real postgres (expects GATEWAY_POST
 		$(GO) test -tags=realpostgres -race -timeout=300s ./tests/integration/...; \
 	fi
 	GATEWAY_TEST_POSTGRES_DSN=$$GATEWAY_POSTGRES_DSN \
-		$(GO) test -race -timeout=300s -skip='^TestConformance$$' ./internal/repo/postgres/...
+		$(GO) test -race -timeout=300s -skip='^TestPostgresConformance$$' ./internal/repo/postgres/...
 
 # ---------------------------------------------------------------------------
 # Conformance — runs the driver-agnostic Repository conformance suite against
@@ -148,14 +148,14 @@ conformance-all: conformance-memory conformance-postgres ## Run the conformance 
 
 .PHONY: conformance-memory
 conformance-memory: ## Conformance suite against the in-memory driver
-	$(GO) test -race -count=1 -timeout=300s -run='^TestConformance$$' ./internal/repo/memory/...
+	$(GO) test -race -count=1 -timeout=300s -run='^TestMemoryConformance$$' ./internal/repo/memory/...
 
 .PHONY: conformance-postgres
 conformance-postgres: ## Conformance suite against a real postgres (skips if GATEWAY_TEST_POSTGRES_DSN unset)
 	@if [ -z "$$GATEWAY_TEST_POSTGRES_DSN" ] && [ -n "$$GATEWAY_POSTGRES_DSN" ]; then \
-		GATEWAY_TEST_POSTGRES_DSN="$$GATEWAY_POSTGRES_DSN" $(GO) test -race -count=1 -timeout=300s -run='^TestConformance$$' ./internal/repo/postgres/...; \
+		GATEWAY_TEST_POSTGRES_DSN="$$GATEWAY_POSTGRES_DSN" $(GO) test -race -count=1 -timeout=300s -run='^TestPostgresConformance$$' ./internal/repo/postgres/...; \
 	else \
-		$(GO) test -race -count=1 -timeout=300s -run='^TestConformance$$' ./internal/repo/postgres/...; \
+		$(GO) test -race -count=1 -timeout=300s -run='^TestPostgresConformance$$' ./internal/repo/postgres/...; \
 	fi
 
 .PHONY: fuzz
