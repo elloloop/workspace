@@ -59,14 +59,8 @@ jobs:
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: true
-      - name: go mod tidy
-        run: go mod tidy
-      - name: Fail if go.mod or go.sum changed
-        run: |
-          if ! git diff --exit-code -- go.mod go.sum; then
-            echo "go.mod / go.sum out of sync — run 'go mod tidy' locally and commit the result." >&2
-            exit 1
-          fi
+      - name: make tidy-check
+        run: make tidy-check
 
   # ---------------------------------------------------------------------------
   # 2. Vulnerability scan — Go's official CVE checker.
@@ -86,8 +80,8 @@ jobs:
       - name: Install govulncheck
         run: go install golang.org/x/vuln/cmd/govulncheck@${{ env.GOVULNCHECK_VERSION }}
 
-      - name: govulncheck
-        run: govulncheck ./...
+      - name: make vuln
+        run: make vuln
 
   # ---------------------------------------------------------------------------
   # 3. Build + unit tests + coverage gate.
@@ -118,8 +112,8 @@ jobs:
           go-version: ${{ env.GO_VERSION }}
           cache: true
 
-      - name: go build
-        run: go build ./...
+      - name: make build
+        run: make build
 
       - name: Wait for coverage backends
         run: |
@@ -129,43 +123,18 @@ jobs:
             if [[ $i -eq 30 ]]; then echo "postgres did not come up"; exit 1; fi
           done
 
-      - name: go test (race + merged coverage)
+      # make test-cover runs the merged race coverage profile, the DSN-gated
+      # postgres skip-guard, and the per-package coverage gates — the same
+      # target a developer runs locally. See the Makefile for the breakdown.
+      - name: make test-cover
         env:
           RUN_INTEGRATION_COVERAGE: "1"
           GATEWAY_POSTGRES_DSN: postgres://workspaces:workspaces@localhost:5432/workspaces?sslmode=disable
           GATEWAY_TEST_POSTGRES_DSN: postgres://workspaces:workspaces@localhost:5432/workspaces?sslmode=disable
-        run: bash scripts/run-coverage.sh
-
-      # When a Postgres DSN is present, the internal/repo/postgres suite MUST
-      # run — a skip here means the CI database step is broken and the gate
-      # would otherwise pass silently. Fail loudly if any postgres test skips.
-      - name: Guard against skipped Postgres tests
-        env:
-          GATEWAY_TEST_POSTGRES_DSN: postgres://workspaces:workspaces@localhost:5432/workspaces?sslmode=disable
-        run: |
-          out=$(go test -count=1 -run . -v ./internal/repo/postgres/... 2>&1)
-          echo "$out"
-          if grep -qE '^--- SKIP|^=== SKIP|no tests to run' <<<"$out"; then
-            echo "::error::Postgres tests SKIPPED while GATEWAY_TEST_POSTGRES_DSN is set — the CI database is not reachable. Failing instead of passing silently."
-            exit 1
-          fi
+        run: make test-cover
 
       - name: Coverage summary
         run: go tool cover -func=cover.out | tail -n 30
-
-      # internal/ coverage jitters under -race because the run is
-      # nondeterministic about which driver/error branches execute, so the
-      # merged statement count moves run to run. 84% keeps a real floor
-      # without the coin-flip. Per-package gates in .coverage-gates.yml
-      # stay strict.
-      - name: Coverage gate (internal/ >= 68%)
-        run: bash scripts/coverage-gate.sh cover.out 68 internal/
-
-      - name: Coverage gate (pkg/ >= 65%)
-        run: bash scripts/coverage-gate.sh cover.out 65 pkg/
-
-      - name: Coverage gate (per-package)
-        run: bash scripts/coverage-gate.sh cover.out --config .coverage-gates.yml
 
       - name: Upload coverage artifact
         if: always()
@@ -177,30 +146,11 @@ jobs:
           retention-days: 14
 
   # ---------------------------------------------------------------------------
-  # 4. Boot smoke — would have caught the proto descriptor panic.
-  # ---------------------------------------------------------------------------
-  smoke:
-    name: Boot smoke
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - uses: actions/checkout@v7
-
-      - uses: actions/setup-go@v6
-        with:
-          go-version: ${{ env.GO_VERSION }}
-          cache: true
-
-      - name: go test -tags=smoke
-        run: |
-          if compgen -G "tests/smoke/*.go" > /dev/null; then
-            go test -tags=smoke -timeout=120s ./tests/smoke/...
-          else
-            echo "no smoke tests under tests/smoke — skipping"
-          fi
-
-  # ---------------------------------------------------------------------------
-  # 5. Integration tests — uses stub persistence; no external services.
+  # Integration tests — uses stub persistence; no external services.
+  # (Boot-panic protection lives in the `docker` job's run-smoke: it starts the
+  # built container and curls /healthz. A separate go-test smoke gate over
+  # tests/smoke/ was removed — that directory never existed, so the gate ran
+  # zero tests and was permanently green.)
   # ---------------------------------------------------------------------------
   integration:
     name: Integration tests
@@ -236,16 +186,11 @@ jobs:
             if [[ $i -eq 30 ]]; then echo "postgres did not come up"; exit 1; fi
           done
 
-      - name: go test -tags=integration
+      - name: make integration
         env:
           GATEWAY_POSTGRES_DSN: postgres://workspaces:workspaces@localhost:5432/workspaces?sslmode=disable
           GATEWAY_TEST_POSTGRES_DSN: postgres://workspaces:workspaces@localhost:5432/workspaces?sslmode=disable
-        run: |
-          if compgen -G "tests/integration/*.go" > /dev/null; then
-            go test -tags=integration -race -timeout=180s ./tests/integration/...
-          else
-            echo "no integration tests under tests/integration — skipping"
-          fi
+        run: make integration
 
   # ---------------------------------------------------------------------------
   # 6. Fuzz smoke — replay the seed corpus on every PR.
@@ -269,20 +214,8 @@ jobs:
           go-version: ${{ env.GO_VERSION }}
           cache: true
 
-      - name: Replay fuzz seed corpus
-        shell: bash
-        run: |
-          set -euo pipefail
-          mapfile -t pkgs < <(
-            grep -rEl --include='*_test.go' '^func Fuzz[A-Za-z0-9_]+\(' . \
-              | sed -E 's|/[^/]+$||' \
-              | sort -u
-          )
-          if [[ ${#pkgs[@]} -eq 0 ]]; then
-            echo "no fuzz targets — skipping"
-            exit 0
-          fi
-          go test -race -timeout=120s "${pkgs[@]}"
+      - name: make fuzz-smoke
+        run: make fuzz-smoke
 
   # ---------------------------------------------------------------------------
   # 7. Container build smoke — multi-arch base reachable, Dockerfile builds.
@@ -352,8 +285,8 @@ jobs:
           go-version: ${{ env.GO_VERSION }}
           cache: true
 
-      - name: go test ./internal/docscheck/...
-        run: go test -count=1 ./internal/docscheck/...
+      - name: make docs-drift
+        run: make docs-drift
 
   # ---------------------------------------------------------------------------
   # Aggregate gate — easy single required check on `main`.
@@ -361,7 +294,7 @@ jobs:
   ci:
     name: CI
     runs-on: ubuntu-latest
-    needs: [lint, tidy, vuln, test, smoke, integration, fuzz, docker, docs-drift]
+    needs: [lint, tidy, vuln, test, integration, fuzz, docker, docs-drift]
     if: always()
     steps:
       - name: All required jobs succeeded
