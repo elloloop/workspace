@@ -132,6 +132,25 @@ integration: ## Integration tests with stub backends
 		echo "no integration tests under tests/integration — skipping"; \
 	fi
 
+.PHONY: e2e-compose
+e2e-compose: ## Full-stack black-box e2e: build image, boot compose (postgres+service), run authz scenarios against it over HTTP, tear down
+	@set -e; \
+	docker compose -f docker-compose.e2e.yml up -d --build; \
+	trap 'docker compose -f docker-compose.e2e.yml down -v' EXIT; \
+	echo "waiting for service on http://localhost:8080/healthz ..."; \
+	ok=0; \
+	for i in $$(seq 1 60); do \
+		if curl -fsS http://localhost:8080/healthz >/dev/null 2>&1; then ok=1; break; fi; \
+		sleep 1; \
+	done; \
+	if [ $$ok -ne 1 ]; then \
+		echo "service did not become ready — logs follow:"; \
+		docker compose -f docker-compose.e2e.yml logs workspaces; \
+		exit 1; \
+	fi; \
+	WORKSPACES_E2E_BASE_URL=http://localhost:8080 \
+		$(GO) test -tags=composee2e -count=1 -timeout=300s -run '^TestCompose' ./tests/...
+
 .PHONY: realpostgres
 realpostgres: ## Integration tests against a real postgres (expects GATEWAY_POSTGRES_DSN)
 	@if [ -z "$$GATEWAY_POSTGRES_DSN" ]; then \

@@ -1,0 +1,48 @@
+# Full-stack black-box e2e stack.
+#
+# Boots the ACTUAL service container on a real Postgres so the e2e scenarios
+# in tests/e2e_compose_test.go (build tag: composee2e) run against the deployed
+# image over the network — exercising boot-time auto-migration, real pgx
+# persistence, the full HTTP/Connect handler chain, and service-token auth.
+#
+# Driven by `make e2e-compose`, which builds, waits for /healthz, runs the
+# tagged tests against http://localhost:8080, then tears the stack down.
+#
+# Differences from docker-compose.yml (the local dev stack):
+#   - Postgres is NOT published to the host — the service reaches it over the
+#     compose network, so this never collides with a native Postgres on :5432.
+#   - GATEWAY_SERVICE_AUTH_TOKENS is set to the same token the tests present
+#     (tests/e2e_test.go svcToken), so auth is actually enforced end-to-end
+#     rather than disabled.
+
+services:
+  postgres:
+    image: postgres:16.13-alpine3.23
+    environment:
+      POSTGRES_USER: workspaces
+      POSTGRES_PASSWORD: workspaces
+      POSTGRES_DB: workspaces
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U workspaces"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  workspaces:
+    build:
+      context: .
+      target: server
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      GATEWAY_CONNECT_PORT: "8080"
+      GATEWAY_METRICS_PORT: "9090"
+      GATEWAY_POSTGRES_DSN: postgres://workspaces:workspaces@postgres:5432/workspaces?sslmode=disable
+      GATEWAY_POSTGRES_AUTO_MIGRATE: "true"
+      GATEWAY_DEFAULT_PROJECT_ID: default
+      # Must match svcToken in tests/e2e_test.go so the shared req() helper
+      # authenticates against the real service.
+      GATEWAY_SERVICE_AUTH_TOKENS: service-credential-0123456789abcdef
+    ports:
+      - "8080:8080"
