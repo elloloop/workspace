@@ -1,4 +1,12 @@
-# Local mirror of .github/workflows/ci.yml.
+# Single source of truth for how tests and gates run.
+#
+# .github/workflows/ci.yml invokes these targets directly (make test-cover,
+# make smoke, make integration, make fuzz-smoke, make docs-drift, make
+# tidy-check, make vuln) so local and CI run byte-for-byte the same commands.
+# The only CI jobs that don't shell out to make are `lint` (uses the
+# golangci-lint action for PR-diff `only-new-issues` behavior; `make lint` is
+# the local equivalent) and `docker` (uses buildx layer caching; `make
+# ci-docker` is the local equivalent).
 #
 # `make ci` runs the subset of jobs that don't need external services and
 # should match the gating PR check most contributors care about (lint, tidy,
@@ -32,7 +40,7 @@ LINT_BASE_REV   ?= origin/main
 # ---------------------------------------------------------------------------
 
 .PHONY: ci
-ci: lint tidy-check vuln build test smoke integration fuzz ## Run all CI gates that don't need external services
+ci: lint tidy-check vuln build test smoke integration fuzz-smoke ## Run all CI gates that don't need external services
 	@echo "==> make ci: all gates passed"
 
 .PHONY: ci-full
@@ -101,8 +109,17 @@ test-postgres-local: services-up ## Postgres-driver tests against the local dock
 		$(GO) test -race -timeout=300s ./internal/repo/postgres/...
 
 .PHONY: test-cover
-test-cover: ## Unit tests + coverage profile + per-package gates (matches CI)
+test-cover: ## Unit+e2e tests, merged coverage, skip-guard (when a test DSN is set), per-package gates — the CI "Build + Test + Coverage" job
 	bash scripts/run-coverage.sh
+	@if [ -n "$$GATEWAY_TEST_POSTGRES_DSN$$WORKSPACES_TEST_POSTGRES_DSN" ]; then \
+		echo "==> test DSN set — verifying the Postgres suite actually runs (no silent skip)"; \
+		out=$$($(GO) test -count=1 -run . -v ./internal/repo/postgres/... 2>&1); \
+		echo "$$out"; \
+		if grep -qE '^--- SKIP|^=== SKIP|no tests to run' <<<"$$out"; then \
+			echo "::error::Postgres tests SKIPPED while a test DSN is set — the database is not reachable. Failing instead of passing silently." >&2; \
+			exit 1; \
+		fi; \
+	fi
 	bash scripts/coverage-gate.sh cover.out 68 internal/
 	bash scripts/coverage-gate.sh cover.out 65 pkg/
 	bash scripts/coverage-gate.sh cover.out --config .coverage-gates.yml
@@ -157,6 +174,20 @@ conformance-postgres: ## Conformance suite against a real postgres (skips if GAT
 	else \
 		$(GO) test -race -count=1 -timeout=300s -run='^TestPostgresConformance$$' ./internal/repo/postgres/...; \
 	fi
+
+.PHONY: fuzz-smoke
+fuzz-smoke: ## Replay the committed fuzz seed corpus only (no live -fuzz) — the CI PR gate
+	@set -eu; \
+	pkgs=$$( \
+		grep -rEl --include='*_test.go' '^func Fuzz[A-Za-z0-9_]+\(' . \
+			| sed -E 's|/[^/]+$$||' \
+			| sort -u \
+	); \
+	if [ -z "$$pkgs" ]; then \
+		echo "no fuzz targets — skipping"; \
+		exit 0; \
+	fi; \
+	$(GO) test -race -timeout=120s $$pkgs
 
 .PHONY: fuzz
 fuzz: ## Fuzz smoke — runs each fuzz target with seed corpus + 15s fuzzing
