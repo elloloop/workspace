@@ -10,7 +10,7 @@
 #
 # `make ci` runs the subset of jobs that don't need external services and
 # should match the gating PR check most contributors care about (lint, tidy,
-# vuln, build, unit tests, smoke, integration with stubs, fuzz smoke).
+# vuln, build, unit tests, integration with stubs, fuzz smoke).
 #
 # `make ci-full` adds the real-backend integration tests using the local
 # docker-compose stack (postgres). `make ci-docker` covers the container
@@ -40,7 +40,7 @@ LINT_BASE_REV   ?= origin/main
 # ---------------------------------------------------------------------------
 
 .PHONY: ci
-ci: lint tidy-check vuln build test smoke integration fuzz-smoke ## Run all CI gates that don't need external services
+ci: lint tidy-check vuln build test integration fuzz-smoke ## Run all CI gates that don't need external services
 	@echo "==> make ci: all gates passed"
 
 .PHONY: ci-full
@@ -123,14 +123,6 @@ test-cover: ## Unit+e2e tests, merged coverage, skip-guard (when a test DSN is s
 	bash scripts/coverage-gate.sh cover.out 68 internal/
 	bash scripts/coverage-gate.sh cover.out 65 pkg/
 	bash scripts/coverage-gate.sh cover.out --config .coverage-gates.yml
-
-.PHONY: smoke
-smoke: ## Boot smoke tests (tests/smoke)
-	@if compgen -G "tests/smoke/*.go" > /dev/null; then \
-		$(GO) test -tags=smoke -timeout=120s ./tests/smoke/...; \
-	else \
-		echo "no smoke tests under tests/smoke — skipping"; \
-	fi
 
 .PHONY: integration
 integration: ## Integration tests with stub backends

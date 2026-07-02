@@ -146,25 +146,11 @@ jobs:
           retention-days: 14
 
   # ---------------------------------------------------------------------------
-  # 4. Boot smoke — would have caught the proto descriptor panic.
-  # ---------------------------------------------------------------------------
-  smoke:
-    name: Boot smoke
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - uses: actions/checkout@v7
-
-      - uses: actions/setup-go@v6
-        with:
-          go-version: ${{ env.GO_VERSION }}
-          cache: true
-
-      - name: make smoke
-        run: make smoke
-
-  # ---------------------------------------------------------------------------
-  # 5. Integration tests — uses stub persistence; no external services.
+  # Integration tests — uses stub persistence; no external services.
+  # (Boot-panic protection lives in the `docker` job's run-smoke: it starts the
+  # built container and curls /healthz. A separate go-test smoke gate over
+  # tests/smoke/ was removed — that directory never existed, so the gate ran
+  # zero tests and was permanently green.)
   # ---------------------------------------------------------------------------
   integration:
     name: Integration tests
@@ -308,7 +294,7 @@ jobs:
   ci:
     name: CI
     runs-on: ubuntu-latest
-    needs: [lint, tidy, vuln, test, smoke, integration, fuzz, docker, docs-drift]
+    needs: [lint, tidy, vuln, test, integration, fuzz, docker, docs-drift]
     if: always()
     steps:
       - name: All required jobs succeeded
