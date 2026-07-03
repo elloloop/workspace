@@ -88,11 +88,11 @@ func waitReady(t *testing.T, base string) {
 // ── scenario entrypoints ────────────────────────────────────────────────────
 
 func TestE2ETeamWorkspaceAuthz(t *testing.T)  { runOnBackends(t, teamWorkspaceAuthzScenario) }
-func TestE2EInvitationFlow(t *testing.T)       { runOnBackends(t, invitationFlowScenario) }
-func TestE2EGroupsUserset(t *testing.T)        { runOnBackends(t, groupsUsersetScenario) }
-func TestE2EConditionGatedCheck(t *testing.T)  { runOnBackends(t, conditionGatedScenario) }
-func TestE2ESeatEnforcement(t *testing.T)      { runOnBackends(t, seatEnforcementScenario) }
-func TestE2EConsistencyToken(t *testing.T)     { runOnBackends(t, consistencyReadAfterWriteScenario) }
+func TestE2EInvitationFlow(t *testing.T)      { runOnBackends(t, invitationFlowScenario) }
+func TestE2EGroupsUserset(t *testing.T)       { runOnBackends(t, groupsUsersetScenario) }
+func TestE2EConditionGatedCheck(t *testing.T) { runOnBackends(t, conditionGatedScenario) }
+func TestE2ESeatEnforcement(t *testing.T)     { runOnBackends(t, seatEnforcementScenario) }
+func TestE2EConsistencyToken(t *testing.T)    { runOnBackends(t, consistencyReadAfterWriteScenario) }
 
 // ── scenarios ───────────────────────────────────────────────────────────────
 
@@ -100,6 +100,7 @@ func TestE2EConsistencyToken(t *testing.T)     { runOnBackends(t, consistencyRea
 // the role lattice (owner ⊃ admin ⊃ member ⊃ guest) plus the member-adds-member
 // deny path.
 func teamWorkspaceAuthzScenario(t *testing.T, h *harness) {
+	t.Helper()
 	ctx := context.Background()
 
 	created, err := h.ws.CreateWorkspace(ctx, req(&workspacev1.CreateWorkspaceRequest{
@@ -166,6 +167,7 @@ func teamWorkspaceAuthzScenario(t *testing.T, h *harness) {
 // invitationFlowScenario: create a workspace, invite an admin, accept the token,
 // exercise the granted authority, and reject a replayed (consumed) token.
 func invitationFlowScenario(t *testing.T, h *harness) {
+	t.Helper()
 	ctx := context.Background()
 
 	created, _ := h.ws.CreateWorkspace(ctx, req(&workspacev1.CreateWorkspaceRequest{ActingUserId: "alice", DisplayName: "Family"}))
@@ -207,6 +209,7 @@ func invitationFlowScenario(t *testing.T, h *harness) {
 // groupsUsersetScenario: share a resource with a whole group via a userset tuple
 // (resource#viewer@group#member) and verify membership resolution.
 func groupsUsersetScenario(t *testing.T, h *harness) {
+	t.Helper()
 	ctx := context.Background()
 
 	g, err := h.grp.CreateGroup(ctx, req(&workspacev1.CreateGroupRequest{ActingUserId: "alice", DisplayName: "Family"}))
@@ -256,6 +259,7 @@ func groupsUsersetScenario(t *testing.T, h *harness) {
 // against the CheckRequest.context end to end, and an unknown condition is
 // rejected at write time.
 func conditionGatedScenario(t *testing.T, h *harness) {
+	t.Helper()
 	ctx := context.Background()
 
 	if _, err := h.authz.WriteRelationTuples(ctx, req(&workspacev1.WriteRelationTuplesRequest{
@@ -339,6 +343,7 @@ func conditionGatedScenario(t *testing.T, h *harness) {
 // (ResourceExhausted) on the next; the backing seat#holder tuple gates Check; a
 // revoke frees a seat; and a different tenant's cap is independent.
 func seatEnforcementScenario(t *testing.T, h *harness) {
+	t.Helper()
 	ctx := context.Background()
 
 	if _, err := h.seat.SetSeatLimit(ctx, req(&workspacev1.SetSeatLimitRequest{Sku: "pro", Limit: proto.Int32(2)})); err != nil {
@@ -407,6 +412,7 @@ func seatEnforcementScenario(t *testing.T, h *harness) {
 // consistencyReadAfterWriteScenario: a write returns a token, a Check carrying
 // it observes the just-written grant, and a malformed token is rejected.
 func consistencyReadAfterWriteScenario(t *testing.T, h *harness) {
+	t.Helper()
 	ctx := context.Background()
 
 	wrote, err := h.authz.WriteRelationTuples(ctx, req(&workspacev1.WriteRelationTuplesRequest{
