@@ -29,6 +29,7 @@ type harness struct {
 	grp   workspacev1connect.GroupServiceClient
 	authz workspacev1connect.AuthzServiceClient
 	seat  workspacev1connect.SeatServiceClient
+	admin workspacev1connect.AdminServiceClient
 }
 
 func newHarness(t *testing.T) *harness {
@@ -51,6 +52,7 @@ func newHarness(t *testing.T) *harness {
 		grp:   workspacev1connect.NewGroupServiceClient(c, hs.URL),
 		authz: workspacev1connect.NewAuthzServiceClient(c, hs.URL),
 		seat:  workspacev1connect.NewSeatServiceClient(c, hs.URL),
+		admin: workspacev1connect.NewAdminServiceClient(c, hs.URL),
 	}
 }
 

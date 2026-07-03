@@ -44,7 +44,7 @@ ci: lint tidy-check vuln build test integration fuzz-smoke ## Run all CI gates t
 	@echo "==> make ci: all gates passed"
 
 .PHONY: ci-full
-ci-full: ci ci-real-services e2e-compose ## ci + real-backend integration + full-stack docker-compose e2e
+ci-full: ci ci-real-services e2e-compose e2e-compose-config e2e-compose-ratelimit ## ci + real-backend integration + full-stack docker-compose e2e (all profiles)
 	@echo "==> make ci-full: passed (incl. real services + full-stack e2e)"
 
 .PHONY: ci-real-services
@@ -132,9 +132,13 @@ integration: ## Integration tests with stub backends
 		echo "no integration tests under tests/integration — skipping"; \
 	fi
 
-.PHONY: e2e-compose
-e2e-compose: ## Full-stack black-box e2e: build image, boot compose (postgres+service), run authz scenarios against it over HTTP, tear down
+# e2e_stack — boot the e2e compose stack (profile env already exported by the
+# caller via $(2)), wait for /healthz, run the tests matching regex $(1), then
+# tear the stack down. Shared by every e2e-compose* target so the boot/wait/
+# teardown logic lives in one place.
+define e2e_stack
 	@set -e; \
+	$(2) \
 	docker compose -f docker-compose.e2e.yml up -d --build; \
 	trap 'docker compose -f docker-compose.e2e.yml down -v' EXIT; \
 	echo "waiting for service on http://localhost:8080/healthz ..."; \
@@ -149,7 +153,20 @@ e2e-compose: ## Full-stack black-box e2e: build image, boot compose (postgres+se
 		exit 1; \
 	fi; \
 	WORKSPACES_E2E_BASE_URL=http://localhost:8080 \
-		$(GO) test -count=1 -timeout=300s -run '^TestE2E' ./tests/...
+		$(GO) test -count=1 -timeout=300s -run '$(1)' ./tests/...
+endef
+
+.PHONY: e2e-compose
+e2e-compose: ## Full-stack black-box e2e: build image, boot compose, run the dual-backend TestE2E authz scenarios over HTTP, tear down
+	$(call e2e_stack,^TestE2E,)
+
+.PHONY: e2e-compose-config
+e2e-compose-config: ## Full-stack e2e, featured profile: admin API + data residency + budget caps (postgres-only TestFeatured* scenarios)
+	$(call e2e_stack,^TestFeatured,export E2E_ADMIN_API_SECRET='test-admin-secret-0123456789abcdef-32+' E2E_DATA_REGION=us-east-1 E2E_MAX_LIST_OBJECTS=2 E2E_MAX_BATCH_CHECK_ITEMS=2 E2E_DECISION_LOG=true E2E_AUDIT_LOG=true;)
+
+.PHONY: e2e-compose-ratelimit
+e2e-compose-ratelimit: ## Full-stack e2e, rate-limit profile: per-tenant authz throttle (postgres-only TestRateLimit* scenarios)
+	$(call e2e_stack,^TestRateLimit,export E2E_TENANT_RATE_LIMIT=60;)
 
 .PHONY: realpostgres
 realpostgres: ## Integration tests against a real postgres (expects GATEWAY_POSTGRES_DSN)

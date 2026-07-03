@@ -44,5 +44,17 @@ services:
       # Must match svcToken in tests/e2e_test.go so the shared req() helper
       # authenticates against the real service.
       GATEWAY_SERVICE_AUTH_TOKENS: service-credential-0123456789abcdef
+      # Config knobs are profile-parameterized: `make e2e-compose` leaves them
+      # at these generous defaults (the dual-backend TestE2E scenarios), while
+      # `make e2e-compose-config` / `-ratelimit` export the E2E_* vars to boot
+      # the stack in a specific configuration for the config-specific scenarios.
+      GATEWAY_ADMIN_API_SECRET: "${E2E_ADMIN_API_SECRET:-}"
+      GATEWAY_DATA_REGION: "${E2E_DATA_REGION:-}"
+      GATEWAY_MAX_CHECK_READS: "${E2E_MAX_CHECK_READS:-0}"
+      GATEWAY_MAX_LIST_OBJECTS: "${E2E_MAX_LIST_OBJECTS:-1000}"
+      GATEWAY_MAX_BATCH_CHECK_ITEMS: "${E2E_MAX_BATCH_CHECK_ITEMS:-1000}"
+      GATEWAY_TENANT_RATE_LIMIT_PER_MINUTE: "${E2E_TENANT_RATE_LIMIT:-0}"
+      GATEWAY_DECISION_LOG: "${E2E_DECISION_LOG:-false}"
+      GATEWAY_AUDIT_LOG: "${E2E_AUDIT_LOG:-false}"
     ports:
       - "8080:8080"
