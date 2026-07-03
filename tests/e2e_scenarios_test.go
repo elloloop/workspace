@@ -393,6 +393,15 @@ func seatEnforcementScenario(t *testing.T, h *harness) {
 	if _, err := h.seat.AssignSeat(ctx, req(&workspacev1.AssignSeatRequest{Sku: "pro", UserId: "z1", TenantId: "tenant-z"})); err != nil {
 		t.Fatalf("assign in tenant-z must be independent of the default tenant's full cap: %v", err)
 	}
+
+	// Clearing the limit (absent Limit) returns the sku to unlimited.
+	if _, err := h.seat.SetSeatLimit(ctx, req(&workspacev1.SetSeatLimitRequest{Sku: "pro"})); err != nil {
+		t.Fatalf("clear limit: %v", err)
+	}
+	usage, err = h.seat.GetSeatUsage(ctx, req(&workspacev1.GetSeatUsageRequest{Sku: "pro"}))
+	if err != nil || usage.Msg.Limited {
+		t.Fatalf("after clear, usage = %+v, %v; want unlimited", usage.Msg, err)
+	}
 }
 
 // consistencyReadAfterWriteScenario: a write returns a token, a Check carrying
@@ -425,10 +434,25 @@ func consistencyReadAfterWriteScenario(t *testing.T, h *harness) {
 		t.Fatalf("token-consistent check = %v, %v; want allowed", got.Msg.GetAllowed(), err)
 	}
 
+	// A tokenless Check is unchanged.
+	if got, err := h.authz.Check(ctx, req(&workspacev1.CheckRequest{
+		Namespace: "doc", ObjectId: "d1", Relation: "viewer", SubjectUserId: "amy",
+	})); err != nil || !got.Msg.Allowed {
+		t.Fatalf("tokenless check = %v, %v; want allowed", got.Msg.GetAllowed(), err)
+	}
+
+	// A malformed token is rejected, not silently ignored.
 	if _, err := h.authz.Check(ctx, req(&workspacev1.CheckRequest{
 		Namespace: "doc", ObjectId: "d1", Relation: "viewer", SubjectUserId: "amy",
 		AtLeastConsistencyToken: "not-a-real-token",
 	})); connect.CodeOf(err) != connect.CodeInvalidArgument {
 		t.Fatalf("malformed token: want InvalidArgument, got %v", err)
+	}
+
+	// ListObjects also honors the token end to end.
+	if _, err := h.authz.ListObjects(ctx, req(&workspacev1.ListObjectsRequest{
+		Namespace: "doc", Relation: "viewer", SubjectUserId: "amy", AtLeastConsistencyToken: token,
+	})); err != nil {
+		t.Fatalf("ListObjects with token: %v", err)
 	}
 }
