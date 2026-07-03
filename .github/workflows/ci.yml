@@ -218,6 +218,28 @@ jobs:
         run: make fuzz-smoke
 
   # ---------------------------------------------------------------------------
+  # Full-stack e2e — build the service image, boot it on real Postgres, and run
+  # the black-box authz scenarios against the deployed container over HTTP. This
+  # is the only job that exercises authz behavior through the real image +
+  # Postgres (auto-migration, pgx round-trips, service-token auth), closing the
+  # gap the in-process e2e suite (memory driver) can't reach.
+  # ---------------------------------------------------------------------------
+  e2e-compose:
+    name: Full-stack e2e
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: make e2e-compose
+        run: make e2e-compose
+
+  # ---------------------------------------------------------------------------
   # 7. Container build smoke — multi-arch base reachable, Dockerfile builds.
   # ---------------------------------------------------------------------------
   docker:
@@ -294,7 +316,7 @@ jobs:
   ci:
     name: CI
     runs-on: ubuntu-latest
-    needs: [lint, tidy, vuln, test, integration, fuzz, docker, docs-drift]
+    needs: [lint, tidy, vuln, test, integration, fuzz, e2e-compose, docker, docs-drift]
     if: always()
     steps:
       - name: All required jobs succeeded

@@ -44,8 +44,8 @@ ci: lint tidy-check vuln build test integration fuzz-smoke ## Run all CI gates t
 	@echo "==> make ci: all gates passed"
 
 .PHONY: ci-full
-ci-full: ci ci-real-services ## ci + integration tests against the real docker-compose backends
-	@echo "==> make ci-full: passed (incl. real services)"
+ci-full: ci ci-real-services e2e-compose ## ci + real-backend integration + full-stack docker-compose e2e
+	@echo "==> make ci-full: passed (incl. real services + full-stack e2e)"
 
 .PHONY: ci-real-services
 ci-real-services: services-up realpostgres services-down ## Run realpostgres tests against compose
