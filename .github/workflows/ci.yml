@@ -240,6 +240,30 @@ jobs:
         run: make e2e-compose
 
   # ---------------------------------------------------------------------------
+  # Config & limits e2e — the config-specific behaviors that need a stack booted
+  # with a particular configuration, each run against a dedicated compose
+  # profile: admin API + data residency + budget caps (featured), then the
+  # per-tenant rate limiter (ratelimit). Postgres-only TestFeatured*/TestRateLimit*.
+  # ---------------------------------------------------------------------------
+  e2e-compose-extra:
+    name: Config & limits e2e
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: make e2e-compose-config
+        run: make e2e-compose-config
+
+      - name: make e2e-compose-ratelimit
+        run: make e2e-compose-ratelimit
+
+  # ---------------------------------------------------------------------------
   # 7. Container build smoke — multi-arch base reachable, Dockerfile builds.
   # ---------------------------------------------------------------------------
   docker:
@@ -316,7 +340,7 @@ jobs:
   ci:
     name: CI
     runs-on: ubuntu-latest
-    needs: [lint, tidy, vuln, test, integration, fuzz, e2e-compose, docker, docs-drift]
+    needs: [lint, tidy, vuln, test, integration, fuzz, e2e-compose, e2e-compose-extra, docker, docs-drift]
     if: always()
     steps:
       - name: All required jobs succeeded

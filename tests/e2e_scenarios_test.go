@@ -64,6 +64,7 @@ func newComposeHarness(t *testing.T) *harness {
 		grp:   workspacev1connect.NewGroupServiceClient(c, base),
 		authz: workspacev1connect.NewAuthzServiceClient(c, base),
 		seat:  workspacev1connect.NewSeatServiceClient(c, base),
+		admin: workspacev1connect.NewAdminServiceClient(c, base),
 	}
 }
 
