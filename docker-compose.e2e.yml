@@ -1,12 +1,12 @@
 # Full-stack black-box e2e stack.
 #
 # Boots the ACTUAL service container on a real Postgres so the e2e scenarios
-# in tests/e2e_compose_test.go (build tag: composee2e) run against the deployed
-# image over the network — exercising boot-time auto-migration, real pgx
-# persistence, the full HTTP/Connect handler chain, and service-token auth.
+# in tests/e2e_scenarios_test.go run their postgres/ subtest against the
+# deployed image over the network — exercising boot-time auto-migration, real
+# pgx persistence, the full HTTP/Connect handler chain, and service-token auth.
 #
 # Driven by `make e2e-compose`, which builds, waits for /healthz, runs the
-# tagged tests against http://localhost:8080, then tears the stack down.
+# TestE2E* scenarios against http://localhost:8080, then tears the stack down.
 #
 # Differences from docker-compose.yml (the local dev stack):
 #   - Postgres is NOT published to the host — the service reaches it over the
