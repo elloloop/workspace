@@ -74,7 +74,8 @@ func waitReady(t *testing.T, base string) {
 	t.Helper()
 	deadline := time.Now().Add(60 * time.Second)
 	for time.Now().Before(deadline) {
-		resp, err := http.Get(base + "/healthz") //nolint:noctx // test-only readiness poll
+		//nolint:gosec,noctx // G704: base is the trusted, test-only WORKSPACES_E2E_BASE_URL; readiness poll
+		resp, err := http.Get(base + "/healthz")
 		if err == nil {
 			_ = resp.Body.Close()
 			if resp.StatusCode == http.StatusOK {
