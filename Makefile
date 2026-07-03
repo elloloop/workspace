@@ -149,7 +149,7 @@ e2e-compose: ## Full-stack black-box e2e: build image, boot compose (postgres+se
 		exit 1; \
 	fi; \
 	WORKSPACES_E2E_BASE_URL=http://localhost:8080 \
-		$(GO) test -tags=composee2e -count=1 -timeout=300s -run '^TestCompose' ./tests/...
+		$(GO) test -count=1 -timeout=300s -run '^TestE2E' ./tests/...
 
 .PHONY: realpostgres
 realpostgres: ## Integration tests against a real postgres (expects GATEWAY_POSTGRES_DSN)

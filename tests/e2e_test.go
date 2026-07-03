@@ -28,6 +28,7 @@ type harness struct {
 	ws    workspacev1connect.WorkspaceServiceClient
 	grp   workspacev1connect.GroupServiceClient
 	authz workspacev1connect.AuthzServiceClient
+	seat  workspacev1connect.SeatServiceClient
 }
 
 func newHarness(t *testing.T) *harness {
@@ -49,6 +50,7 @@ func newHarness(t *testing.T) *harness {
 		ws:    workspacev1connect.NewWorkspaceServiceClient(c, hs.URL),
 		grp:   workspacev1connect.NewGroupServiceClient(c, hs.URL),
 		authz: workspacev1connect.NewAuthzServiceClient(c, hs.URL),
+		seat:  workspacev1connect.NewSeatServiceClient(c, hs.URL),
 	}
 }
 
@@ -115,72 +117,6 @@ func TestMissingActingUserRejected(t *testing.T) {
 	}
 }
 
-func TestTeamWorkspaceMembershipAndAuthz(t *testing.T) {
-	h := newHarness(t)
-	ctx := context.Background()
-
-	created, err := h.ws.CreateWorkspace(ctx, req(&workspacev1.CreateWorkspaceRequest{
-		ActingUserId: "alice", DisplayName: "Acme Inc",
-	}))
-	if err != nil {
-		t.Fatalf("CreateWorkspace: %v", err)
-	}
-	ws := created.Msg.Workspace
-	if ws.Type != workspacev1.WorkspaceType_WORKSPACE_TYPE_TEAM {
-		t.Fatalf("want TEAM, got %v", ws.Type)
-	}
-
-	// Owner adds bob as a member.
-	if _, err := h.ws.AddMember(ctx, req(&workspacev1.AddMemberRequest{
-		ActingUserId: "alice", WorkspaceId: ws.Id, UserId: "bob", Role: workspacev1.Role_ROLE_MEMBER,
-	})); err != nil {
-		t.Fatalf("AddMember: %v", err)
-	}
-
-	members, err := h.ws.ListMembers(ctx, req(&workspacev1.ListMembersRequest{ActingUserId: "alice", WorkspaceId: ws.Id}))
-	if err != nil {
-		t.Fatalf("ListMembers: %v", err)
-	}
-	if len(members.Msg.Members) != 2 {
-		t.Fatalf("want 2 members, got %d", len(members.Msg.Members))
-	}
-
-	// Authz: owner ⊃ admin ⊃ member ⊃ guest. The subject is data, independent
-	// of the acting/calling identity.
-	checks := []struct {
-		rel  string
-		user string
-		want bool
-	}{
-		{"owner", "alice", true},
-		{"admin", "alice", true},
-		{"member", "alice", true},
-		{"owner", "bob", false},
-		{"admin", "bob", false},
-		{"member", "bob", true},
-		{"member", "carol", false},
-	}
-	for _, c := range checks {
-		got, err := h.authz.Check(ctx, req(&workspacev1.CheckRequest{
-			Namespace: "workspace", ObjectId: ws.Id, Relation: c.rel, SubjectUserId: c.user,
-		}))
-		if err != nil {
-			t.Fatalf("Check %s@%s: %v", c.rel, c.user, err)
-		}
-		if got.Msg.Allowed != c.want {
-			t.Fatalf("Check %s@%s = %v, want %v", c.rel, c.user, got.Msg.Allowed, c.want)
-		}
-	}
-
-	// bob (a plain member) cannot add members — needs admin.
-	_, err = h.ws.AddMember(ctx, req(&workspacev1.AddMemberRequest{
-		ActingUserId: "bob", WorkspaceId: ws.Id, UserId: "carol", Role: workspacev1.Role_ROLE_MEMBER,
-	}))
-	if err == nil || connect.CodeOf(err) != connect.CodePermissionDenied {
-		t.Fatalf("want PermissionDenied for member adding member, got %v", err)
-	}
-}
-
 func TestPersonalWorkspaceIsClosed(t *testing.T) {
 	h := newHarness(t)
 	ctx := context.Background()
@@ -200,99 +136,6 @@ func TestPersonalWorkspaceIsClosed(t *testing.T) {
 		ActingUserId: "alice", WorkspaceId: personal.Id,
 	})); err == nil {
 		t.Fatal("want error deleting personal workspace")
-	}
-}
-
-func TestInvitationFlow(t *testing.T) {
-	h := newHarness(t)
-	ctx := context.Background()
-
-	created, _ := h.ws.CreateWorkspace(ctx, req(&workspacev1.CreateWorkspaceRequest{ActingUserId: "alice", DisplayName: "Family"}))
-	ws := created.Msg.Workspace
-
-	inv, err := h.ws.CreateInvitation(ctx, req(&workspacev1.CreateInvitationRequest{
-		ActingUserId: "alice", WorkspaceId: ws.Id, Email: "dad@example.com", Role: workspacev1.Role_ROLE_ADMIN,
-	}))
-	if err != nil {
-		t.Fatalf("CreateInvitation: %v", err)
-	}
-	if inv.Msg.Invitation.Token == "" {
-		t.Fatal("want non-empty invitation token")
-	}
-
-	// dad accepts (acting as user id "dad").
-	acc, err := h.ws.AcceptInvitation(ctx, req(&workspacev1.AcceptInvitationRequest{
-		ActingUserId: "dad", Token: inv.Msg.Invitation.Token,
-	}))
-	if err != nil {
-		t.Fatalf("AcceptInvitation: %v", err)
-	}
-	if acc.Msg.Membership.Role != workspacev1.Role_ROLE_ADMIN {
-		t.Fatalf("want ADMIN after accept, got %v", acc.Msg.Membership.Role)
-	}
-
-	// dad is now an admin and can add members.
-	if _, err := h.ws.AddMember(ctx, req(&workspacev1.AddMemberRequest{
-		ActingUserId: "dad", WorkspaceId: ws.Id, UserId: "kid", Role: workspacev1.Role_ROLE_MEMBER,
-	})); err != nil {
-		t.Fatalf("admin AddMember: %v", err)
-	}
-
-	// Re-accepting a consumed token fails.
-	if _, err := h.ws.AcceptInvitation(ctx, req(&workspacev1.AcceptInvitationRequest{
-		ActingUserId: "dad", Token: inv.Msg.Invitation.Token,
-	})); err == nil {
-		t.Fatal("want error re-accepting consumed token")
-	}
-}
-
-func TestGroupsGrantAccessViaUserset(t *testing.T) {
-	h := newHarness(t)
-	ctx := context.Background()
-
-	// A standalone "family" group containing bob and carol.
-	g, err := h.grp.CreateGroup(ctx, req(&workspacev1.CreateGroupRequest{ActingUserId: "alice", DisplayName: "Family"}))
-	if err != nil {
-		t.Fatalf("CreateGroup: %v", err)
-	}
-	for _, u := range []string{"bob", "carol"} {
-		if _, err := h.grp.AddGroupMember(ctx, req(&workspacev1.AddGroupMemberRequest{
-			ActingUserId: "alice", GroupId: g.Msg.Group.Id,
-			Member: &workspacev1.GroupMember{Member: &workspacev1.GroupMember_UserId{UserId: u}},
-		})); err != nil {
-			t.Fatalf("AddGroupMember %s: %v", u, err)
-		}
-	}
-
-	// Share a resource (a shared task / document) with the whole group:
-	// resource:task-42#viewer@group:<id>#member.
-	if _, err := h.authz.WriteRelationTuples(ctx, req(&workspacev1.WriteRelationTuplesRequest{
-		Updates: []*workspacev1.TupleUpdate{{
-			Op: workspacev1.TupleUpdate_OP_INSERT,
-			Tuple: &workspacev1.RelationTuple{
-				Namespace: "resource", ObjectId: "task-42", Relation: "viewer",
-				Subject: &workspacev1.Subject{Kind: &workspacev1.Subject_Set{Set: &workspacev1.SubjectSet{
-					Namespace: "group", ObjectId: g.Msg.Group.Id, Relation: "member",
-				}}},
-			},
-		}},
-	})); err != nil {
-		t.Fatalf("WriteRelationTuples: %v", err)
-	}
-
-	for _, tc := range []struct {
-		user string
-		want bool
-	}{{"bob", true}, {"carol", true}, {"dave", false}} {
-		got, err := h.authz.Check(ctx, req(&workspacev1.CheckRequest{
-			Namespace: "resource", ObjectId: "task-42", Relation: "viewer", SubjectUserId: tc.user,
-		}))
-		if err != nil {
-			t.Fatalf("Check viewer@%s: %v", tc.user, err)
-		}
-		if got.Msg.Allowed != tc.want {
-			t.Fatalf("Check viewer@%s = %v, want %v", tc.user, got.Msg.Allowed, tc.want)
-		}
 	}
 }
 

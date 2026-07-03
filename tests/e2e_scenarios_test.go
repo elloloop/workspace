@@ -1,17 +1,21 @@
-//go:build composee2e
-
-// Black-box FULL-STACK end-to-end tests. Unlike the in-process harness in
-// e2e_test.go (which drives the assembled handler against the in-memory driver
-// via httptest), these run realistic authz scenarios against the ACTUAL built
-// service container on a real Postgres, reached over the network. That closes
-// the gap the in-process suite can't: boot-time auto-migration, real pgx
-// persistence and JSON/structpb round-trips, and service-token auth as
-// deployed.
-//
-// Gated by the composee2e build tag and skipped unless WORKSPACES_E2E_BASE_URL
-// points at a running stack. `make e2e-compose` builds + boots
-// docker-compose.e2e.yml, sets the URL, and runs these.
 package tests
+
+// Backend-parameterized e2e scenarios: each scenario is written ONCE and run
+// against both backends —
+//
+//   - memory:   the assembled handler in-process over httptest (fast, runs on
+//               every `go test`), and
+//   - postgres: the ACTUAL built service container on a real Postgres, reached
+//               over the network, when WORKSPACES_E2E_BASE_URL is set (what
+//               `make e2e-compose` boots).
+//
+// runOnBackends drives both. The memory subtest gets a fresh store per run, so
+// it is isolated; the postgres subtest shares one database, so scenarios here
+// use disjoint namespaces/object IDs (server-generated workspace/group IDs plus
+// distinct fixed IDs) and never assert global counts — that keeps them safe to
+// run together against the shared stack. Config-specific behavior (rate limits,
+// data region, admin secret, budgets) stays in the in-process-only suites,
+// since the deployed stack has one fixed configuration.
 
 import (
 	"context"
@@ -28,32 +32,38 @@ import (
 	"github.com/elloloop/workspace/gen/go/workspace/v1/workspacev1connect"
 )
 
-// composeBaseURL returns the running stack's base URL, skipping the test when
-// WORKSPACES_E2E_BASE_URL is unset (so `go test -tags=composee2e ./...` is
-// dev-safe without a stack), and waiting for /healthz so the first RPC does not
-// race container boot + auto-migration. `make e2e-compose` always sets the URL.
-func composeBaseURL(t *testing.T) string {
+// runOnBackends runs scenario against the in-process memory backend always, and
+// additionally against the compose Postgres stack when WORKSPACES_E2E_BASE_URL
+// is set. Written once, verified on both.
+func runOnBackends(t *testing.T, scenario func(*testing.T, *harness)) {
+	t.Helper()
+	t.Run("memory", func(t *testing.T) {
+		scenario(t, newHarness(t))
+	})
+	if os.Getenv("WORKSPACES_E2E_BASE_URL") != "" {
+		t.Run("postgres", func(t *testing.T) {
+			scenario(t, newComposeHarness(t))
+		})
+	}
+}
+
+// newComposeHarness builds the same client set as newHarness, but pointed at
+// the real service URL that `make e2e-compose` boots. The compose stack is
+// configured with svcToken as its GATEWAY_SERVICE_AUTH_TOKENS, so the shared
+// req() helper authenticates unchanged.
+func newComposeHarness(t *testing.T) *harness {
 	t.Helper()
 	base := os.Getenv("WORKSPACES_E2E_BASE_URL")
 	if base == "" {
 		t.Skip("set WORKSPACES_E2E_BASE_URL (or run `make e2e-compose`) to run the full-stack compose e2e")
 	}
 	waitReady(t, base)
-	return base
-}
-
-// newComposeHarness builds the same client set as newHarness, but pointed at
-// the real service URL that `make e2e-compose` boots. The compose stack is
-// configured with svcToken as its GATEWAY_SERVICE_AUTH_TOKENS, so the shared
-// req() helper (which presents that token) authenticates unchanged.
-func newComposeHarness(t *testing.T) *harness {
-	t.Helper()
-	base := composeBaseURL(t)
 	c := http.DefaultClient
 	return &harness{
 		ws:    workspacev1connect.NewWorkspaceServiceClient(c, base),
 		grp:   workspacev1connect.NewGroupServiceClient(c, base),
 		authz: workspacev1connect.NewAuthzServiceClient(c, base),
+		seat:  workspacev1connect.NewSeatServiceClient(c, base),
 	}
 }
 
@@ -75,16 +85,21 @@ func waitReady(t *testing.T, base string) {
 	t.Fatalf("service at %s did not become ready within the deadline", base)
 }
 
-// TestComposeTeamWorkspaceAuthz drives a realistic multi-actor authz scenario
-// end-to-end against the real container + Postgres: create a team workspace,
-// add a member, and verify the role lattice (owner ⊃ admin ⊃ member ⊃ guest)
-// resolves correctly through the network, the full handler chain, and real
-// persistence — and that a plain member is denied an admin-only mutation.
-//
-// It mirrors the in-process TestTeamWorkspaceMembershipAndAuthz so a divergence
-// between the memory driver and the deployed Postgres stack surfaces here.
-func TestComposeTeamWorkspaceAuthz(t *testing.T) {
-	h := newComposeHarness(t)
+// ── scenario entrypoints ────────────────────────────────────────────────────
+
+func TestE2ETeamWorkspaceAuthz(t *testing.T)  { runOnBackends(t, teamWorkspaceAuthzScenario) }
+func TestE2EInvitationFlow(t *testing.T)       { runOnBackends(t, invitationFlowScenario) }
+func TestE2EGroupsUserset(t *testing.T)        { runOnBackends(t, groupsUsersetScenario) }
+func TestE2EConditionGatedCheck(t *testing.T)  { runOnBackends(t, conditionGatedScenario) }
+func TestE2ESeatEnforcement(t *testing.T)      { runOnBackends(t, seatEnforcementScenario) }
+func TestE2EConsistencyToken(t *testing.T)     { runOnBackends(t, consistencyReadAfterWriteScenario) }
+
+// ── scenarios ───────────────────────────────────────────────────────────────
+
+// teamWorkspaceAuthzScenario: create a team workspace, add a member, and verify
+// the role lattice (owner ⊃ admin ⊃ member ⊃ guest) plus the member-adds-member
+// deny path.
+func teamWorkspaceAuthzScenario(t *testing.T, h *harness) {
 	ctx := context.Background()
 
 	created, err := h.ws.CreateWorkspace(ctx, req(&workspacev1.CreateWorkspaceRequest{
@@ -98,25 +113,22 @@ func TestComposeTeamWorkspaceAuthz(t *testing.T) {
 		t.Fatalf("want TEAM, got %v", ws.Type)
 	}
 
-	// Owner adds bob as a plain member.
 	if _, err := h.ws.AddMember(ctx, req(&workspacev1.AddMemberRequest{
 		ActingUserId: "alice", WorkspaceId: ws.Id, UserId: "bob", Role: workspacev1.Role_ROLE_MEMBER,
 	})); err != nil {
 		t.Fatalf("AddMember: %v", err)
 	}
 
-	members, err := h.ws.ListMembers(ctx, req(&workspacev1.ListMembersRequest{
-		ActingUserId: "alice", WorkspaceId: ws.Id,
-	}))
+	members, err := h.ws.ListMembers(ctx, req(&workspacev1.ListMembersRequest{ActingUserId: "alice", WorkspaceId: ws.Id}))
 	if err != nil {
 		t.Fatalf("ListMembers: %v", err)
 	}
 	if len(members.Msg.Members) != 2 {
-		t.Fatalf("want 2 members (alice, bob), got %d", len(members.Msg.Members))
+		t.Fatalf("want 2 members, got %d", len(members.Msg.Members))
 	}
 
-	// The role lattice must resolve identically to the in-process suite —
-	// through real HTTP, the handler chain, and Postgres.
+	// owner ⊃ admin ⊃ member ⊃ guest. The subject is data, independent of the
+	// acting/calling identity.
 	checks := []struct {
 		rel  string
 		user string
@@ -142,8 +154,7 @@ func TestComposeTeamWorkspaceAuthz(t *testing.T) {
 		}
 	}
 
-	// bob (a plain member) cannot add members — that needs admin. This asserts
-	// the deny path is enforced by the deployed service, not just in memory.
+	// bob (a plain member) cannot add members — needs admin.
 	_, err = h.ws.AddMember(ctx, req(&workspacev1.AddMemberRequest{
 		ActingUserId: "bob", WorkspaceId: ws.Id, UserId: "carol", Role: workspacev1.Role_ROLE_MEMBER,
 	}))
@@ -152,20 +163,12 @@ func TestComposeTeamWorkspaceAuthz(t *testing.T) {
 	}
 }
 
-// TestComposeInvitationFlow drives the invitation lifecycle against the real
-// stack: create a workspace, invite an admin, accept the token (as the invited
-// user), confirm the accepted role, exercise the granted admin authority, and
-// prove a consumed token cannot be replayed — all through real persistence.
-func TestComposeInvitationFlow(t *testing.T) {
-	h := newComposeHarness(t)
+// invitationFlowScenario: create a workspace, invite an admin, accept the token,
+// exercise the granted authority, and reject a replayed (consumed) token.
+func invitationFlowScenario(t *testing.T, h *harness) {
 	ctx := context.Background()
 
-	created, err := h.ws.CreateWorkspace(ctx, req(&workspacev1.CreateWorkspaceRequest{
-		ActingUserId: "alice", DisplayName: "Family",
-	}))
-	if err != nil {
-		t.Fatalf("CreateWorkspace: %v", err)
-	}
+	created, _ := h.ws.CreateWorkspace(ctx, req(&workspacev1.CreateWorkspaceRequest{ActingUserId: "alice", DisplayName: "Family"}))
 	ws := created.Msg.Workspace
 
 	inv, err := h.ws.CreateInvitation(ctx, req(&workspacev1.CreateInvitationRequest{
@@ -188,14 +191,12 @@ func TestComposeInvitationFlow(t *testing.T) {
 		t.Fatalf("want ADMIN after accept, got %v", acc.Msg.Membership.Role)
 	}
 
-	// dad is now an admin and can add members.
 	if _, err := h.ws.AddMember(ctx, req(&workspacev1.AddMemberRequest{
 		ActingUserId: "dad", WorkspaceId: ws.Id, UserId: "kid", Role: workspacev1.Role_ROLE_MEMBER,
 	})); err != nil {
 		t.Fatalf("admin AddMember: %v", err)
 	}
 
-	// Re-accepting a consumed token fails.
 	if _, err := h.ws.AcceptInvitation(ctx, req(&workspacev1.AcceptInvitationRequest{
 		ActingUserId: "dad", Token: inv.Msg.Invitation.Token,
 	})); err == nil {
@@ -203,11 +204,9 @@ func TestComposeInvitationFlow(t *testing.T) {
 	}
 }
 
-// TestComposeGroupsGrantAccessViaUserset shares a resource with a whole group
-// via a userset tuple (resource#viewer@group#member) and verifies membership
-// resolution through the group indirection against real Postgres.
-func TestComposeGroupsGrantAccessViaUserset(t *testing.T) {
-	h := newComposeHarness(t)
+// groupsUsersetScenario: share a resource with a whole group via a userset tuple
+// (resource#viewer@group#member) and verify membership resolution.
+func groupsUsersetScenario(t *testing.T, h *harness) {
 	ctx := context.Background()
 
 	g, err := h.grp.CreateGroup(ctx, req(&workspacev1.CreateGroupRequest{ActingUserId: "alice", DisplayName: "Family"}))
@@ -253,12 +252,10 @@ func TestComposeGroupsGrantAccessViaUserset(t *testing.T) {
 	}
 }
 
-// TestComposeConditionGatedCheck exercises attribute-aware grants end to end:
-// a consent-gated and an age-gated tuple are evaluated against the request
-// context through real pgx condition round-trips, and an unknown condition is
+// conditionGatedScenario: a consent-gated and an age-gated grant are evaluated
+// against the CheckRequest.context end to end, and an unknown condition is
 // rejected at write time.
-func TestComposeConditionGatedCheck(t *testing.T) {
-	h := newComposeHarness(t)
+func conditionGatedScenario(t *testing.T, h *harness) {
 	ctx := context.Background()
 
 	if _, err := h.authz.WriteRelationTuples(ctx, req(&workspacev1.WriteRelationTuplesRequest{
@@ -271,29 +268,25 @@ func TestComposeConditionGatedCheck(t *testing.T) {
 			},
 		}},
 	})); err != nil {
-		t.Fatalf("WriteRelationTuples consent: %v", err)
+		t.Fatalf("WriteRelationTuples: %v", err)
 	}
 
-	consentAllows := func(consent any) bool {
-		var cc *structpb.Struct
-		if consent != nil {
-			cc = mustStruct(t, map[string]any{"consent": consent})
-		}
+	check := func(cc *structpb.Struct) bool {
 		got, err := h.authz.Check(ctx, req(&workspacev1.CheckRequest{
 			Namespace: "course", ObjectId: "c1", Relation: "viewer", SubjectUserId: "kid", Context: cc,
 		}))
 		if err != nil {
-			t.Fatalf("Check consent: %v", err)
+			t.Fatalf("Check: %v", err)
 		}
 		return got.Msg.Allowed
 	}
-	if consentAllows(nil) {
+	if check(nil) {
 		t.Fatal("no context: consent-gated grant must deny")
 	}
-	if consentAllows(false) {
+	if check(mustStruct(t, map[string]any{"consent": false})) {
 		t.Fatal("consent=false: must deny")
 	}
-	if !consentAllows(true) {
+	if !check(mustStruct(t, map[string]any{"consent": true})) {
 		t.Fatal("consent=true: must allow")
 	}
 
@@ -327,8 +320,7 @@ func TestComposeConditionGatedCheck(t *testing.T) {
 		t.Fatal("age 15 in band: must allow")
 	}
 
-	// An unknown condition is rejected at write time.
-	if _, err := h.authz.WriteRelationTuples(ctx, req(&workspacev1.WriteRelationTuplesRequest{
+	_, err := h.authz.WriteRelationTuples(ctx, req(&workspacev1.WriteRelationTuplesRequest{
 		Updates: []*workspacev1.TupleUpdate{{
 			Op: workspacev1.TupleUpdate_OP_INSERT,
 			Tuple: &workspacev1.RelationTuple{
@@ -337,26 +329,23 @@ func TestComposeConditionGatedCheck(t *testing.T) {
 				ConditionName: "no_such_condition",
 			},
 		}},
-	})); connect.CodeOf(err) != connect.CodeInvalidArgument {
+	}))
+	if err == nil || connect.CodeOf(err) != connect.CodeInvalidArgument {
 		t.Fatalf("unknown condition must be rejected at write, got %v", err)
 	}
 }
 
-// TestComposeSeatEnforcement drives seat capacity end to end against real
-// Postgres advisory-locked assignment: a sku capped at N admits N and fails
-// closed on the next, the backing seat#holder tuple gates Check, revocation
-// frees a slot, and a second tenant's cap is independent.
-func TestComposeSeatEnforcement(t *testing.T) {
-	base := composeBaseURL(t)
-	seat := workspacev1connect.NewSeatServiceClient(http.DefaultClient, base)
-	authz := workspacev1connect.NewAuthzServiceClient(http.DefaultClient, base)
+// seatEnforcementScenario: a sku capped at N admits N and fails closed
+// (ResourceExhausted) on the next; the backing seat#holder tuple gates Check; a
+// revoke frees a seat; and a different tenant's cap is independent.
+func seatEnforcementScenario(t *testing.T, h *harness) {
 	ctx := context.Background()
 
-	if _, err := seat.SetSeatLimit(ctx, req(&workspacev1.SetSeatLimitRequest{Sku: "pro", Limit: proto.Int32(2)})); err != nil {
+	if _, err := h.seat.SetSeatLimit(ctx, req(&workspacev1.SetSeatLimitRequest{Sku: "pro", Limit: proto.Int32(2)})); err != nil {
 		t.Fatalf("SetSeatLimit: %v", err)
 	}
 	assign := func(user string) error {
-		_, err := seat.AssignSeat(ctx, req(&workspacev1.AssignSeatRequest{Sku: "pro", UserId: user}))
+		_, err := h.seat.AssignSeat(ctx, req(&workspacev1.AssignSeatRequest{Sku: "pro", UserId: user}))
 		return err
 	}
 	if err := assign("u1"); err != nil {
@@ -370,7 +359,7 @@ func TestComposeSeatEnforcement(t *testing.T) {
 	}
 
 	holds := func(user string) bool {
-		got, err := authz.Check(ctx, req(&workspacev1.CheckRequest{
+		got, err := h.authz.Check(ctx, req(&workspacev1.CheckRequest{
 			Namespace: "seat", ObjectId: "pro", Relation: "holder", SubjectUserId: user,
 		}))
 		if err != nil {
@@ -382,12 +371,12 @@ func TestComposeSeatEnforcement(t *testing.T) {
 		t.Fatalf("seat tuple gate: u1=%v (want true) u3=%v (want false)", holds("u1"), holds("u3"))
 	}
 
-	usage, err := seat.GetSeatUsage(ctx, req(&workspacev1.GetSeatUsageRequest{Sku: "pro"}))
+	usage, err := h.seat.GetSeatUsage(ctx, req(&workspacev1.GetSeatUsageRequest{Sku: "pro"}))
 	if err != nil || usage.Msg.Used != 2 || usage.Msg.Limit != 2 || !usage.Msg.Limited {
 		t.Fatalf("usage = %+v, %v; want used=2 limit=2 limited", usage.Msg, err)
 	}
 
-	if _, err := seat.RevokeSeat(ctx, req(&workspacev1.RevokeSeatRequest{Sku: "pro", UserId: "u1"})); err != nil {
+	if _, err := h.seat.RevokeSeat(ctx, req(&workspacev1.RevokeSeatRequest{Sku: "pro", UserId: "u1"})); err != nil {
 		t.Fatalf("RevokeSeat: %v", err)
 	}
 	if holds("u1") {
@@ -401,17 +390,14 @@ func TestComposeSeatEnforcement(t *testing.T) {
 	}
 
 	// A different tenant has its own independent (unlimited) cap.
-	if _, err := seat.AssignSeat(ctx, req(&workspacev1.AssignSeatRequest{Sku: "pro", UserId: "z1", TenantId: "tenant-z"})); err != nil {
+	if _, err := h.seat.AssignSeat(ctx, req(&workspacev1.AssignSeatRequest{Sku: "pro", UserId: "z1", TenantId: "tenant-z"})); err != nil {
 		t.Fatalf("assign in tenant-z must be independent of the default tenant's full cap: %v", err)
 	}
 }
 
-// TestComposeConsistencyTokenReadAfterWrite verifies the consistency token
-// round-trips through real Postgres sequence state: a write returns a token, a
-// Check carrying it observes the just-written grant, and a malformed token is
-// rejected rather than silently ignored.
-func TestComposeConsistencyTokenReadAfterWrite(t *testing.T) {
-	h := newComposeHarness(t)
+// consistencyReadAfterWriteScenario: a write returns a token, a Check carrying
+// it observes the just-written grant, and a malformed token is rejected.
+func consistencyReadAfterWriteScenario(t *testing.T, h *harness) {
 	ctx := context.Background()
 
 	wrote, err := h.authz.WriteRelationTuples(ctx, req(&workspacev1.WriteRelationTuplesRequest{
