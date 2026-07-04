@@ -23,7 +23,7 @@ The most recent minor release receives security fixes. Older minor versions are 
 - Authentication or authorization bypass.
 - Privilege escalation (non-admin → admin, cross-user or cross-workspace data access).
 - Membership or role enumeration, workspace-takeover vectors.
-- Token forgery, signature-verification bypass, JWKS spoofing.
+- Service-credential or admin-secret forgery/bypass (guessing or forging a `GATEWAY_SERVICE_AUTH_TOKENS` or `X-Admin-Secret` value). This service does no end-user token verification, so JWT/JWKS attacks do not apply to it.
 - Information disclosure (PII, tokens, relation tuples) in responses or logs.
 - Denial-of-service vectors that an unauthenticated caller can trigger at low cost.
 - Supply-chain compromise (dependency, container image, GitHub Actions workflow).

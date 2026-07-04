@@ -222,7 +222,6 @@ jobs:
               -e GATEWAY_CONNECT_PORT=8080 \
               -e GATEWAY_METRICS_PORT=9090 \
               -e GATEWAY_DEFAULT_PROJECT_ID=docker-smoke \
-              -e GATEWAY_JWT_JWKS_URL= \
               -p 127.0.0.1:18080:8080 \
               workspaces:release-smoke
           )"
