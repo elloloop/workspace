@@ -12,10 +12,17 @@ ReBAC-style authorization. The two services **never share a table** — the acce
 token, verified at the **product edge**, is the entire contact point between
 them.
 
-> **Docs.** Full guides, concepts, and a live, per-RPC API reference are hosted
-> at **<https://elloloop.github.io/workspaces/>**. The Scalar-rendered API
-> reference (generated from the proto) is at
-> **<https://elloloop.github.io/workspaces/api>**.
+## Documentation
+
+- **Docs site** (guides, concepts, deployment) — <https://elloloop.github.io/workspace/>
+- **API reference** — Scalar-rendered, generated from the proto — <https://elloloop.github.io/workspace/api>
+- **Proto reference** — the rendered `workspace.proto` service/message reference — <https://elloloop.github.io/workspace/proto/>
+- **Authorization model** — the relation-tuple engine, rewrite rules, and consistency tokens — [`docs/authorization-model.md`](docs/authorization-model.md)
+- **Proto source of truth** — [`proto/workspace/v1/workspace.proto`](proto/workspace/v1/workspace.proto)
+- **Architecture decisions (ADRs):**
+  - [ADR-0001 — relation tuples as the authz primitive](docs/adr/0001-relation-tuples-as-the-authz-primitive.md)
+  - [ADR-0002 — personal and team workspaces](docs/adr/0002-personal-and-team-workspaces.md)
+  - [ADR-0003 — groups separate from workspaces](docs/adr/0003-groups-separate-from-workspaces.md)
 
 ## What it provides
 
@@ -88,7 +95,9 @@ The built-in namespaces (`pkg/authz/model.go`):
 | `resource` | `parent`, `owner`, `editor`, `viewer` | `editor` = this ∪ `owner` ∪ (parent workspace's `admin`); `viewer` = this ∪ `editor` ∪ (parent workspace's `member`) |
 
 See [`docs/authorization-model.md`](docs/authorization-model.md) for the full
-reference. Three motivating products, each mapped onto the model:
+reference, and [ADR-0001](docs/adr/0001-relation-tuples-as-the-authz-primitive.md)
+for why relation tuples are the authz primitive. Three motivating products, each
+mapped onto the model:
 
 ### Worked example — a workplace collaboration tool
 
