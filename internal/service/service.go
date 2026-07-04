@@ -15,8 +15,9 @@ import (
 	"github.com/elloloop/workspace/pkg/authz"
 )
 
-// Principal is the authenticated caller, resolved from the verified JWT by
-// the auth middleware: the user every decision is made against, the project
+// Principal is the resolved subject of an authorization decision: the end user
+// every decision is made against — passed as request DATA (acting_user_id /
+// subject_user_id), never a token this service verifies — plus the project
 // (configuration/model shard) and the tenant (data-isolation shard within the
 // project) the request operates in. An empty TenantID is the default tenant.
 type Principal struct {

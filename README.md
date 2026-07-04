@@ -4,13 +4,14 @@ Internal workspace and authorization microservice. Deploys as a single
 container; points at Postgres, exposes Connect-RPC over HTTP/JSON, and is called
 **service-to-service** by trusted product backends.
 
-This is the **workspace/authz service** that identity's
-[ADR-0001](https://github.com/elloloop/identity/blob/main/docs/adr/0001-two-service-split-identity-vs-workspace.md)
-said would be built separately. Identity owns authentication and tenancy and
-issues the access token; workspaces owns workspace membership and fine-grained,
-ReBAC-style authorization. The two services **never share a table** — the access
-token, verified at the **product edge**, is the entire contact point between
-them.
+It owns workspace membership and fine-grained, ReBAC-style authorization — the
+**authorization** half of a system whose **authentication** lives elsewhere. End
+users are authenticated at the **product edge**: the product backend
+authenticates the user (typically against a separate identity/auth service) and
+then calls this service **as itself** with a service credential. This service
+does **no end-user token verification** (no JWKS, no JWT) and shares **no
+database** with any auth service, so it has **no runtime dependency** on one and
+runs standalone.
 
 ## Documentation
 
@@ -217,33 +218,30 @@ curl -X POST http://localhost:8080/workspace.v1.AuthzService/Check \
 A missing or wrong service credential returns HTTP `401` / Connect code
 `Unauthenticated`.
 
-## How it relates to identity
+## Authentication boundary
 
-Per identity
-[ADR-0001](https://github.com/elloloop/identity/blob/main/docs/adr/0001-two-service-split-identity-vs-workspace.md),
-the AuthN/authz seam is a hard line:
+This service does **authorization**, not **authentication**, and the seam
+between the two is a hard line. End-user authentication happens at the **product
+edge**: the product backend authenticates the user (typically against a separate
+identity/auth service that issues the access token), then calls this service
+**as itself** over an internal, service-to-service channel. Like Zanzibar, the
+end user is **data** here, not the caller — the acting user and the subject are
+explicit request fields.
 
-- **identity** owns authentication, the `User` pool, `Project`, `Tenant`,
-  `Domain`, and tenant-level membership. It issues the access token.
-- **workspaces** (this service) owns workspaces, workspace membership, groups,
-  and all fine-grained ReBAC.
+This service performs **no end-user token verification** — there is no JWKS, no
+issuer check, and no JWT logic in it at all — and it shares **no database** with
+any auth service, so it has no runtime dependency on one. It authenticates its
+*callers* with a shared service credential (`GATEWAY_SERVICE_AUTH_TOKENS`).
 
-The two **never share a table**. End-user authentication happens at the
-**product edge**: the product backend verifies the user's identity token, then
-calls this service **as itself** over an internal, service-to-service channel.
-Like Zanzibar, the end user is **data** here, not the caller — the acting user
-and the subject are explicit request fields.
-
-`project_id` is the **isolation shard** (identity
-[ADR-0002](https://github.com/elloloop/identity/blob/main/docs/adr/0002-project-the-isolation-shard.md)):
-every workspace row, group, invitation, and relation tuple is scoped to it. A
-request with no `project_id` falls back to `GATEWAY_DEFAULT_PROJECT_ID`. One
-B2C product is typically one project with many users' personal workspaces; a
-B2B platform can shard per customer into separate projects.
+`project_id` is the **isolation shard**: every workspace row, group, invitation,
+and relation tuple is scoped to it. A request with no `project_id` falls back to
+`GATEWAY_DEFAULT_PROJECT_ID`. One B2C product is typically one project with many
+users' personal workspaces; a B2B platform can partition per customer into
+separate projects.
 
 ## Configuration
 
-All config is via environment variables (the `GATEWAY_` prefix matches identity).
+All config is via environment variables (the `GATEWAY_` prefix).
 
 | Var | Purpose | Default |
 |---|---|---|
