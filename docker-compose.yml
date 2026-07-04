@@ -14,8 +14,9 @@
 #   docker compose down -v        # stop and wipe the postgres volume
 #
 # Notes:
-#   - GATEWAY_JWT_JWKS_URL points at identity's JWKS endpoint for token
-#     verification. Override it to match your local identity deployment.
+#   - This service does NO end-user token verification (no JWKS, no JWT). It
+#     authenticates its callers with a service credential
+#     (GATEWAY_SERVICE_AUTH_TOKENS); the end user is passed as request data.
 #   - The service defaults to GATEWAY_POSTGRES_AUTO_MIGRATE=false (migrations
 #     are a deliberate operator step in production). This compose file sets it
 #     to true explicitly so `docker compose up` self-migrates the (small) dev
@@ -51,8 +52,6 @@ services:
       GATEWAY_POSTGRES_DSN: postgres://workspaces:workspaces@postgres:5432/workspaces?sslmode=disable
       GATEWAY_POSTGRES_AUTO_MIGRATE: "true"
       GATEWAY_DEFAULT_PROJECT_ID: local
-      GATEWAY_JWT_JWKS_URL: http://localhost:8081/.well-known/jwks.json
-      GATEWAY_JWT_ISSUER: http://localhost:8081
       GATEWAY_ALLOWED_ORIGINS: http://localhost:3000
     ports:
       - "8080:8080"
