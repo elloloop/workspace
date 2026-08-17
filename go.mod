@@ -8,7 +8,7 @@ require (
 	github.com/prometheus/client_golang v1.23.2
 	go.uber.org/zap v1.28.0
 	golang.org/x/sync v0.21.0
-	google.golang.org/protobuf v1.36.11
+	google.golang.org/protobuf v1.36.12
 )
 
 require (
