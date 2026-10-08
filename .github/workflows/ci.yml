@@ -329,8 +329,11 @@ jobs:
           push: false
           load: true
           tags: workspaces:ci
+          # Only main writes the layer cache; PRs and the merge queue read it.
+          # A PR's own cache is visible to that PR alone and only evicts
+          # main's caches from the repository's 10 GB.
           cache-from: type=gha,scope=ci-docker
-          cache-to: type=gha,mode=max,scope=ci-docker
+          cache-to: ${{ github.event_name == 'push' && 'type=gha,mode=max,scope=ci-docker' || '' }}
 
       - name: docker run smoke
         shell: bash
