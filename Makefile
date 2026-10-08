@@ -111,6 +111,11 @@ test-postgres-local: services-up ## Postgres-driver tests against the local dock
 .PHONY: test-cover
 test-cover: ## Unit+e2e tests, merged coverage, skip-guard (when a test DSN is set), per-package gates — the CI "Build + Test + Coverage" job
 	bash scripts/run-coverage.sh
+	@$(MAKE) --no-print-directory postgres-skip-guard
+	@$(MAKE) --no-print-directory test-cover-gates
+
+.PHONY: postgres-skip-guard
+postgres-skip-guard: ## When a test DSN is set, fail if the Postgres suite skipped instead of running
 	@if [ -n "$$GATEWAY_TEST_POSTGRES_DSN$$WORKSPACES_TEST_POSTGRES_DSN" ]; then \
 		echo "==> test DSN set — verifying the Postgres suite actually runs (no silent skip)"; \
 		out=$$($(GO) test -count=1 -run . -v ./internal/repo/postgres/... 2>&1); \
@@ -120,6 +125,9 @@ test-cover: ## Unit+e2e tests, merged coverage, skip-guard (when a test DSN is s
 			exit 1; \
 		fi; \
 	fi
+
+.PHONY: test-cover-gates
+test-cover-gates: ## The coverage gates over cover.out (CI runs them on the merged parallel profile)
 	bash scripts/coverage-gate.sh cover.out 68 internal/
 	bash scripts/coverage-gate.sh cover.out 65 pkg/
 	bash scripts/coverage-gate.sh cover.out --config .coverage-gates.yml
