@@ -13,7 +13,10 @@
 # COVERAGE_PART runs one part of that run, so CI can run the parts in
 # parallel and merge their profiles (scripts/merge-coverage.sh):
 #   unit:<i>/<n>  the i-th of n round-robin shards of the packages, less
-#                 ./tests and ./internal/repo/postgres
+#                 ./tests, ./pkg/authz and ./internal/repo/postgres
+#   authz:<i>/<n> the i-th of n shards of ./pkg/authz, split by test name;
+#                 its two adversarial worst-case tests (most of the package's
+#                 time under -race) are dealt first, so they land apart
 #   e2e:<i>/<n>   the i-th of n round-robin shards of the ./tests suite,
 #                 split by test name
 #   postgres      ./internal/repo/postgres
@@ -41,7 +44,7 @@ case "$part" in
   unit:*)
     shard="${part#unit:}"
     mapfile -t pkgs < <(go list ./... \
-      | grep -vxF -e "$module/tests" -e "$module/internal/repo/postgres" \
+      | grep -vxF -e "$module/tests" -e "$module/pkg/authz" -e "$module/internal/repo/postgres" \
       | awk -v i="${shard%/*}" -v n="${shard#*/}" '(NR - 1) % n == i - 1')
     ;;
   e2e:*)
@@ -49,6 +52,16 @@ case "$part" in
     names="$(grep -hoE '^func Test[A-Za-z0-9_]+' tests/*_test.go | sed 's/^func //' | sort \
       | awk -v i="${shard%/*}" -v n="${shard#*/}" '(NR - 1) % n == i - 1' | paste -sd '|' -)"
     pkgs=(./tests)
+    run=(-run "^(${names})\$")
+    ;;
+  authz:*)
+    shard="${part#authz:}"
+    heavy=(TestAdv9zWorstCase TestBudget_ListObjectsSharesOneBudget)
+    names="$( { printf '%s\n' "${heavy[@]}"
+                grep -hoE '^func Test[A-Za-z0-9_]+' pkg/authz/*_test.go | sed 's/^func //' | sort \
+                  | grep -vxF "${heavy[@]/#/-e}"; } \
+      | awk -v i="${shard%/*}" -v n="${shard#*/}" '(NR - 1) % n == i - 1' | paste -sd '|' -)"
+    pkgs=(./pkg/authz)
     run=(-run "^(${names})\$")
     ;;
   postgres)
