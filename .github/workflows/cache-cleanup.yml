@@ -1,0 +1,44 @@
+name: Cache cleanup
+
+# The repository's Actions cache is capped at 10 GB. Caches written for a pull
+# request, a merge-queue branch or a tag can only ever be read by that same
+# ref, so once it is gone they only evict main's caches, which every run reads.
+# This deletes them: a pull request's when it closes, the rest daily.
+
+on:
+  # pull_request_target so fork PRs get a token that may delete caches. No
+  # code from the pull request is checked out or run.
+  pull_request_target:
+    types: [closed]
+  schedule:
+    - cron: '17 3 * * *'
+  workflow_dispatch:
+
+permissions:
+  actions: write
+
+jobs:
+  cleanup:
+    name: Delete caches no ref can read
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Delete caches
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          if [[ -n "${PR:-}" ]]; then
+            pattern="^refs/pull/${PR}/(merge|head)$"
+          else
+            open="$(gh pr list -R "$REPO" --state open --limit 500 --json number --jq '[.[].number] | map(tostring) | join("|")')"
+            # Merge-queue branches, tags, and pull requests that are no longer open.
+            pattern="^(refs/heads/gh-readonly-queue/|refs/heads/refs/tags/|refs/tags/|refs/pull/(?!(${open:-0})/))"
+          fi
+          gh cache list -R "$REPO" --limit 1000 --json id,ref \
+            | jq -r --arg p "$pattern" '.[] | select(.ref | test($p)) | .id' \
+            | while read -r id; do
+                gh cache delete "$id" -R "$REPO"
+              done

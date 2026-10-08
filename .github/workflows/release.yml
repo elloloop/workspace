@@ -8,7 +8,6 @@ env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
   GO_VERSION: '1.26.6'
-  GOLANGCI_LINT_VERSION: 'v2.12.1'
   GOVULNCHECK_VERSION: 'v1.1.4'
 
 permissions:
@@ -16,24 +15,46 @@ permissions:
 
 jobs:
   # ---------------------------------------------------------------------------
-  # Re-run every gate `ci.yml` runs on PRs. A broken build must NOT publish.
+  # A release publishes only a commit main's CI already passed: every gate
+  # ci.yml runs (lint, race + coverage, integration, e2e, fuzz, docker) ran on this exact commit in the merge queue and on main. Re-running
+  # them here doubled the release time and could not catch anything new;
+  # only the vulnerability scan, whose database moves daily, runs again.
   # ---------------------------------------------------------------------------
-  lint:
-    name: Lint
+  verified:
+    name: CI passed on this commit
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      checks: read
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v6
-        with:
-          go-version: ${{ env.GO_VERSION }}
-          cache: true
-      - name: golangci-lint
-        uses: golangci/golangci-lint-action@v9
-        with:
-          version: ${{ env.GOLANGCI_LINT_VERSION }}
-          only-new-issues: true
-          args: --config=.golangci.yml
+      - name: The tag is on main and main's CI passed on it
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+        run: |
+          status="$(gh api "repos/$REPO/compare/main...$SHA" --jq .status)"
+          if [[ "$status" != identical && "$status" != behind ]]; then
+            echo "::error::$SHA is not on main (compare status: $status); tag a commit from main"
+            exit 1
+          fi
+          # main's CI may still be running when a tag follows a merge closely.
+          for _ in $(seq 1 90); do
+            conclusions="$(gh api "repos/$REPO/commits/$SHA/check-runs?check_name=CI&per_page=100" \
+              --jq '[.check_runs[] | select(.app.slug == "github-actions") | .conclusion // "pending"] | join(" ")')"
+            if [[ " $conclusions " == *" success "* ]]; then
+              echo "CI passed on $SHA"
+              exit 0
+            fi
+            if [[ -n "$conclusions" && " $conclusions " != *" pending "* ]]; then
+              echo "::error::CI did not pass on $SHA (conclusions: $conclusions)"
+              exit 1
+            fi
+            sleep 10
+          done
+          echo "::error::no passing CI on $SHA after 15 minutes"
+          exit 1
 
   vuln:
     name: Vulnerability scan
@@ -50,196 +71,10 @@ jobs:
       - name: govulncheck
         run: govulncheck ./...
 
-  test:
-    name: Build + Test + Coverage
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    services:
-      postgres:
-        image: postgres:16.13-alpine3.23
-        env:
-          POSTGRES_USER: workspaces
-          POSTGRES_PASSWORD: workspaces
-          POSTGRES_DB: workspaces
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U workspaces"
-          --health-interval 5s
-          --health-timeout 3s
-          --health-retries 12
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v6
-        with:
-          go-version: ${{ env.GO_VERSION }}
-          cache: true
-      - name: go build
-        run: go build ./...
-      - name: Wait for coverage backends
-        run: |
-          for i in $(seq 1 30); do
-            if (echo > /dev/tcp/localhost/5432) >/dev/null 2>&1; then echo "postgres up"; break; fi
-            sleep 1
-            if [[ $i -eq 30 ]]; then echo "postgres did not come up"; exit 1; fi
-          done
-      - name: go test (race + merged coverage)
-        env:
-          RUN_INTEGRATION_COVERAGE: "1"
-          GATEWAY_POSTGRES_DSN: postgres://workspaces:workspaces@localhost:5432/workspaces?sslmode=disable
-          GATEWAY_TEST_POSTGRES_DSN: postgres://workspaces:workspaces@localhost:5432/workspaces?sslmode=disable
-        run: bash scripts/run-coverage.sh
-      # Aggregate floors MUST match ci.yml so release enforces exactly the bar
-      # every PR already passed — not a stricter, never-measured number (the
-      # maintained per-package floors live in .coverage-gates.yml below).
-      - name: Coverage gate (internal/ >= 68%)
-        run: bash scripts/coverage-gate.sh cover.out 68 internal/
-      - name: Coverage gate (pkg/ >= 65%)
-        run: bash scripts/coverage-gate.sh cover.out 65 pkg/
-      - name: Coverage gate (per-package)
-        run: bash scripts/coverage-gate.sh cover.out --config .coverage-gates.yml
 
-  smoke:
-    name: Boot smoke
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v6
-        with:
-          go-version: ${{ env.GO_VERSION }}
-          cache: true
-      - name: go test -tags=smoke
-        run: |
-          if compgen -G "tests/smoke/*.go" > /dev/null; then
-            go test -tags=smoke -timeout=120s ./tests/smoke/...
-          else
-            echo "no smoke tests under tests/smoke — skipping"
-          fi
 
-  integration:
-    name: Integration tests
-    runs-on: ubuntu-latest
-    timeout-minutes: 8
-    services:
-      postgres:
-        image: postgres:16.13-alpine3.23
-        env:
-          POSTGRES_USER: workspaces
-          POSTGRES_PASSWORD: workspaces
-          POSTGRES_DB: workspaces
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U workspaces"
-          --health-interval 5s
-          --health-timeout 3s
-          --health-retries 12
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v6
-        with:
-          go-version: ${{ env.GO_VERSION }}
-          cache: true
-      - name: Wait for postgres
-        run: |
-          for i in $(seq 1 30); do
-            if (echo > /dev/tcp/localhost/5432) >/dev/null 2>&1; then echo "postgres up"; break; fi
-            sleep 1
-            if [[ $i -eq 30 ]]; then echo "postgres did not come up"; exit 1; fi
-          done
-      - name: go test -tags=integration
-        env:
-          GATEWAY_POSTGRES_DSN: postgres://workspaces:workspaces@localhost:5432/workspaces?sslmode=disable
-          GATEWAY_TEST_POSTGRES_DSN: postgres://workspaces:workspaces@localhost:5432/workspaces?sslmode=disable
-        run: |
-          if compgen -G "tests/integration/*.go" > /dev/null; then
-            go test -tags=integration -race -timeout=180s ./tests/integration/...
-          else
-            echo "no integration tests under tests/integration — skipping"
-          fi
 
-  # Replay the committed seed corpus deterministically as ordinary tests
-  # (no `-fuzz`). A regression of any known crash fails the release
-  # reproducibly. Live fuzzing (`-fuzz`) is non-deterministic — a time-boxed
-  # run on a shared runner fails with "context deadline exceeded" when a worker
-  # is mid-execution as the budget expires, a flake that depends on runner load
-  # rather than on any input. Live exploration is left to the nightly job,
-  # which has a generous per-target budget and uploads any crashers as
-  # artifacts.
-  fuzz:
-    name: Fuzz smoke
-    runs-on: ubuntu-latest
-    timeout-minutes: 8
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v6
-        with:
-          go-version: ${{ env.GO_VERSION }}
-          cache: true
-      - name: Replay fuzz seed corpus
-        shell: bash
-        run: |
-          set -euo pipefail
-          mapfile -t pkgs < <(
-            grep -rEl --include='*_test.go' '^func Fuzz[A-Za-z0-9_]+\(' . \
-              | sed -E 's|/[^/]+$||' \
-              | sort -u
-          )
-          if [[ ${#pkgs[@]} -eq 0 ]]; then
-            echo "no fuzz targets — skipping"
-            exit 0
-          fi
-          go test -race -timeout=120s "${pkgs[@]}"
 
-  docker:
-    name: Container build smoke
-    runs-on: ubuntu-latest
-    timeout-minutes: 8
-    steps:
-      - uses: actions/checkout@v7
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
-
-      - name: docker build --target server
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          target: server
-          push: false
-          load: true
-          tags: workspaces:release-smoke
-          cache-from: type=gha,scope=release-docker
-          cache-to: type=gha,mode=max,scope=release-docker
-
-      - name: docker run smoke
-        shell: bash
-        run: |
-          set -euo pipefail
-          cid="$(
-            docker run -d \
-              -e GATEWAY_CONNECT_PORT=8080 \
-              -e GATEWAY_METRICS_PORT=9090 \
-              -e GATEWAY_DEFAULT_PROJECT_ID=docker-smoke \
-              -p 127.0.0.1:18080:8080 \
-              workspaces:release-smoke
-          )"
-          trap 'docker rm -f "$cid" >/dev/null 2>&1 || true' EXIT
-
-          for i in $(seq 1 30); do
-            if curl -fsS http://127.0.0.1:18080/healthz > /tmp/workspaces-health.txt; then
-              grep -q 'ok' /tmp/workspaces-health.txt
-              exit 0
-            fi
-            if [[ "$(docker inspect -f '{{.State.Running}}' "$cid")" != "true" ]]; then
-              docker logs "$cid"
-              exit 1
-            fi
-            sleep 1
-          done
-          docker logs "$cid"
-          exit 1
 
   # ---------------------------------------------------------------------------
   # Build, push, sign, and scan the published image.
@@ -247,7 +82,7 @@ jobs:
   build-and-push:
     name: Build and Push Image
     runs-on: ubuntu-latest
-    needs: [lint, vuln, test, smoke, integration, fuzz, docker]
+    needs: [verified, vuln]
     permissions:
       contents: read
       packages: write
@@ -298,8 +133,9 @@ jobs:
           target: server
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          # A tag's Actions cache is visible to that tag alone, so a release
+          # writing one only evicted main's caches. It reads main's layers.
+          cache-from: type=gha,scope=ci-docker
           sbom: true
           provenance: mode=max
           build-args: |
