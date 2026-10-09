@@ -1,6 +1,6 @@
 module github.com/elloloop/workspace
 
-go 1.26.6
+go 1.26.9
 
 require (
 	connectrpc.com/connect v1.20.0
