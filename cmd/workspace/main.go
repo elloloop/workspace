@@ -126,8 +126,8 @@ func main() {
 	logger.Info("shutdown_complete")
 }
 
-// migrateCommand runs `workspace migrate [--contract]` and returns the exit
-// code, with every line it logged flushed to the export first.
+// The caller exits with os.Exit, which skips main's deferred flush, so the
+// migrate path flushes here.
 func migrateCommand(args []string, cfg *config.Config, logs *logging.Logger) int {
 	defer closeLogs(logs)
 	contract, err := parseMigrateArgs(args)
