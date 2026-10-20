@@ -279,7 +279,22 @@ has every line. An export failure (an unreachable collector, an unparseable
 endpoint, a malformed resource attribute) is logged as `log_export_failed` at
 most once a minute, a setting the exporter cannot be built from switches the
 export off with the same line rather than stopping the service, and shutdown
-flushes the queue for at most 5 seconds.
+flushes the queue for at most 5 seconds (a failed final flush is logged as
+`log_export_flush_failed`).
+
+- Only `OTEL_EXPORTER_OTLP_ENDPOINT` switches the export on (a logs-only
+  `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT` alone does not), and it speaks OTLP/HTTP
+  only. The SDK's other variables apply as usual: `OTEL_EXPORTER_OTLP_HEADERS`,
+  TLS certificates, and the queue and batch tuning `OTEL_BLRP_MAX_QUEUE_SIZE`,
+  `OTEL_BLRP_SCHEDULE_DELAY`, `OTEL_BLRP_MAX_EXPORT_BATCH_SIZE`.
+- zap's production sampler applies before the export, so stderr and the
+  collector hold the same lines: every line the sampler kept.
+- An `http://` endpoint is plaintext: use it only for a collector on the same
+  host or private network. A malformed `OTEL_EXPORTER_OTLP_HEADERS` value can be
+  echoed in the `log_export_failed` line, so treat that line as sensitive when
+  headers carry credentials.
+- This is the `cmd/workspace` binary's logger. An embedder of `workspaceserver`
+  passes its own logger and wires its own export.
 
 ## Deployment
 

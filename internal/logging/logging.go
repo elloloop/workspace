@@ -84,8 +84,9 @@ func newLogger(ctx context.Context, exit func(int), opts ...zap.Option) (*Logger
 	otel.SetErrorHandler(newErrorReporter(local, time.Now))
 	provider, err := newProvider(ctx)
 	if err != nil {
-		// The export is optional; the engine must boot without it.
-		otel.Handle(fmt.Errorf("export off, logging to stderr only: %w", err))
+		// The export is optional; the engine must boot without it. Written
+		// straight to the local logger: this one line must never be rate-limited.
+		local.Warn("log_export_failed", zap.Error(fmt.Errorf("export off, logging to stderr only: %w", err)))
 		return l, nil
 	}
 	exported := otelzap.NewCore(instrumentationScope, otelzap.WithLoggerProvider(provider))
