@@ -28,6 +28,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/elloloop/workspace/internal/config"
+	"github.com/elloloop/workspace/internal/logging"
 	"github.com/elloloop/workspace/internal/repo/memory"
 	"github.com/elloloop/workspace/internal/repo/postgres"
 	"github.com/elloloop/workspace/internal/service"
@@ -35,10 +36,12 @@ import (
 )
 
 func main() {
-	logger, err := zap.NewProduction()
+	ctx := context.Background()
+	logs, err := logging.New(ctx)
 	if err != nil {
 		panic(err)
 	}
+	logger := logs.Logger
 	opts, err := workspaceserver.OptionsFromEnv()
 	if err != nil {
 		logger.Fatal("config_invalid", zap.Error(err))
@@ -46,19 +49,10 @@ func main() {
 	cfg := &opts.Config // the env-only knobs (ports, DSN, …) the container reads directly
 
 	if len(os.Args) > 1 && os.Args[1] == "migrate" {
-		contract, err := parseMigrateArgs(os.Args[2:])
-		if err != nil {
-			logger.Error("migrate_usage", zap.Error(err))
-			_ = logger.Sync()
-			os.Exit(2)
-		}
-		code := runMigrate(cfg, logger, contract)
-		_ = logger.Sync()
-		os.Exit(code)
+		os.Exit(migrateCommand(os.Args[2:], cfg, logs))
 	}
-	defer func() { _ = logger.Sync() }()
+	defer closeLogs(logs)
 
-	ctx := context.Background()
 	repo, closeRepo, err := buildRepo(ctx, cfg, logger)
 	if err != nil {
 		logger.Fatal("repo_init_failed", zap.Error(err))
@@ -130,6 +124,26 @@ func main() {
 	_ = connectServer.Shutdown(shutdownCtx)
 	_ = metricsServer.Shutdown(shutdownCtx)
 	logger.Info("shutdown_complete")
+}
+
+// The caller exits with os.Exit, which skips main's deferred flush, so the
+// migrate path flushes here.
+func migrateCommand(args []string, cfg *config.Config, logs *logging.Logger) int {
+	defer closeLogs(logs)
+	contract, err := parseMigrateArgs(args)
+	if err != nil {
+		logs.Error("migrate_usage", zap.Error(err))
+		return 2
+	}
+	return runMigrate(cfg, logs.Logger, contract)
+}
+
+// closeLogs flushes the log export before the process exits. A failed flush is
+// written to the local output, which still works after the export has stopped.
+func closeLogs(logs *logging.Logger) {
+	if err := logs.Close(); err != nil {
+		logs.Warn("log_export_flush_failed", zap.Error(err))
+	}
 }
 
 func newHTTPServer(addr string, h http.Handler) *http.Server {
