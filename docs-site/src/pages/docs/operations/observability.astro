@@ -129,8 +129,20 @@ curl -i http://localhost:8080/readyz    # readiness`}
   <p>
     Workspaces logs with <a href="https://github.com/uber-go/zap">zap</a> as
     structured JSON — each line is a discrete event with typed fields, ready to
-    index in Loki, Elasticsearch, or any log pipeline. One startup line to watch
-    for:
+    index in Loki, Elasticsearch, or any log pipeline.
+  </p>
+  <p>
+    Lines always go to stderr. Set <code>OTEL_EXPORTER_OTLP_ENDPOINT</code> to a
+    collector's base URL (for example <code>http://alloy:4318</code>) and every
+    line is also exported over OTLP/HTTP, with <code>OTEL_SERVICE_NAME</code>
+    (default <code>workspace</code>) and <code>OTEL_RESOURCE_ATTRIBUTES</code> as
+    its resource attributes. The export never blocks a request: when its
+    bounded buffer is full the oldest queued lines are overwritten, silently
+    (stderr still has them). A failing collector or a bad setting is reported
+    as <code>log_export_failed</code> at most once a minute, a setting the
+    exporter cannot be built from turns the export off instead of stopping the
+    service, and shutdown flushes for at most 5 seconds. One startup line to
+    watch for:
   </p>
   <Code code={`{"level":"warn","msg":"service_auth_disabled","reason":"no GATEWAY_SERVICE_AUTH_TOKENS configured","impact":"all callers trusted — deploy behind a private network/mesh or set the tokens"}`} lang="json" />
   <p>

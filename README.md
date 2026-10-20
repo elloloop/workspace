@@ -266,6 +266,21 @@ All config is via environment variables (the `GATEWAY_` prefix).
 | `GATEWAY_DECISION_LOG` | Enable the append-only authorization decision audit log: every `Check`/`CheckSet` decision is emitted to the structured logger by an async, non-blocking drain (full buffer drops + counts; never slows or fails a check). | `false` |
 | `GATEWAY_AUDIT_LOG` | Enable the append-only change audit log: every relation-tuple grant/revocation (`WriteRelationTuples`) and admin mutation (`CreateProject`/`UpdateProject`, incl. status/model changes — the admin secret is never logged) is emitted to the structured logger by the same async, non-blocking drain. | `false` |
 
+Log export uses the standard OpenTelemetry variables, read by the SDK. Logs
+always go to stderr as JSON; setting `OTEL_EXPORTER_OTLP_ENDPOINT` (a
+collector's base URL such as `http://alloy:4318`; `/v1/logs` is appended) also
+exports every log line over OTLP/HTTP. `OTEL_SERVICE_NAME` (default
+`workspace`) and `OTEL_RESOURCE_ATTRIBUTES` (for example
+`deployment.environment=prod`) become the records' resource attributes. The
+export never blocks a request: lines queue in a bounded buffer (2048 lines by
+default, `OTEL_BLRP_MAX_QUEUE_SIZE`), and when it is full the oldest queued
+lines are overwritten. Those overwritten lines are not reported; stderr still
+has every line. An export failure (an unreachable collector, an unparseable
+endpoint, a malformed resource attribute) is logged as `log_export_failed` at
+most once a minute, a setting the exporter cannot be built from switches the
+export off with the same line rather than stopping the service, and shutdown
+flushes the queue for at most 5 seconds.
+
 ## Deployment
 
 The repo ships a `docker-compose.yml` that brings up Postgres and the
